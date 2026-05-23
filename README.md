@@ -1,5 +1,7 @@
 # Aether Engine
 
+[English](README.md) | [简体中文](README.zh-CN.md)
+
 A modern rendering engine built with **Rust** and **wgpu**, designed for learning real-time graphics from Deferred PBR to ray tracing.
 
 ## 🌟 Features
