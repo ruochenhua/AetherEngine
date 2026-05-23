@@ -1,0 +1,29 @@
+# Rust
+target/
+Cargo.lock
+**/*.rs.bk
+*.pdb
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build
+project_build/
+build/
+dist/
+
+# Assets (large binary files)
+assets/textures/*.hdr
+assets/meshes/*.gltf
+assets/meshes/*.glb
+
+# Logs
+*.log

@@ -1,0 +1,56 @@
+[package]
+name = "aether-engine"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+description = "Aether Engine - A modern rendering engine built with Rust and wgpu"
+keywords = ["graphics", "rendering", "wgpu", "pbr", "raytracing"]
+categories = ["graphics", "rendering", "game-engines"]
+
+[dependencies]
+# Core
+wgpu = { workspace = true }
+winit = { workspace = true }
+hecs = { workspace = true }
+glam = { workspace = true }
+bytemuck = { workspace = true }
+
+# Window
+raw-window-handle = { workspace = true }
+
+# UI
+egui = { workspace = true }
+egui-wgpu = { workspace = true }
+egui-winit = { workspace = true }
+
+# Asset
+gltf = { workspace = true }
+image = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+ron = { workspace = true }
+
+# Runtime
+pollster = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# Physics (optional, reserved for Phase 4)
+rapier3d = { workspace = true, optional = true }
+
+[features]
+default = []
+physics = ["dep:rapier3d"]
+
+[dev-dependencies]
+tracing-subscriber = { workspace = true }

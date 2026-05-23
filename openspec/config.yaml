@@ -1,0 +1,86 @@
+schema: spec-driven
+
+# Project context
+# This is shown to AI when creating artifacts.
+context: |
+  ## 项目概述
+  Aether Engine 是一个基于 Rust + wgpu 的现代渲染引擎，
+  用于学习和实践实时渲染技术（Deferred Shading、PBR、光追等）。
+  引擎采用 ECS 架构和 RenderGraph 驱动的渲染管线。
+
+  ## 技术栈
+  - 语言：Rust (Edition 2021)
+  - 渲染 API：wgpu (跨平台 Vulkan/Metal/DX12)
+  - 窗口：winit
+  - ECS：hecs
+  - 数学：glam
+  - UI：egui
+  - 序列化：serde + ron
+  - 日志：tracing
+
+  ## 项目结构
+  ```
+  ├── Cargo.toml                    # Workspace 配置
+  ├── crates/
+  │   └── aether-engine/            # 主引擎 crate
+  │       └── src/
+  │           ├── lib.rs            # 公开 API
+  │           ├── app.rs            # App 入口、主循环
+  │           ├── ecs/              # ECS 封装
+  │           ├── scene/            # 场景加载/序列化
+  │           ├── asset/            # 资源管理
+  │           ├── renderer/         # 渲染核心
+  │           │   ├── graph.rs      # RenderGraph
+  │           │   ├── context.rs    # wgpu 上下文
+  │           │   └── passes/       # 渲染 Pass
+  │           ├── physics/          # 物理系统（预留）
+  │           ├── math.rs           # 数学工具
+  │           ├── input.rs          # 输入管理
+  │           └── window.rs         # 窗口封装
+  ├── assets/                       # 运行时资源
+  │   ├── scenes/                   # .ron 场景文件
+  │   ├── shaders/                  # .wgsl 着色器
+  │   ├── meshes/                   # 模型文件
+  │   └── textures/                 # 贴图文件
+  └── examples/                     # 示例程序
+  ```
+
+  ## 核心架构模式
+  1. **ECS**：数据与逻辑解耦，hecs 提供高性能查询
+  2. **RenderGraph**：声明式 Pass 依赖，自动排序和资源管理
+  3. **System Registry**：固定调度阶段（Startup/Update/FixedUpdate/Render/Shutdown）
+  4. **模块化**：渲染、物理、音频等系统独立，通过 ECS World 共享数据
+
+  ## 编码规范
+  - 使用 Rust 标准模块系统
+  - 错误处理使用 `anyhow::Result` 或 `thiserror`
+  - 所有公共 API 必须有文档注释 `#![warn(missing_docs)]`
+  - 模块组织：每个系统一个目录，接口在 `mod.rs` 中暴露
+  - AI 协作原则：每个文件控制在 300-500 行，模块间零耦合
+
+  ## 命名约定
+  - 文件：snake_case（如 `render_graph.rs`）
+  - 类型：PascalCase（如 `RenderGraph`）
+  - 函数/变量：snake_case
+  - 常量：UPPER_SNAKE_CASE
+
+  ## 设计原则
+  - 可扩展性：新 Pass 只需实现 `RenderPass` trait 并注册到 RenderGraph
+  - 可维护性：无 `#ifdef`，wgpu 自动处理跨平台
+  - AI 友好：接口清晰，无复杂泛型约束，无宏魔法
+  - 功能演进：先光栅化（Phase 1-3），后光追（Phase 4）
+
+# Per-artifact rules
+rules:
+  proposal:
+    - 使用中文编写
+    - 包含明确的技术动机和验收标准
+    - 说明对现有架构的影响
+  design:
+    - 使用中文编写
+    - 包含架构图和接口定义
+    - 明确与 ECS / RenderGraph 的集成方式
+  tasks:
+    - 使用中文编写
+    - 每个任务粒度控制在 2 小时内
+    - 明确验收标准和依赖关系
