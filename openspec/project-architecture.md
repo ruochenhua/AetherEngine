@@ -206,7 +206,7 @@ UI Pass              输入: final_color
 # 构建
 cargo build
 
-# 运行示例（未来）
+# 运行示例
 cargo run --example 01_triangle
 
 # 测试
@@ -215,3 +215,108 @@ cargo test
 # 检查
 cargo clippy
 ```
+
+---
+
+## 8. 依赖管理与版本策略
+
+### 8.1 版本冲突预防
+
+**engine-bootstrap 的教训**：wgpu 0.20 与 egui-wgpu 0.27 的版本冲突消耗了约 30% 的编码时间。
+
+**预防机制**：
+1. **Design 阶段强制验证**：每个 change 的 Design 必须包含 Dependency Compatibility Matrix
+2. **添加新依赖前检查**：
+   ```bash
+   cargo tree -d              # 检查重复版本
+   cargo tree -i wgpu         # 查看谁依赖了 wgpu
+   cargo update --dry-run     # 预览版本变更
+   ```
+3. **版本锁定策略**：
+   - 优先使用 workspace 级别的版本统一
+   - 避免在同一 workspace 中引入同一 crate 的多个 major 版本
+   - 如果必须多版本共存，在 Design 中说明隔离方案
+
+### 8.2 依赖升级流程
+
+```
+1. 检查 changelog / migration guide
+2. cargo update --dry-run 预览
+3. 修改 Cargo.toml 版本号
+4. cargo check 验证编译
+5. 修复 API 变更（生命周期、trait bounds 等）
+6. cargo test 验证功能
+7. 更新文档中的接口签名
+```
+
+### 8.3 已知的版本约束（基线）
+
+| Crate | 当前版本 | 锁定原因 | 升级路径 |
+|-------|---------|---------|---------|
+| wgpu  | 0.19.x  | egui-wgpu 0.27 依赖 wgpu 0.19 | 等待 egui-wgpu 0.28 |
+| egui  | 0.27    | egui-wgpu/egui-winit 同步 | 跟随 egui 生态统一升级 |
+| hecs  | 0.10    | API 稳定 | 可独立升级 |
+| winit | 0.29    | egui-winit 0.27.2 依赖 | 跟随 egui 生态统一升级 |
+
+## 9. 影响面分析工具箱
+
+### 9.1 核心变更的影响面 grep 模板
+
+**Trait 变更**（如 `Component`、`RenderPass`）：
+```bash
+grep -rn "impl <TRAIT>" crates/aether-engine/src/
+grep -rn "use .*<TRAIT>" crates/aether-engine/src/
+grep -rn "dyn <TRAIT>" crates/aether-engine/src/
+grep -rn "<TRAIT>" crates/aether-engine/src/ | wc -l
+```
+
+**字段/类型变更**：
+```bash
+grep -rn "old_field_name" crates/aether-engine/src/
+grep -rn "OldTypeName" crates/aether-engine/src/ | wc -l
+```
+
+**公共 API 变更**：
+```bash
+grep -rn "pub fn old_name" crates/aether-engine/src/
+grep -rn "pub struct OldName" crates/aether-engine/src/
+```
+
+### 9.2 全链路影响统计模板
+
+```markdown
+## 影响面统计
+
+| 文件路径 | 引用次数 | 影响类型 | 迁移策略 |
+|---------|---------|---------|---------|
+| src/ecs/mod.rs | 3 | trait 定义变更 | 直接修改 |
+| src/scene/mod.rs | 5 | 导入变更 | 直接修改 |
+| src/renderer/mesh.rs | 2 | impl 块移除 | 直接修改 |
+| **总计** | **10** | — | — |
+```
+
+## 10. 编译-修复循环的成本预估
+
+基于 engine-bootstrap 的经验数据：
+
+| 变更类型 | 预估编码时间 | 预估编译修复时间 | 总时间 |
+|---------|------------|----------------|-------|
+| 新增独立模块 | 2h | 0.5h | 2.5h |
+| 接口签名调整 | 1h | 1h | 2h |
+| 依赖版本升级 | 0.5h | 1-3h | 1.5-3.5h |
+| ECS trait 迁移 | 2h | 2h | 4h |
+| 跨模块重构 | 3h | 3h | 6h |
+
+**任务拆分原则**：
+- 任何涉及 trait / 生命周期 / 版本升级的 change，预留 **50% buffer** 给编译修复
+- Task 中必须将「编译通过」和「运行时验证」作为独立任务
+- 如果编译错误超过 20 个，暂停编码，回退到 Design 阶段重新评估
+
+---
+
+## 11. 文档索引
+
+- 设计阶段检查清单：`openspec/workflow-guides/design-checklist.md`
+- Task 拆分标准模板：`openspec/workflow-guides/task-template.md`
+- 项目设计规范（Dependency Matrix + Impact Analysis）：`openspec/project-design.md`
+- OpenSpec 全局配置和规则：`openspec/config.yaml`

@@ -219,3 +219,82 @@ wgpu 自动选择后端：
 - iOS → Metal
 
 无需 `#ifdef`，一套代码全平台。
+
+---
+
+## 9. Design 阶段工作流规范
+
+> 以下规范基于 `engine-bootstrap` 实践的复盘，确保后续 change 的设计质量。
+
+### 9.1 Dependency Compatibility Matrix（依赖兼容性矩阵）
+
+每个涉及新依赖或版本升级的 change，Design 中必须包含兼容性矩阵：
+
+```markdown
+## Dependency Compatibility Matrix
+
+| Crate | 目标版本 | 约束来源 | 兼容性风险 | 验证状态 |
+|-------|---------|---------|-----------|---------|
+| wgpu  | 0.20    | 直接依赖 | ⚠️ egui-wgpu 0.27 锁定 wgpu 0.19 | 待验证 |
+| hecs  | 0.10    | 直接依赖 | ⚠️ `Component` 改为 auto-trait | 待验证 |
+
+验证命令：
+```bash
+cargo tree -d              # 检查重复版本
+cargo check --all-targets  # 全目标编译验证
+```
+```
+
+**关键原则**：
+- 在写第一行代码前完成矩阵验证
+- 高风险依赖必须在 Design 阶段解决，不能留到 Apply 阶段
+- 版本降级必须在 Design 中说明原因
+
+### 9.2 Impact Analysis（影响面分析）
+
+任何涉及核心 trait、数据模型、公共接口的变更，必须进行影响面分析：
+
+```markdown
+## Impact Analysis
+
+- [ ] 新模型 + 兼容层（渐进式迁移策略）
+- [ ] 受影响模块清单（使用 grep 统计）
+
+```bash
+# 示例：变更 Component trait 的影响面
+grep -r "impl Component" crates/aether-engine/src/
+grep -r "use.*Component" crates/aether-engine/src/
+grep -r "Component" crates/aether-engine/src/ | wc -l
+```
+
+- [ ] 渐进式迁移计划
+  - Step 1: 新模型 + 兼容层（旧字段保留为别名）
+  - Step 2: 按模块渐进迁移
+  - Step 3: 删除兼容层
+```
+
+**关键原则**：
+- 影响面分析必须在 Design 阶段完成，不能留到 Apply 阶段发现
+- 全链路影响统计必须精确到每个文件的引用次数
+- 渐进式迁移必须分步骤，每步可独立编译通过
+
+### 9.3 接口签名规范
+
+Design 中的接口定义必须标注：
+- 生命周期约束（如 `'static`）
+- Trait bounds（如 `Send + Sync`）
+- 线程安全要求
+- 与现有代码的兼容性说明
+
+```rust
+// 示例：标注了完整约束的接口
+pub async fn new(
+    window: Arc<winit::window::Window>  // 需 'static 以满足 Surface<'static>
+) -> Self;
+```
+
+### 9.4 文档索引
+
+- 详细的工作流模板和检查清单：`openspec/workflow-guides/`
+- 项目架构和依赖规则：`openspec/project-architecture.md`
+- OpenSpec 全局配置和规则：`openspec/config.yaml`

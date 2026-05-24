@@ -73,7 +73,9 @@ context: |
 # Workflow rules
 workflow:
   - explore/propose/apply 阶段不提交代码到 git
-  - 所有代码变更在 openspec-archive-change 归档时一次性提交
+  - 允许阶段性 commit（每完成一个 spec 或重大里程碑），archive 时统一整理历史
+  - 每个 change 归档前必须满足：cargo check 0 errors + example 运行无 panic
+  - 参考 workflow-guides/ 目录中的详细模板和检查清单
 
 # Per-artifact rules
 rules:
@@ -81,11 +83,24 @@ rules:
     - 使用中文编写
     - 包含明确的技术动机和验收标准
     - 说明对现有架构的影响
+    - 预估 delta 数量，超过 10 个建议拆分为多个 change
   design:
     - 使用中文编写
     - 包含架构图和接口定义
     - 明确与 ECS / RenderGraph 的集成方式
+    - 必须包含 Dependency Compatibility Matrix（依赖兼容性矩阵）
+    - 必须包含 Impact Analysis（影响面分析），列出 grep 命令和受影响模块
+    - 接口签名需标注生命周期约束和 trait bounds
   tasks:
     - 使用中文编写
     - 每个任务粒度控制在 2 小时内
     - 明确验收标准和依赖关系
+    - 每个 spec 的最后两个任务必须是：
+      1. 「编译通过」cargo check 0 errors
+      2. 「运行时验证」example 成功启动无 panic
+    - 预留 20% buffer 给未预见的编译/运行时修复
+  spec:
+    - 使用中文编写
+    - 每个 spec 之间必须声明依赖关系（depends_on）
+    - 接口签名必须与代码实现一致（archive 时做漂移检测）
+    - Acceptance Criteria 必须包含可自动验证的断言（如 cargo check 命令）
