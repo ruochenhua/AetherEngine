@@ -78,11 +78,80 @@ pub struct GBufferPass {
 impl GBufferPass {
     /// Create a new G-Buffer pass.
     pub fn new(device: &wgpu::Device) -> Self {
+        let shader_source = r#"
+struct VertexInput {
+    @location(0) position: vec3<f32>,
+    @location(1) normal: vec3<f32>,
+    @location(2) uv: vec2<f32>,
+    @location(3) tangent: vec4<f32>,
+};
+
+struct VertexOutput {
+    @builtin(position) clip_position: vec4<f32>,
+    @location(0) world_pos: vec3<f32>,
+    @location(1) world_normal: vec3<f32>,
+    @location(2) uv: vec2<f32>,
+};
+
+struct TransformUniform {
+    model: mat4x4<f32>,
+    view: mat4x4<f32>,
+    proj: mat4x4<f32>,
+};
+
+@group(0) @binding(0) var<uniform> transform: TransformUniform;
+
+@vertex
+fn vs_main(in: VertexInput) -> VertexOutput {
+    var out: VertexOutput;
+    let world_pos = transform.model * vec4<f32>(in.position, 1.0);
+    out.clip_position = transform.proj * transform.view * world_pos;
+    out.world_pos = world_pos.xyz;
+    // Transform normal to world space using the upper-left 3x3 of model matrix
+    let normal_matrix = mat3x3<f32>(
+        transform.model[0].xyz,
+        transform.model[1].xyz,
+        transform.model[2].xyz,
+    );
+    out.world_normal = normalize(normal_matrix * in.normal);
+    out.uv = in.uv;
+    return out;
+}
+
+struct MaterialUniform {
+    albedo: vec4<f32>,
+    roughness: f32,
+    metallic: f32,
+    _pad: vec2<f32>,
+};
+
+@group(1) @binding(0) var<uniform> material: MaterialUniform;
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    return vec4<f32>(in.world_pos, 1.0);
+}
+
+@fragment
+fn fs_main_normal(in: VertexOutput) -> @location(1) vec4<f32> {
+    // Encode normal from [-1,1] to [0,1] for storage in RGBA16Float
+    return vec4<f32>(in.world_normal * 0.5 + 0.5, 1.0);
+}
+
+@fragment
+fn fs_main_albedo(in: VertexOutput) -> @location(2) vec4<f32> {
+    return material.albedo;
+}
+
+@fragment
+fn fs_main_material(in: VertexOutput) -> @location(3) vec2<f32> {
+    return vec2<f32>(material.roughness, material.metallic);
+}
+"#;
+
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("GBuffer Shader"),
-            source: wgpu::ShaderSource::Wgsl(
-                include_str!("../../../../../../assets/shaders/gbuffer.wgsl").into(),
-            ),
+            source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(shader_source)),
         });
 
         let transform_bind_group_layout =

@@ -82,11 +82,99 @@ impl LightingPass {
         gbuffer: &GBuffer,
         _config: &wgpu::SurfaceConfiguration,
     ) -> Self {
+        let shader_source = r#"
+struct VertexOutput {
+    @builtin(position) clip_position: vec4<f32>,
+    @location(0) uv: vec2<f32>,
+};
+
+@vertex
+fn vs_main(@location(0) position: vec2<f32>) -> VertexOutput {
+    var out: VertexOutput;
+    out.clip_position = vec4<f32>(position, 0.0, 1.0);
+    out.uv = position * 0.5 + 0.5;
+    return out;
+}
+
+struct DirectionalLight {
+    direction: vec3<f32>,
+    _pad: f32,
+    color: vec3<f32>,
+    intensity: f32,
+};
+
+struct LightingUniforms {
+    camera_pos: vec3<f32>,
+    _pad1: f32,
+    light: DirectionalLight,
+    ambient_intensity: f32,
+    _pad2: f32,
+    _pad3: f32,
+    _pad4: f32,
+};
+
+@group(0) @binding(0) var gbuffer_position: texture_2d<f32>;
+@group(0) @binding(1) var gbuffer_normal: texture_2d<f32>;
+@group(0) @binding(2) var gbuffer_albedo: texture_2d<f32>;
+@group(0) @binding(3) var gbuffer_material: texture_2d<f32>;
+@group(0) @binding(4) var gbuffer_sampler: sampler;
+
+@group(1) @binding(0) var<uniform> uniforms: LightingUniforms;
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    let uv = in.uv;
+
+    // Sample G-Buffer
+    let position_sample = textureSample(gbuffer_position, gbuffer_sampler, uv);
+    let normal_sample = textureSample(gbuffer_normal, gbuffer_sampler, uv);
+    let albedo_sample = textureSample(gbuffer_albedo, gbuffer_sampler, uv);
+    let material_sample = textureSample(gbuffer_material, gbuffer_sampler, uv);
+
+    let world_pos = position_sample.xyz;
+    // Decode normal from [0,1] back to [-1,1]
+    let N = normalize(normal_sample.xyz * 2.0 - 1.0);
+    let albedo = albedo_sample.rgb;
+    let roughness = material_sample.r;
+    let metallic = material_sample.g;
+
+    // Skip lighting for background (no geometry written)
+    if (length(N) < 0.01) {
+        return vec4<f32>(0.05, 0.05, 0.05, 1.0);
+    }
+
+    // Light calculations
+    let L = normalize(-uniforms.light.direction);
+    let V = normalize(uniforms.camera_pos - world_pos);
+    let H = normalize(L + V);
+
+    // Ambient
+    let ambient = albedo * uniforms.ambient_intensity;
+
+    // Diffuse
+    let NdotL = max(dot(N, L), 0.0);
+    let diffuse = albedo * NdotL * uniforms.light.color * uniforms.light.intensity;
+
+    // Specular (Blinn-Phong)
+    let NdotH = max(dot(N, H), 0.0);
+    let shininess = mix(8.0, 128.0, 1.0 - roughness);
+    let specular_intensity = pow(NdotH, shininess);
+    let specular_color = mix(vec3<f32>(0.04), albedo, metallic);
+    let specular = specular_color * specular_intensity * uniforms.light.intensity;
+
+    let final_color = ambient + diffuse + specular;
+
+    // Simple tone mapping
+    let mapped = final_color / (final_color + vec3<f32>(1.0));
+    let gamma_corrected = pow(mapped, vec3<f32>(1.0 / 2.2));
+
+    return vec4<f32>(gamma_corrected, 1.0);
+}
+"#;
+
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Lighting Shader"),
-            source: wgpu::ShaderSource::Wgsl(
-                include_str!("../../../../../../assets/shaders/lighting.wgsl").into(),
-            ),
+            source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(shader_source)),
         });
 
         let texture_bind_group_layout =
