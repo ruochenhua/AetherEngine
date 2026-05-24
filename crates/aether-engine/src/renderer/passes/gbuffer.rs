@@ -127,25 +127,22 @@ struct MaterialUniform {
 
 @group(1) @binding(0) var<uniform> material: MaterialUniform;
 
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return vec4<f32>(in.world_pos, 1.0);
+struct FragmentOutput {
+    @location(0) position: vec4<f32>,
+    @location(1) normal: vec4<f32>,
+    @location(2) albedo: vec4<f32>,
+    @location(3) material: vec2<f32>,
 }
 
 @fragment
-fn fs_main_normal(in: VertexOutput) -> @location(1) vec4<f32> {
+fn fs_main(in: VertexOutput) -> FragmentOutput {
+    var out: FragmentOutput;
+    out.position = vec4<f32>(in.world_pos, 1.0);
     // Encode normal from [-1,1] to [0,1] for storage in RGBA16Float
-    return vec4<f32>(in.world_normal * 0.5 + 0.5, 1.0);
-}
-
-@fragment
-fn fs_main_albedo(in: VertexOutput) -> @location(2) vec4<f32> {
-    return material.albedo;
-}
-
-@fragment
-fn fs_main_material(in: VertexOutput) -> @location(3) vec2<f32> {
-    return vec2<f32>(material.roughness, material.metallic);
+    out.normal = vec4<f32>(in.world_normal * 0.5 + 0.5, 1.0);
+    out.albedo = material.albedo;
+    out.material = vec2<f32>(material.roughness, material.metallic);
+    return out;
 }
 "#;
 
