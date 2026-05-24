@@ -80,7 +80,7 @@ impl LightingPass {
     pub fn new(
         device: &wgpu::Device,
         gbuffer: &GBuffer,
-        _config: &wgpu::SurfaceConfiguration,
+        config: &wgpu::SurfaceConfiguration,
     ) -> Self {
         let shader_source = r#"
 struct VertexOutput {
@@ -276,7 +276,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                 module: &shader,
                 entry_point: "fs_main",
                 targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Bgra8UnormSrgb,
+                    format: config.format,
                     blend: None,
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
