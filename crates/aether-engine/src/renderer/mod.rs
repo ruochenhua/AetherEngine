@@ -23,12 +23,14 @@ use context::{GBuffer, RenderContext};
 use glam::Mat4;
 use graph::RenderGraph;
 use passes::gbuffer::{GBufferPass, Renderable};
+use passes::lighting::{LightingPass, LightingUniforms};
 use tracing::{info, trace};
 
 /// Main renderer.
 pub struct Renderer {
     _graph: RenderGraph,
     gbuffer_pass: GBufferPass,
+    lighting_pass: LightingPass,
     gbuffer: Option<GBuffer>,
     width: u32,
     height: u32,
@@ -43,10 +45,16 @@ impl Renderer {
         let graph = RenderGraph::new();
         let gbuffer_pass = GBufferPass::new(&context.device);
         let gbuffer = Some(GBuffer::new(&context.device, width, height));
+        let lighting_pass = LightingPass::new(
+            &context.device,
+            gbuffer.as_ref().unwrap(),
+            &context.config,
+        );
 
         Self {
             _graph: graph,
             gbuffer_pass,
+            lighting_pass,
             gbuffer,
             width,
             height,
@@ -66,6 +74,7 @@ impl Renderer {
         renderables: &[Renderable],
         view: &Mat4,
         proj: &Mat4,
+        lighting_uniforms: &LightingUniforms,
     ) -> Result<(), wgpu::SurfaceError> {
         let _frame_start = std::time::Instant::now();
 
@@ -90,30 +99,9 @@ impl Renderer {
             );
         }
 
-        // TODO: Lighting pass, post-process, blit to swapchain
-        // For now, just copy one of the G-Buffer channels to the swapchain for visualization
-        // This is temporary until we have a proper lighting/composite pass
-        {
-            let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Blit Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &output_view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.1,
-                            g: 0.1,
-                            b: 0.1,
-                            a: 1.0,
-                        }),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            });
-        }
+        // Execute Lighting pass
+        self.lighting_pass.update_uniforms(&context.queue, lighting_uniforms);
+        self.lighting_pass.execute(&mut encoder, &output_view);
 
         context.queue.submit(std::iter::once(encoder.finish()));
         output.present();
@@ -137,6 +125,11 @@ impl Renderer {
 
         // Recreate G-Buffer textures
         self.gbuffer = Some(GBuffer::new(&context.device, width, height));
+
+        // Update lighting pass bind group
+        if let Some(ref gbuffer) = self.gbuffer {
+            self.lighting_pass.recreate_bind_group(&context.device, gbuffer);
+        }
     }
 
     /// Get the current resolution.

@@ -1,6 +1,7 @@
 use crate::{
     input::InputManager,
     renderer::{context::RenderContext, Renderer},
+    renderer::passes::lighting::LightingUniforms,
 };
 use glam::Mat4;
 use tracing::{error, info};
@@ -77,12 +78,16 @@ impl App {
                                 // Update phase
                                 renderer.update(1.0 / 60.0);
 
+                                // Lighting uniforms (temporary hard-coded)
+                                let lighting_uniforms = LightingUniforms::default();
+
                                 // Render phase
                                 match renderer.render(
                                     &render_context,
                                     &[], // No renderables yet (populated by examples)
                                     &view,
                                     &proj,
+                                    &lighting_uniforms,
                                 ) {
                                     Ok(_) => {}
                                     Err(wgpu::SurfaceError::Lost) => {
