@@ -1,5 +1,5 @@
 use tracing::trace;
-use winit::event::{ElementState, KeyboardInput, MouseButton, WindowEvent};
+use winit::event::{ElementState, MouseButton, WindowEvent};
 
 /// Input state manager.
 ///
@@ -27,7 +27,7 @@ impl InputManager {
         match event {
             WindowEvent::KeyboardInput {
                 event:
-                    KeyboardInput {
+                    winit::event::KeyEvent {
                         state,
                         physical_key: winit::keyboard::PhysicalKey::Code(keycode),
                         ..

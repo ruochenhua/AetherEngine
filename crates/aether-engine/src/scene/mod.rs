@@ -5,7 +5,7 @@
 pub mod loader;
 pub mod serializer;
 
-use crate::ecs::{Component, Entity, World};
+use crate::ecs::{Entity, World};
 use crate::math::*;
 use serde::{Deserialize, Serialize};
 

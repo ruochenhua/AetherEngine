@@ -1,11 +1,10 @@
-use crate::ecs::Component;
 use glam::Vec3;
 
 /// Rigid body component.
 ///
 /// Marker + data for physics simulation.
 /// Currently stores velocity and mass; actual simulation is deferred to Phase 4.
-#[derive(Debug, Clone, Component)]
+#[derive(Debug, Clone)]
 pub struct RigidBody {
     /// Linear velocity.
     pub velocity: Vec3,
@@ -16,6 +15,7 @@ pub struct RigidBody {
     /// Is this body static (immovable)?
     pub is_static: bool,
 }
+
 
 impl Default for RigidBody {
     fn default() -> Self {
@@ -29,7 +29,7 @@ impl Default for RigidBody {
 }
 
 /// Collider shape.
-#[derive(Debug, Clone, Component)]
+#[derive(Debug, Clone)]
 pub enum ColliderShape {
     /// Sphere with radius.
     Sphere(f32),
@@ -42,7 +42,7 @@ pub enum ColliderShape {
 }
 
 /// Collider component.
-#[derive(Debug, Clone, Component)]
+#[derive(Debug, Clone)]
 pub struct Collider {
     /// Collider shape.
     pub shape: ColliderShape,
@@ -53,6 +53,7 @@ pub struct Collider {
     /// Restitution (bounciness).
     pub restitution: f32,
 }
+
 
 impl Default for Collider {
     fn default() -> Self {

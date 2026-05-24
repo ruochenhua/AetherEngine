@@ -4,23 +4,25 @@
 //!
 //! ## Design
 //!
-//! - **Components** are plain data structs with the `#[derive(Component)]` attribute.
+//! - **Components** are plain data structs that implement `hecs::Component`.
 //! - **Systems** are functions that operate on queries of components.
 //! - **World** is the container for all entities and components.
 //!
 //! ## Example
 //!
 //! ```rust
-//! use aether_engine::ecs::{World, Component};
+//! use aether_engine::ecs::World;
 //!
-//! #[derive(Component)]
+//! #[derive(Debug, Clone)]
 //! struct Position { x: f32, y: f32 }
+//!
+//! impl hecs::Component for Position {}
 //!
 //! let mut world = World::new();
 //! let entity = world.spawn((Position { x: 0.0, y: 0.0 },));
 //! ```
 
-pub use hecs::{Component, Entity, Query, QueryBorrow, QueryMut, With, Without};
+pub use hecs::{Entity, Query, QueryBorrow, QueryMut, With, Without};
 
 mod system;
 mod world;

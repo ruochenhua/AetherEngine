@@ -52,16 +52,6 @@ impl World {
         self.inner.query_mut::<Q>()
     }
 
-    /// Get a single component immutably.
-    pub fn get<C: hecs::Component>(&self, entity: Entity) -> Result<hecs::Ref<'_, C>, hecs::ComponentError> {
-        self.inner.get::<C>(entity)
-    }
-
-    /// Get a single component mutably.
-    pub fn get_mut<C: hecs::Component>(&mut self, entity: Entity) -> Result<hecs::RefMut<'_, C>, hecs::ComponentError> {
-        self.inner.get_mut::<C>(entity)
-    }
-
     /// Insert components into an existing entity.
     pub fn insert<B>(&mut self, entity: Entity, bundle: B) -> Result<(), hecs::NoSuchEntity>
     where
@@ -71,12 +61,12 @@ impl World {
     }
 
     /// Remove components from an entity.
-    pub fn remove<T: hecs::Bundle>(&mut self, entity: Entity) -> Result<T, hecs::ComponentError> {
+    pub fn remove<T: hecs::Bundle + 'static>(&mut self, entity: Entity) -> Result<T, hecs::ComponentError> {
         self.inner.remove::<T>(entity)
     }
 
     /// Get the number of entities.
-    pub fn len(&self) -> usize {
+    pub fn len(&self) -> u32 {
         self.inner.len()
     }
 

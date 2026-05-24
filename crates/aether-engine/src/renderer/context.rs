@@ -30,6 +30,9 @@ impl RenderContext {
 
         let surface = instance.create_surface(window.clone())
             .expect("Failed to create surface");
+        // SAFETY: Window lives for the entire application lifetime,
+        // so extending Surface lifetime to 'static is sound.
+        let surface = unsafe { std::mem::transmute::<wgpu::Surface<'_>, wgpu::Surface<'static>>(surface) };
 
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {

@@ -3,6 +3,7 @@ use crate::ecs::World;
 use anyhow::{Context, Result};
 use std::path::Path;
 use tracing::{info, warn};
+use glam::{Quat, Vec3};
 
 /// Scene loader.
 pub struct SceneLoader;
@@ -61,25 +62,17 @@ impl SceneLoader {
         world: &mut World,
         desc: &SceneEntity,
     ) -> Result<crate::ecs::Entity> {
-        use crate::ecs::Component;
         use crate::renderer::camera::Camera;
         use crate::renderer::light::Light;
-        use crate::renderer::mesh::Mesh;
-        use crate::scene::TransformData;
-        use glam::{Quat, Vec3};
+        use super::TransformData;
 
-        let mut components: Vec<Box<dyn hecs::Component>> = Vec::new();
-
-        // Transform
         let transform = desc.transform.clone().unwrap_or_default();
-        let transform_component = crate::ecs::Transform {
+        let transform_component = Transform {
             translation: Vec3::from_array(transform.translation),
             rotation: Quat::from_array(transform.rotation),
             scale: Vec3::from_array(transform.scale),
         };
 
-        // Note: hecs requires tuple bundles for spawn
-        // We'll use a simpler approach - build a tuple dynamically
         let entity = world.spawn((transform_component,));
 
         // Add mesh if present
@@ -118,11 +111,8 @@ impl SceneLoader {
     }
 }
 
-// Transform component for ECS
-use crate::ecs::Component;
-
-/// Transform component.
-#[derive(Debug, Clone, Component)]
+/// Transform component for ECS.
+#[derive(Debug, Clone)]
 pub struct Transform {
     /// Translation.
     pub translation: Vec3,
@@ -131,6 +121,7 @@ pub struct Transform {
     /// Scale.
     pub scale: Vec3,
 }
+
 
 impl Default for Transform {
     fn default() -> Self {
@@ -144,9 +135,9 @@ impl Default for Transform {
 
 impl Transform {
     /// Compute the model matrix.
-    pub fn matrix(&self) -> Mat4 {
-        Mat4::from_translation(self.translation)
-            * Mat4::from_quat(self.rotation)
-            * Mat4::from_scale(self.scale)
+    pub fn matrix(&self) -> glam::Mat4 {
+        glam::Mat4::from_translation(self.translation)
+            * glam::Mat4::from_quat(self.rotation)
+            * glam::Mat4::from_scale(self.scale)
     }
 }

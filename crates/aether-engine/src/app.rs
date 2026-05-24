@@ -1,7 +1,6 @@
 use crate::{
     input::InputManager,
-    renderer::{context::RenderContext, graph::RenderGraph, Renderer},
-    window::WindowManager,
+    renderer::{context::RenderContext, Renderer},
 };
 use tracing::{error, info};
 use winit::{
@@ -60,33 +59,30 @@ impl App {
                             WindowEvent::Resized(physical_size) => {
                                 renderer.resize(&mut render_context, physical_size.width, physical_size.height);
                             }
+                            WindowEvent::RedrawRequested => {
+                                // Update phase
+                                renderer.update(1.0 / 60.0);
+
+                                // Render phase
+                                match renderer.render(&mut render_context) {
+                                    Ok(_) => {}
+                                    Err(wgpu::SurfaceError::Lost) => {
+                                        renderer.resize(&mut render_context, window.inner_size().width, window.inner_size().height);
+                                    }
+                                    Err(wgpu::SurfaceError::OutOfMemory) => {
+                                        error!("GPU out of memory");
+                                        elwt.exit();
+                                    }
+                                    Err(e) => {
+                                        error!("Render error: {:?}", e);
+                                    }
+                                }
+                            }
                             _ => {}
                         }
                     }
                     Event::AboutToWait => {
                         window.request_redraw();
-                    }
-                    Event::WindowEvent {
-                        event: WindowEvent::RedrawRequested,
-                        ..
-                    } => {
-                        // Update phase
-                        renderer.update(1.0 / 60.0);
-
-                        // Render phase
-                        match renderer.render(&mut render_context) {
-                            Ok(_) => {}
-                            Err(wgpu::SurfaceError::Lost) => {
-                                renderer.resize(&mut render_context, window.inner_size().width, window.inner_size().height);
-                            }
-                            Err(wgpu::SurfaceError::OutOfMemory) => {
-                                error!("GPU out of memory");
-                                elwt.exit();
-                            }
-                            Err(e) => {
-                                error!("Render error: {:?}", e);
-                            }
-                        }
                     }
                     _ => {}
                 }

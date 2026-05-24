@@ -14,7 +14,6 @@ pub mod mesh;
 pub mod passes;
 
 use crate::ecs::World;
-use crate::input::InputManager;
 use context::RenderContext;
 use graph::RenderGraph;
 use tracing::{info, trace};
@@ -29,16 +28,10 @@ pub struct Renderer {
 
 impl Renderer {
     /// Create a new renderer.
-    pub fn new(context: &mut RenderContext, width: u32, height: u32) -> Self {
+    pub fn new(_context: &mut RenderContext, width: u32, height: u32) -> Self {
         info!("Initializing renderer ({}x{})", width, height);
 
-        let mut graph = RenderGraph::new();
-
-        // Register default passes
-        // TODO: Register passes as they are implemented
-        // graph.add_pass(passes::GBufferPass::new());
-        // graph.add_pass(passes::LightingPass::new());
-        // graph.add_pass(passes::PostProcessPass::new());
+        let graph = RenderGraph::new();
 
         Self {
             graph,

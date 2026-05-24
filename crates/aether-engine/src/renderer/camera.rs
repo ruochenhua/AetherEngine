@@ -1,8 +1,7 @@
 use crate::math::*;
-use crate::ecs::Component;
 
 /// Camera component.
-#[derive(Debug, Clone, Component)]
+#[derive(Debug, Clone)]
 pub struct Camera {
     /// Vertical field of view in radians.
     pub fov: f32,
@@ -13,6 +12,7 @@ pub struct Camera {
     /// Aspect ratio (width / height).
     pub aspect: f32,
 }
+
 
 impl Default for Camera {
     fn default() -> Self {
@@ -48,7 +48,7 @@ impl Camera {
 }
 
 /// Orbit camera controller.
-#[derive(Debug, Clone, Component)]
+#[derive(Debug, Clone)]
 pub struct OrbitCamera {
     /// Distance from target.
     pub distance: f32,
@@ -63,6 +63,7 @@ pub struct OrbitCamera {
     /// Zoom sensitivity.
     pub zoom_sensitivity: f32,
 }
+
 
 impl Default for OrbitCamera {
     fn default() -> Self {

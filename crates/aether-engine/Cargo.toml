@@ -45,12 +45,6 @@ tracing = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 
-# Physics (optional, reserved for Phase 4)
-rapier3d = { workspace = true, optional = true }
-
-[features]
-default = []
-physics = ["dep:rapier3d"]
 
 [dev-dependencies]
 tracing-subscriber = { workspace = true }

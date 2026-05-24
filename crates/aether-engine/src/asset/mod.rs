@@ -87,7 +87,7 @@ impl AssetManager {
     }
 
     /// Get an asset by handle.
-    pub fn get<T: 'static>(&self, handle: Handle<T>) -> Option<Arc<T>> {
+    pub fn get<T: 'static + Send + Sync>(&self, handle: Handle<T>) -> Option<Arc<T>> {
         self.assets
             .get(&handle.id())
             .and_then(|a| a.clone().downcast::<T>().ok())
@@ -100,7 +100,7 @@ impl AssetManager {
 }
 
 /// Trait for loadable assets.
-pub trait Asset: Sized {
+pub trait Asset: Sized + Send + Sync {
     /// Load the asset from a file path.
     fn load(path: &Path) -> anyhow::Result<Self>;
 }

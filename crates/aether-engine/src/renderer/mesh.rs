@@ -1,10 +1,10 @@
-use crate::ecs::Component;
-use crate::asset::{Handle, mesh::GpuMesh, material::Material};
+use crate::asset::{Handle, material::Material};
+use crate::asset::mesh::GpuMesh;
 
 /// Mesh renderer component.
 ///
 /// Attaches a GPU mesh and material to an entity.
-#[derive(Debug, Component)]
+#[derive(Debug)]
 pub struct MeshRenderer {
     /// GPU mesh handle.
     pub mesh: Handle<GpuMesh>,
@@ -15,6 +15,7 @@ pub struct MeshRenderer {
     /// Whether to receive shadows.
     pub receive_shadow: bool,
 }
+
 
 impl MeshRenderer {
     /// Create a new mesh renderer.

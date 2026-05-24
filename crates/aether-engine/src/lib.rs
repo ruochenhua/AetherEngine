@@ -32,18 +32,3 @@ pub mod scene;
 pub mod window;
 
 pub use app::App;
-
-use tracing::{info, Level};
-use tracing_subscriber::FmtSubscriber;
-
-/// Initialize global logging and tracing.
-pub fn init_logging() {
-    let subscriber = FmtSubscriber::builder()
-        .with_max_level(Level::INFO)
-        .finish();
-    
-    tracing::subscriber::set_global_default(subscriber)
-        .expect("Failed to set tracing subscriber");
-    
-    info!("Aether Engine initialized");
-}

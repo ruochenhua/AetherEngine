@@ -1,4 +1,3 @@
-use crate::ecs::Component;
 use glam::Vec3;
 
 /// Light type.
@@ -15,7 +14,7 @@ pub enum LightType {
 /// Light component.
 ///
 /// Pure data - rendering logic is handled by `ShadowPass` and `LightingPass`.
-#[derive(Debug, Clone, Component)]
+#[derive(Debug, Clone)]
 pub struct Light {
     /// Light type.
     pub light_type: LightType,
@@ -26,6 +25,7 @@ pub struct Light {
     /// Whether this light casts shadows.
     pub cast_shadow: bool,
 }
+
 
 impl Default for Light {
     fn default() -> Self {
@@ -40,8 +40,7 @@ impl Default for Light {
 
 impl Light {
     /// Create a directional light.
-    pub fn directional(direction: Vec3, color: Vec3, intensity: f32) -> Self {
-        let _ = direction; // Direction stored in Transform component
+    pub fn directional(_direction: Vec3, color: Vec3, intensity: f32) -> Self {
         Self {
             light_type: LightType::Directional,
             color,
