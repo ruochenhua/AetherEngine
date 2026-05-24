@@ -82,19 +82,27 @@ pub trait RenderPass {
 pub enum ResourceDesc {
     /// Color texture.
     ColorTexture {
+        /// Texture format.
         format: wgpu::TextureFormat,
+        /// Width in pixels.
         width: u32,
+        /// Height in pixels.
         height: u32,
     },
     /// Depth texture.
     DepthTexture {
+        /// Texture format.
         format: wgpu::TextureFormat,
+        /// Width in pixels.
         width: u32,
+        /// Height in pixels.
         height: u32,
     },
-    /// Buffer.
+    /// Buffer resource.
     Buffer {
+        /// Buffer size in bytes.
         size: wgpu::BufferAddress,
+        /// Buffer usage flags.
         usage: wgpu::BufferUsages,
     },
 }
@@ -118,7 +126,10 @@ impl PassResourceBuilder {
 }
 
 /// Internal resource state.
+#[allow(dead_code)]
 enum GraphResource {
+    /// Resource has been declared but not yet allocated.
     Declared(ResourceDesc),
+    /// Resource has been allocated on the GPU.
     Allocated(wgpu::Texture),
 }

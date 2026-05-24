@@ -1,4 +1,3 @@
-use tracing::trace;
 use winit::event::{ElementState, MouseButton, WindowEvent};
 
 /// Input state manager.

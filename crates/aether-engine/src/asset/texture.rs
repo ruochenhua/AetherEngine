@@ -19,11 +19,17 @@ pub struct CpuTexture {
 /// Texture format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextureFormat {
+    /// Single channel 8-bit.
     R8,
+    /// Two channel 8-bit.
     Rg8,
+    /// Three channel 8-bit (padded to RGBA on GPU).
     Rgb8,
+    /// Four channel 8-bit.
     Rgba8,
+    /// Four channel 16-bit float.
     Rgba16F,
+    /// Four channel 32-bit float.
     Rgba32F,
 }
 

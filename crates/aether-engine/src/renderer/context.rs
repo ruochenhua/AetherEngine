@@ -28,7 +28,7 @@ impl RenderContext {
             ..Default::default()
         });
 
-        let surface = instance.create_surface(window.clone())
+        let surface = instance.create_surface(window)
             .expect("Failed to create surface");
         // SAFETY: Window lives for the entire application lifetime,
         // so extending Surface lifetime to 'static is sound.

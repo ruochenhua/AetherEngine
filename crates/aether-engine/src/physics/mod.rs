@@ -8,7 +8,9 @@
 //! - Phase 1-3: Components exist but have no simulation
 //! - Phase 4: Implement `physics_system` with rapier3d or custom solver
 
+/// Physics components (placeholder for Phase 4).
 pub mod components;
+/// Physics system (placeholder for Phase 4).
 pub mod system;
 
 pub use components::{Collider, ColliderShape, RigidBody};

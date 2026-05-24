@@ -2,9 +2,13 @@
 //!
 //! Manages loading, caching, and lifetime of runtime assets.
 
+/// Mesh asset types.
 pub mod mesh;
+/// Texture asset types.
 pub mod texture;
+/// Material definitions.
 pub mod material;
+/// Shader utilities.
 pub mod shader;
 
 use std::any::Any;
@@ -64,9 +68,9 @@ impl AssetManager {
     /// Load an asset from a file path.
     ///
     /// If the asset has already been loaded, returns the existing handle.
-    pub fn load<T: Asset>(&mut self, path: impl AsRef<Path>) -> anyhow::Result<Handle<T>>
+    pub fn load<T>(&mut self, path: impl AsRef<Path>) -> anyhow::Result<Handle<T>>
     where
-        T: 'static + Send + Sync,
+        T: Asset + 'static + Send + Sync,
     {
         let path = path.as_ref().to_path_buf();
 

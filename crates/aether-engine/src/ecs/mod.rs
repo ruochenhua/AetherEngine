@@ -16,8 +16,6 @@
 //! #[derive(Debug, Clone)]
 //! struct Position { x: f32, y: f32 }
 //!
-//! impl hecs::Component for Position {}
-//!
 //! let mut world = World::new();
 //! let entity = world.spawn((Position { x: 0.0, y: 0.0 },));
 //! ```

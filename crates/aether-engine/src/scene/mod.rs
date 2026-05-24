@@ -2,10 +2,11 @@
 //!
 //! Handles scene loading, serialization, and entity instantiation.
 
+/// Scene loading utilities.
 pub mod loader;
+/// Scene serialization formats.
 pub mod serializer;
 
-use crate::ecs::{Entity, World};
 use crate::math::*;
 use serde::{Deserialize, Serialize};
 
@@ -36,8 +37,11 @@ pub struct SceneEntity {
 /// Serializable transform data.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransformData {
+    /// Translation vector [x, y, z].
     pub translation: [f32; 3],
-    pub rotation: [f32; 4],    // Quaternion
+    /// Rotation quaternion [x, y, z, w].
+    pub rotation: [f32; 4],
+    /// Scale vector [x, y, z].
     pub scale: [f32; 3],
 }
 
@@ -54,24 +58,33 @@ impl Default for TransformData {
 /// Serializable mesh data.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MeshData {
+    /// Path to the mesh file.
     pub mesh_path: String,
+    /// Optional path to the material file.
     pub material_path: Option<String>,
 }
 
 /// Serializable light data.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LightData {
-    pub light_type: String,     // "directional", "point", "spot"
+    /// Light type: "directional", "point", or "spot".
+    pub light_type: String,
+    /// Light color [r, g, b].
     pub color: [f32; 3],
+    /// Light intensity multiplier.
     pub intensity: f32,
+    /// Whether this light casts shadows.
     pub cast_shadow: bool,
 }
 
 /// Serializable camera data.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CameraData {
+    /// Vertical field of view in degrees.
     pub fov: f32,
+    /// Near clip plane distance.
     pub near: f32,
+    /// Far clip plane distance.
     pub far: f32,
 }
 

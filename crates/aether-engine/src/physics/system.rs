@@ -1,6 +1,4 @@
-use super::components::{Collider, RigidBody};
-use crate::ecs::{Query, World};
-use crate::scene::loader::Transform;
+use crate::ecs::World;
 use tracing::trace;
 
 /// Physics system (placeholder).

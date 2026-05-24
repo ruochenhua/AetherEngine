@@ -6,21 +6,25 @@
 //! - PBR material support
 //! - Extensible pass system
 
+/// Camera types and controllers.
 pub mod camera;
+/// wgpu context and device management.
 pub mod context;
+/// RenderGraph pass scheduling.
 pub mod graph;
+/// Light component definitions.
 pub mod light;
+/// Mesh rendering utilities.
 pub mod mesh;
+/// Render pass implementations.
 pub mod passes;
-
-use crate::ecs::World;
 use context::RenderContext;
 use graph::RenderGraph;
 use tracing::{info, trace};
 
 /// Main renderer.
 pub struct Renderer {
-    graph: RenderGraph,
+    _graph: RenderGraph,
     width: u32,
     height: u32,
     frame_count: u64,
@@ -34,7 +38,7 @@ impl Renderer {
         let graph = RenderGraph::new();
 
         Self {
-            graph,
+            _graph: graph,
             width,
             height,
             frame_count: 0,

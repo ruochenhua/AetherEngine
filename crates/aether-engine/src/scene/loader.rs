@@ -64,7 +64,7 @@ impl SceneLoader {
     ) -> Result<crate::ecs::Entity> {
         use crate::renderer::camera::Camera;
         use crate::renderer::light::Light;
-        use super::TransformData;
+        
 
         let transform = desc.transform.clone().unwrap_or_default();
         let transform_component = Transform {

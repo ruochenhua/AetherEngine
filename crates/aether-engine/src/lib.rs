@@ -21,9 +21,11 @@
 
 #![warn(missing_docs)]
 
+/// Application entry point and main loop.
 pub mod app;
 pub mod asset;
 pub mod ecs;
+/// Input state manager.
 pub mod input;
 pub mod math;
 pub mod physics;
