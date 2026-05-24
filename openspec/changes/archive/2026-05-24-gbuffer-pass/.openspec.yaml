@@ -1,0 +1,5 @@
+schema: spec-driven
+status: archived
+completed: 2026-05-24
+change: gbuffer-pass
+commit: 5029c5e
