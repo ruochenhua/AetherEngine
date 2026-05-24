@@ -2,6 +2,7 @@ use crate::{
     input::InputManager,
     renderer::{context::RenderContext, Renderer},
 };
+use glam::Mat4;
 use tracing::{error, info};
 use winit::{
     event::{Event, WindowEvent},
@@ -40,8 +41,21 @@ impl App {
             .expect("Failed to create window");
 
         let mut render_context = pollster::block_on(RenderContext::new(&window));
-        let mut renderer = Renderer::new(&mut render_context, self.width, self.height);
+        let mut renderer = Renderer::new(&render_context, self.width, self.height);
         let mut input = InputManager::new();
+
+        // Simple camera matrices for Phase 1
+        let view = Mat4::look_at_rh(
+            glam::Vec3::new(0.0, 0.0, 3.0),
+            glam::Vec3::new(0.0, 0.0, 0.0),
+            glam::Vec3::Y,
+        );
+        let proj = Mat4::perspective_rh(
+            45.0f32.to_radians(),
+            self.width as f32 / self.height as f32,
+            0.1,
+            100.0,
+        );
 
         event_loop.set_control_flow(ControlFlow::Poll);
 
@@ -64,10 +78,19 @@ impl App {
                                 renderer.update(1.0 / 60.0);
 
                                 // Render phase
-                                match renderer.render(&mut render_context) {
+                                match renderer.render(
+                                    &render_context,
+                                    &[], // No renderables yet (populated by examples)
+                                    &view,
+                                    &proj,
+                                ) {
                                     Ok(_) => {}
                                     Err(wgpu::SurfaceError::Lost) => {
-                                        renderer.resize(&mut render_context, window.inner_size().width, window.inner_size().height);
+                                        renderer.resize(
+                                            &mut render_context,
+                                            window.inner_size().width,
+                                            window.inner_size().height,
+                                        );
                                     }
                                     Err(wgpu::SurfaceError::OutOfMemory) => {
                                         error!("GPU out of memory");
