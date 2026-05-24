@@ -1,5 +1,6 @@
 schema: spec-driven
+name: lighting-pass
 status: archived
-completed: 2026-05-24
-change: lighting-pass
-commit: a1d8819
+archived_at: "2026-05-24"
+commit: 4676647
+depends_on: gbuffer-pass
