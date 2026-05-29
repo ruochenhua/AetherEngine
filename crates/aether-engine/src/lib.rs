@@ -33,4 +33,7 @@ pub mod renderer;
 pub mod scene;
 pub mod window;
 
+/// Example trait and standalone runner for engine demos.
+pub mod examples;
+
 pub use app::App;

@@ -8,6 +8,10 @@ Rust + wgpu 现代渲染引擎，KongEngine 的精神续作。目标：从 Defer
 
 | 术语 | 含义 |
 |------|------|
+| **Example** | 引擎的演示/教学单元，实现统一的 `Example` trait 接口 |
+| **Launcher** | 引擎示例的统一入口程序，管理 example 的注册、切换与生命周期 |
+| **Example trait** | 所有可运行示例必须实现的接口，定义 `init` / `update` / `prepare` / `render` / `ui` / `cleanup` 生命周期 |
+| **StandaloneRunner** | 支持 Example 通过 `cargo run --example` 独立运行的辅助函数 |
 | **RenderGraph** | 声明式渲染管线编排，Pass 依赖自动排序 |
 | **G-Buffer** | 延迟渲染几何缓冲（Position/Normal/Albedo/Material） |
 | **RenderPass** | 单一渲染阶段 trait，实现 `prepare()` + `execute()` |

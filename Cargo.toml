@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/aether-engine"]
+members = ["crates/aether-engine", "crates/aether-launcher"]
 resolver = "2"
 
 [workspace.package]
@@ -29,6 +29,7 @@ egui-winit = "0.27"
 # Asset
 gltf = { version = "1.4", features = ["names", "utils"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "hdr"] }
+tobj = { version = "4.0", default-features = false }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }

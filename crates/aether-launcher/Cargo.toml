@@ -1,0 +1,25 @@
+[package]
+name = "aether-launcher"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+description = "Aether Engine Example Launcher - unified entry point for all engine demos"
+keywords = ["graphics", "rendering", "wgpu", "examples"]
+categories = ["graphics", "rendering"]
+
+[dependencies]
+aether-engine = { path = "../aether-engine" }
+
+wgpu = { workspace = true }
+winit = { workspace = true }
+egui = { workspace = true }
+egui-wgpu = { workspace = true }
+egui-winit = { workspace = true }
+pollster = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
