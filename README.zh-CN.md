@@ -8,7 +8,9 @@
 
 - **现代架构**：ECS (hecs) + RenderGraph 驱动管线
 - **跨平台**：wgpu 自动适配 Vulkan/Metal/DX12
-- **延迟着色**：基于 G-Buffer 的 PBR 渲染
+- **延迟着色**：基于 G-Buffer 的 Blinn-Phong PBR，支持分通道调试
+- **UE 风格飞行相机**：右键漫游，WASD + QE 移动，滚轮调速
+- **调试工具**：世界网格、RGB 三轴指示器、光照分通道可视化
 - **可扩展**：添加新 RenderPass 无需修改现有代码
 - **AI 友好**：模块化设计，每个模块适合单次 AI 生成
 
@@ -22,54 +24,74 @@ cd AetherEngine
 # 构建
 cargo build
 
-# 运行示例（待实现）
+# 启动 Launcher（推荐入口）
+cargo run -p aether-launcher
+
+# 或单独运行示例
 cargo run --example 01_triangle
+cargo run --example 02_deferred
+cargo run --example 03_gltf_scene
 ```
+
+## 🎮 操控（02_deferred）
+
+| 按键 | 功能 |
+|------|------|
+| `鼠标右键` | 切换飞行模式 |
+| `W A S D` | 前 / 左 / 后 / 右 |
+| `Q` / `E` | 下降 / 上升（世界空间） |
+| `鼠标` | 旋转视角（飞行模式） |
+| `滚轮` | 调节移动速度 |
+| `0` – `5` | 光照调试：完整 / 环境光 / 漫反射 / 高光 / 法线 / NdotL |
+| `Esc` | 返回 Launcher 菜单 |
 
 ## 📁 项目结构
 
 ```
 ├── Cargo.toml
 ├── crates/
-│   └── aether-engine/          # 主引擎 crate
-│       └── src/
-│           ├── lib.rs            # 公开 API
-│           ├── app.rs            # 应用入口
-│           ├── ecs/              # ECS (hecs 封装)
-│           ├── scene/            # 场景加载/序列化
-│           ├── asset/            # 资源管理
-│           ├── renderer/         # 渲染核心
-│           │   ├── graph.rs      # RenderGraph
-│           │   ├── context.rs    # wgpu 上下文
-│           │   └── passes/       # 渲染 Pass
-│           ├── physics/          # 物理系统（预留）
-│           ├── math.rs           # 数学工具
-│           ├── input.rs          # 输入管理
-│           └── window.rs         # 窗口封装
+│   ├── aether-engine/          # 主引擎 crate
+│   │   └── src/
+│   │       ├── lib.rs            # 公开 API
+│   │       ├── app.rs            # 独立应用入口
+│   │       ├── ecs/              # ECS (hecs 封装)
+│   │       ├── scene/            # 场景加载/序列化
+│   │       ├── asset/            # 资源管理
+│   │       ├── renderer/         # 渲染核心
+│   │       │   ├── graph.rs      # RenderGraph
+│   │       │   ├── context.rs    # wgpu 上下文 + GBuffer
+│   │       │   ├── camera.rs     # FlyCamera + OrbitCamera
+│   │       │   └── passes/
+│   │       │       ├── gbuffer.rs   # G-Buffer (MRT)
+│   │       │       ├── lighting.rs  # 延迟光照
+│   │       │       └── debug.rs     # 线段渲染（网格、坐标轴）
+│   │       ├── physics/          # 物理系统（预留）
+│   │       ├── math.rs           # 数学工具
+│   │       ├── input.rs          # 输入管理
+│   │       └── examples/         # Example 实现
+│   └── aether-launcher/         # 统一 Launcher 程序
 ├── assets/
 │   ├── scenes/                   # .ron 场景文件
 │   ├── shaders/                  # .wgsl 着色器
 │   ├── meshes/                   # GLTF 模型
 │   └── textures/                 # 贴图
-├── examples/                     # 示例程序
-└── openspec/                     # OpenSpec 工作流
+└── docs/
+    └── adr/                      # 架构决策记录
 ```
 
 ## 🏗️ 架构
 
-### ECS + RenderGraph
+### 渲染管线
 
 ```
-App (winit 事件循环)
-  └── SystemRegistry (系统注册中心)
-        ├── Update: Camera, Animation
-        └── Render: RenderGraph
-              ├── ShadowPass          # 阴影
-              ├── GBufferPass         # 几何
-              ├── LightingPass        # 光照
-              ├── SkyboxPass          # 天空盒
-              ├── PostProcessPass     # 后处理
-              └── UIPass              # UI
+Launcher (winit 事件循环)
+  └── Example (trait)
+        ├── update(dt, input)     # 相机、输入、逻辑
+        ├── prepare()             # GPU 数据上传
+        └── render(encoder)       # 命令录制
+              ├── GBufferPass     # → 位置、法线、颜色、材质
+              ├── LightingPass    # → 全屏四边形、Blinn-Phong
+              └── DebugLinePass   # → 网格、坐标轴（带深度测试）
 ```
 
 ### 关键设计决策
@@ -86,11 +108,12 @@ App (winit 事件循环)
 
 | 阶段 | 特性 | 状态 |
 |------|------|------|
-| **Phase 0** | 骨架（窗口、三角形、egui） | 🚧 进行中 |
-| **Phase 1** | Deferred PBR + 阴影 + IBL | 🔲 计划中 |
-| **Phase 2** | SSR + SSAO + 后处理 | 🔲 计划中 |
-| **Phase 3** | 地形 + 大气 + 水体 + 体积云 | 🔲 计划中 |
-| **Phase 4** | 光线追踪（Compute + Hybrid） | 🔲 计划中 |
+| **Phase 0** | 窗口、三角形、egui、Launcher | ✅ 完成 |
+| **Phase 1** | Deferred PBR、飞行相机、调试工具 | 🚧 进行中 |
+| **Phase 2** | 阴影、IBL、场景 YAML | 🔲 计划中 |
+| **Phase 3** | SSR + SSAO + 后处理 | 🔲 计划中 |
+| **Phase 4** | 地形 + 大气 + 水体 + 体积云 | 🔲 计划中 |
+| **Phase 5** | 光线追踪（Compute + Hybrid） | 🔲 计划中 |
 
 ## 🤝 参与贡献
 

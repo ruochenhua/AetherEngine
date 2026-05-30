@@ -8,7 +8,9 @@ A modern rendering engine built with **Rust** and **wgpu**, designed for learnin
 
 - **Modern Architecture**: ECS (hecs) + RenderGraph-driven pipeline
 - **Cross-Platform**: wgpu automatically targets Vulkan/Metal/DX12
-- **Deferred Shading**: G-Buffer-based PBR rendering
+- **Deferred Shading**: G-Buffer-based Blinn-Phong PBR with debug visualisation
+- **UE-style Fly Camera**: Right-click fly mode, WASD + QE movement, scroll speed
+- **Debug Tools**: World grid, RGB axis gizmo, per-component lighting debug
 - **Extensible**: Add new RenderPasses without touching existing code
 - **AI-Friendly**: Modular design, each module fits in a single AI context window
 
@@ -22,54 +24,74 @@ cd AetherEngine
 # Build
 cargo build
 
-# Run example (when available)
+# Launcher (recommended entry point)
+cargo run -p aether-launcher
+
+# Or run individual examples
 cargo run --example 01_triangle
+cargo run --example 02_deferred
+cargo run --example 03_gltf_scene
 ```
+
+## 🎮 Controls (02_deferred)
+
+| Input | Action |
+|-------|--------|
+| `Right Mouse` | Toggle fly mode |
+| `W A S D` | Move forward / left / back / right |
+| `Q` / `E` | Move down / up (world space) |
+| `Mouse` | Look around (fly mode) |
+| `Scroll` | Adjust movement speed |
+| `0` – `5` | Lighting debug: Full / Ambient / Diffuse / Specular / Normals / NdotL |
+| `Esc` | Return to launcher menu |
 
 ## 📁 Project Structure
 
 ```
 ├── Cargo.toml
 ├── crates/
-│   └── aether-engine/          # Main engine crate
-│       └── src/
-│           ├── lib.rs
-│           ├── app.rs            # Application entry
-│           ├── ecs/              # ECS (hecs wrapper)
-│           ├── scene/            # Scene loading/serialization
-│           ├── asset/            # Asset management
-│           ├── renderer/         # Rendering core
-│           │   ├── graph.rs      # RenderGraph
-│           │   ├── context.rs    # wgpu context
-│           │   └── passes/       # Render passes
-│           ├── physics/          # Physics (reserved)
-│           ├── math.rs
-│           ├── input.rs
-│           └── window.rs
+│   ├── aether-engine/          # Main engine crate
+│   │   └── src/
+│   │       ├── lib.rs
+│   │       ├── app.rs            # Standalone app entry
+│   │       ├── ecs/              # ECS (hecs wrapper)
+│   │       ├── scene/            # Scene loading/serialization
+│   │       ├── asset/            # Asset management
+│   │       ├── renderer/         # Rendering core
+│   │       │   ├── graph.rs      # RenderGraph
+│   │       │   ├── context.rs    # wgpu context + GBuffer
+│   │       │   ├── camera.rs     # FlyCamera + OrbitCamera
+│   │       │   └── passes/
+│   │       │       ├── gbuffer.rs   # G-Buffer (MRT)
+│   │       │       ├── lighting.rs  # Deferred lighting
+│   │       │       └── debug.rs     # Line rendering (grid, gizmo)
+│   │       ├── physics/          # Physics (reserved)
+│   │       ├── math.rs
+│   │       ├── input.rs
+│   │       └── examples/         # Example implementations
+│   └── aether-launcher/         # Unified launcher binary
 ├── assets/
 │   ├── scenes/                   # .ron scene files
 │   ├── shaders/                  # .wgsl shaders
 │   ├── meshes/                   # GLTF models
 │   └── textures/                 # Textures
-├── examples/                     # Example programs
-└── openspec/                     # OpenSpec workflow
+└── docs/
+    └── adr/                      # Architectural decision records
 ```
 
 ## 🏗️ Architecture
 
-### ECS + RenderGraph
+### Render Pipeline
 
 ```
-App (winit event loop)
-  └── SystemRegistry
-        ├── Update: Camera, Animation
-        └── Render: RenderGraph
-              ├── ShadowPass
-              ├── GBufferPass
-              ├── LightingPass
-              ├── SkyboxPass
-              ├── PostProcessPass
-              └── UIPass
+Launcher (winit event loop)
+  └── Example (trait)
+        ├── update(dt, input)     # Camera, input, logic
+        ├── prepare()             # GPU uploads
+        └── render(encoder)       # Command recording
+              ├── GBufferPass     # → position, normal, albedo, material
+              ├── LightingPass    # → fullscreen quad, Blinn-Phong
+              └── DebugLinePass   # → grid, gizmo (depth-tested)
 ```
 
 ### Key Design Decisions
@@ -86,11 +108,12 @@ App (winit event loop)
 
 | Phase | Features | Status |
 |-------|----------|--------|
-| **Phase 0** | Skeleton (window, triangle, egui) | 🚧 In Progress |
-| **Phase 1** | Deferred PBR + Shadows + IBL | 🔲 Planned |
-| **Phase 2** | SSR + SSAO + Post-Process | 🔲 Planned |
-| **Phase 3** | Terrain + Atmosphere + Water + Clouds | 🔲 Planned |
-| **Phase 4** | Ray Tracing (Compute + Hybrid) | 🔲 Planned |
+| **Phase 0** | Window, triangle, egui, launcher | ✅ Complete |
+| **Phase 1** | Deferred PBR, fly camera, debug tools | 🚧 In Progress |
+| **Phase 2** | Shadows, IBL, scene YAML | 🔲 Planned |
+| **Phase 3** | SSR + SSAO + Post-Process | 🔲 Planned |
+| **Phase 4** | Terrain + Atmosphere + Water + Clouds | 🔲 Planned |
+| **Phase 5** | Ray Tracing (Compute + Hybrid) | 🔲 Planned |
 
 ## 🤝 Contributing
 
