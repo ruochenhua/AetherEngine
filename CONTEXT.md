@@ -21,6 +21,9 @@ Rust + wgpu 现代渲染引擎，KongEngine 的精神续作。目标：从 Defer
 | **MRT** | Multiple Render Targets，GBufferPass 同时写入 4 个纹理 |
 | **CSM** | Cascaded Shadow Maps，级联阴影 |
 | **IBL** | Image-Based Lighting，基于图像光照 |
+| **FlyCam** | UE 风格自由飞行相机：右键按住激活，WASD 沿视线移动，鼠标控制 pitch/yaw，滚轮调速 |
+| **DebugGizmo** | 世界原点 RGB 三轴指示器（红X/绿Y/蓝Z），带箭头，长度 ~0.15 单位 |
+| **DebugGrid** | XZ 平面参考网格，10×10 单位，1 单位间距，无渐隐 |
 
 ## 架构约束
 
@@ -45,6 +48,8 @@ Phase 4: Ray Tracing (Compute + Hybrid)
 - **Windows include_str!**: 可能产生 ghost shader 文件，用 `r#"..."#` + `Cow::Borrowed` 内联
 - **Normal 编码**: GBuffer `*0.5+0.5`，Lighting `*2.0-1.0`
 - **Surface `'static`**: `Arc<Window>` 需满足生命周期
+- **全屏四边形 UV 翻转**: wgpu NDC Y=1 是顶，纹理 UV=0 也是顶，全屏四边形 `position * 0.5 + 0.5` 会导致 G-Buffer 垂直翻转采样。正确公式：`uv = vec2(x*0.5+0.5, 0.5 - y*0.5)`
+- **FlyCam right() 叉积顺序**: 正确 = `forward × world_up`（右向量），错误 = `world_up × forward`（左向量），导致 A/D 反向
 
 ## 关键文件
 

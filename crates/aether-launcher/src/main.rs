@@ -72,7 +72,7 @@ fn main() {
             .expect("Failed to create window"),
     );
 
-    let mut ctx = pollster::block_on(RenderContext::new(Arc::clone(&window)));
+    let mut ctx = pollster::block_on(RenderContext::new(&window));
 
     // Shared infrastructure
     let egui_ctx = egui::Context::default();

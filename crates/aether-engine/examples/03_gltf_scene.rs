@@ -1,16 +1,12 @@
-//! 03_gltf_scene – Scene Loading with GLTF/OBJ + Deferred Shading
+//! 03_gltf_scene – Scene with Orbit Camera + Ground Plane
 //!
-//! Loads a 3D model from GLTF or OBJ and renders it with the deferred pipeline.
-//! Usage: cargo run --example 03_gltf_scene [-- path/to/model.glb]
+//! Renders a multi-object scene with deferred shading and an orbit camera.
+//! (GLTF/OBJ loading is planned but not yet implemented.)
 
 fn main() {
-    let model_path = std::env::args()
-        .nth(1)
-        .unwrap_or_else(|| "crates/aether-engine/examples/assets/duck.glb".to_string());
-
     tracing_subscriber::fmt::init();
     aether_engine::examples::run_standalone(
-        aether_engine::examples::GltfSceneExample::new(model_path),
+        aether_engine::examples::GltfSceneExample::with_default_model(),
         "Aether Engine - Scene Loading",
     );
 }

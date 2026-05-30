@@ -148,7 +148,7 @@ pub fn run_standalone(mut example: impl Example, title: &str) {
             .expect("Failed to create window"),
     );
 
-    let mut ctx = pollster::block_on(RenderContext::new(Arc::clone(&window)));
+    let mut ctx = pollster::block_on(RenderContext::new(&window));
 
     if let Err(e) = example.init(&ctx) {
         panic!("Example init failed: {:?}", e);

@@ -44,8 +44,12 @@ pub struct LightingUniforms {
     pub light: DirectionalLight,
     /// Ambient light intensity.
     pub ambient_intensity: f32,
-    /// Padding.
-    pub _pad2: [f32; 3],
+    /// Debug visualization mode:
+    /// 0 = full lighting, 1 = ambient only, 2 = diffuse only,
+    /// 3 = specular only, 4 = normals, 5 = NdotL.
+    pub debug_mode: u32,
+    #[allow(dead_code)]
+    pub(crate) _pad2: [f32; 2],
 }
 
 impl Default for LightingUniforms {
@@ -55,7 +59,8 @@ impl Default for LightingUniforms {
             _pad1: 0.0,
             light: DirectionalLight::default(),
             ambient_intensity: 0.1,
-            _pad2: [0.0; 3],
+            debug_mode: 0,
+            _pad2: [0.0; 2],
         }
     }
 }
@@ -92,7 +97,10 @@ struct VertexOutput {
 fn vs_main(@location(0) position: vec2<f32>) -> VertexOutput {
     var out: VertexOutput;
     out.clip_position = vec4<f32>(position, 0.0, 1.0);
-    out.uv = position * 0.5 + 0.5;
+    // Flip Y: wgpu NDC Y=1 is top, but texture UV=(0,0) is also top,
+    // so position.y * 0.5 + 0.5 maps bottom→top. We negate y to
+    // correctly align the G-Buffer sample with the rendered geometry.
+    out.uv = vec2<f32>(position.x * 0.5 + 0.5, 0.5 - position.y * 0.5);
     return out;
 }
 
@@ -108,9 +116,9 @@ struct LightingUniforms {
     _pad1: f32,
     light: DirectionalLight,
     ambient_intensity: f32,
+    debug_mode: u32,
     _pad2: f32,
     _pad3: f32,
-    _pad4: f32,
 };
 
 @group(0) @binding(0) var gbuffer_position: texture_2d<f32>;
@@ -132,16 +140,17 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let material_sample = textureSample(gbuffer_material, gbuffer_sampler, uv);
 
     let world_pos = position_sample.xyz;
+    // Skip background pixels: G-Buffer normal alpha is 1.0 only where geometry was written.
+    // Clear color has alpha 0.0.
+    if (normal_sample.a < 0.5) {
+        return vec4<f32>(0.05, 0.05, 0.05, 1.0);
+    }
+
     // Decode normal from [0,1] back to [-1,1]
     let N = normalize(normal_sample.xyz * 2.0 - 1.0);
     let albedo = albedo_sample.rgb;
     let roughness = material_sample.r;
     let metallic = material_sample.g;
-
-    // Skip lighting for background (no geometry written)
-    if (length(N) < 0.01) {
-        return vec4<f32>(0.05, 0.05, 0.05, 1.0);
-    }
 
     // Light calculations
     let L = normalize(-uniforms.light.direction);
@@ -164,11 +173,32 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     let final_color = ambient + diffuse + specular;
 
-    // Simple tone mapping
-    let mapped = final_color / (final_color + vec3<f32>(1.0));
-    let gamma_corrected = pow(mapped, vec3<f32>(1.0 / 2.2));
+    // Debug visualization: select output based on debug_mode
+    var output_color: vec3<f32>;
+    if (uniforms.debug_mode == 1u) {
+        // Ambient only
+        output_color = ambient;
+    } else if (uniforms.debug_mode == 2u) {
+        // Diffuse only
+        output_color = diffuse;
+    } else if (uniforms.debug_mode == 3u) {
+        // Specular only
+        output_color = specular;
+    } else if (uniforms.debug_mode == 4u) {
+        // Normals as color
+        output_color = N * 0.5 + 0.5;
+    } else if (uniforms.debug_mode == 5u) {
+        // NdotL as grayscale
+        output_color = vec3<f32>(NdotL);
+    } else {
+        // Full lighting (mode 0)
+        output_color = final_color;
+    }
 
-    return vec4<f32>(gamma_corrected, 1.0);
+    // Simple tone mapping (Reinhard). Gamma encoding is handled by the sRGB framebuffer.
+    let mapped = output_color / (output_color + vec3<f32>(1.0));
+
+    return vec4<f32>(mapped, 1.0);
 }
 "#;
 
@@ -431,7 +461,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         );
     }
 
-    /// Execute the lighting pass.
+    /// Execute the lighting pass (creates its own render pass).
     pub fn execute(
         &self, encoder: &mut wgpu::CommandEncoder, output_view: &wgpu::TextureView,
     ) {
@@ -451,7 +481,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                 occlusion_query_set: None,
             },
         );
+        self.execute_in_pass(&mut pass);
+    }
 
+    /// Execute the lighting pass into an existing render pass.
+    pub fn execute_in_pass<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &self.texture_bind_group, &[]);
         pass.set_bind_group(1, &self.uniform_bind_group, &[]);

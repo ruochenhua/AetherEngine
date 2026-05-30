@@ -94,6 +94,11 @@ impl InputManager {
         self.mouse_delta
     }
 
+    /// Check if a mouse button is being held.
+    pub fn mouse_held(&self, button: MouseButton) -> bool {
+        self.mouse_buttons_held.contains(&button)
+    }
+
     /// Clear per-frame input state (pressed/released events).
     pub fn end_frame(&mut self) {
         self.keys_pressed.clear();
