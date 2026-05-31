@@ -298,7 +298,17 @@ fn capture_views() -> [[f32; 16]; 6] {
 }
 
 fn capture_projection() -> [f32; 16] {
-    glam::Mat4::perspective_rh(90.0f32.to_radians(), 1.0, 0.1, 10.0).to_cols_array()
+    // glam::perspective_rh outputs OpenGL z∈[-1,1]. wgpu expects z∈[0,1].
+    // Apply correction: z_wgpu = (z_gl + 1) / 2
+    let p_gl = glam::Mat4::perspective_rh(90.0f32.to_radians(), 1.0, 0.1, 10.0);
+    let correction = glam::Mat4::from_cols_array(&[
+        1.0, 0.0, 0.0, 0.0,
+        0.0, 1.0, 0.0, 0.0,
+        0.0, 0.0, 0.5, 0.5,
+        0.0, 0.0, 0.0, 1.0,
+    ]);
+    // p_gl * correction: world → OpenGL clip → wgpu clip
+    (p_gl * correction).to_cols_array()
 }
 
 // ── Render-to-cubemap logic ──────────────────────────────────────────
