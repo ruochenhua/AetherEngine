@@ -98,12 +98,14 @@ fn main() {
     let surface_format = ctx.surface_format();
     let depth_format = wgpu::TextureFormat::Depth32Float;
 
-    // Create placeholder IBL resources (uninitialized cubemaps for now).
-    // Will be filled with real HDR data via compute shaders in the future.
+    // Create IBL resources from HDR environment map.
     let ibl_resources = IblResources::generate(
         &ctx.device,
-        None,
-        &IblConfig::default(),
+        Some(&ctx.queue),
+        &IblConfig {
+            environment_path: Some("assets/hdr/newport_loft.hdr".into()),
+            ..Default::default()
+        },
     );
 
     // Build scheduler: validates the pass graph, allocates textures, resolves passes.
