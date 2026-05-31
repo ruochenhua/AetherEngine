@@ -441,6 +441,7 @@ fn main() {
                                         aspect,
                                         delta_time: dt,
                                     };
+                                    scheduler.set_debug_mode(debug_mode as u32);
                                     scheduler.apply_frame_all(&frame);
                                     scheduler.execute_all(&mut encoder, &target_view);
                                 }

@@ -273,6 +273,19 @@ impl Scheduler {
         self.passes.len()
     }
 
+    /// Set the debug visualization mode on the LightingPass.
+    pub fn set_debug_mode(&mut self, mode: u32) {
+        for pass in &mut self.passes {
+            if pass.name() == "Lighting" {
+                // Downcast: we know LightingPass has set_debug_mode
+                if let Some(lp) = pass.as_any_mut().downcast_mut::<crate::renderer::passes::lighting::LightingPass>() {
+                    lp.set_debug_mode(mode);
+                }
+                break;
+            }
+        }
+    }
+
     /// Rebuild resolution-dependent resources after a resize.
     pub fn rebuild(&mut self, device: &wgpu::Device, width: u32, height: u32) {
         // Re-allocate all textures and re-resolve all passes
@@ -494,6 +507,9 @@ mod tests {
         }
         fn execute(&self, _encoder: &mut wgpu::CommandEncoder, _resources: &ResourceTable, _surface_view: &wgpu::TextureView) {
             self.order_log.lock().unwrap().push(self.name.to_string());
+        }
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
         }
     }
 

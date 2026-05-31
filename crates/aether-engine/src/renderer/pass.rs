@@ -74,6 +74,9 @@ pub trait Pass {
         resources: &ResourceTable,
         surface_view: &wgpu::TextureView,
     );
+
+    /// Return self as &mut dyn Any for downcasting.
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
 }
 
 /// Declared resource dependencies for a pass.

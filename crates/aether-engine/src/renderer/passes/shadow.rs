@@ -107,6 +107,9 @@ impl Pass for ShadowPass {
             }
         }
     }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
 }
 
 const MAX_OBJECTS: usize = 256;

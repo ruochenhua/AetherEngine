@@ -139,6 +139,9 @@ impl Pass for DebugLinePass {
         pass.set_vertex_buffer(0, self.gizmo_vertex_buffer.slice(..));
         pass.draw(0..self.gizmo_vertex_count, 0..1);
     }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
 }
 
 impl DebugLinePass {
