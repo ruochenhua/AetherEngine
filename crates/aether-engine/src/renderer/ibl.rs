@@ -931,7 +931,7 @@ fn importance_sample_ggx(Xi: vec2<f32>, N: vec3<f32>, roughness: f32) -> vec3<f3
     return normalize(tangent * H.x + bitangent * H.y + N * H.z);
 }
 
-struct Roughness { roughness: f32, _pad: vec3<u32>, };
+struct Roughness { roughness: f32, _pad: f32, _pad2: f32, _pad3: f32, };
 
 @group(1) @binding(0) var environment_map: texture_cube<f32>;
 @group(1) @binding(1) var env_sampler: sampler;
@@ -969,7 +969,8 @@ const BRDF_LUT_SHADER: &str = r#"
 const PI: f32 = 3.14159265359;
 const SAMPLE_COUNT: u32 = 1024u;
 
-fn radical_inverse_vdc(mut bits: u32) -> f32 {
+fn radical_inverse_vdc(bits_in: u32) -> f32 {
+    var bits = bits_in;
     bits = (bits << 16u) | (bits >> 16u);
     bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
     bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
