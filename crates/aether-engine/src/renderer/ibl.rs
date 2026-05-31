@@ -892,9 +892,8 @@ fn sample_spherical_map(v: vec3<f32>) -> vec2<f32> {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let dir = normalize(in.local_pos);
-    let uv = sample_spherical_map(dir);
-    return textureSample(equirect_map, equirect_sampler, uv);
+    // TEST: solid magenta to verify render-to-cubemap works
+    return vec4<f32>(1.0, 0.0, 1.0, 1.0);
 }
 "#;
 
