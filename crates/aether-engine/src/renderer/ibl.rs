@@ -1023,7 +1023,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         }
     }
     prefiltered_color = prefiltered_color / total_weight;
-    return vec4<f32>(prefiltered_color, 1.0);
+    // DEBUG: show roughness as brightness to verify mip generation
+    return vec4<f32>(vec3<f32>(u_roughness.roughness), 1.0);
 }
 "#;
 
