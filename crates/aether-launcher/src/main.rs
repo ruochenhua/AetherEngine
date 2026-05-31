@@ -98,10 +98,11 @@ fn main() {
     let surface_format = ctx.surface_format();
     let depth_format = wgpu::TextureFormat::Depth32Float;
 
-    // Create IBL resources (placeholder white environment for now).
+    // Create placeholder IBL resources (uninitialized cubemaps for now).
+    // Will be filled with real HDR data via compute shaders in the future.
     let ibl_resources = IblResources::generate(
         &ctx.device,
-        Some(&ctx.queue),
+        None,
         &IblConfig::default(),
     );
 
