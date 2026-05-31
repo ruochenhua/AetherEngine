@@ -42,11 +42,13 @@ Rust + wgpu 现代渲染引擎，KongEngine 的精神续作。目标：从 Defer
 ## 技术演进路线
 
 ```
-Phase 0: Skeleton (window, triangle, egui)     ← 已完成
-Phase 1: Deferred PBR + Unified Pipeline + RON Scenes  ← 当前
-Phase 2: SSR + SSAO + Post-Process
-Phase 3: Terrain + Atmosphere + Water + Clouds
-Phase 4: Ray Tracing (Compute + Hybrid)
+Phase 0: Skeleton (window, triangle, egui)         ← ✅ 已完成
+Phase 1: Deferred PBR + Shadow + Pipeline + RON    ← ✅ 已完成
+Phase 2: IBL + SSAO + SSR                          ← 🔲 计划中
+Phase 3: Editor (ECS runtime, Picking, Gizmo, UI)  ← 🔲 计划中
+Phase 4: Post-process chain + Tone mapping
+Phase 5: Terrain + Atmosphere + Water + Clouds
+Phase 6: Ray Tracing (Compute + Hybrid)
 ```
 
 ## 已知陷阱

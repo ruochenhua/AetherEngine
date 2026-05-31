@@ -170,11 +170,12 @@ PipelineBuilder
 | 阶段 | 特性 | 状态 |
 |------|------|------|
 | **Phase 0** | 窗口、三角形、egui、Launcher | ✅ 完成 |
-| **Phase 1** | Deferred PBR、飞行相机、调试工具、类型安全调度器、阴影映射 | 🚧 进行中 |
+| **Phase 1** | Deferred PBR、飞行相机、调试工具、类型安全调度器、阴影映射 | ✅ 完成 |
 | **Phase 2** | IBL、屏幕空间效果（SSAO、SSR） | 🔲 计划中 |
-| **Phase 3** | 后处理链、色调映射 | 🔲 计划中 |
-| **Phase 4** | 地形 + 大气 + 水体 + 体积云 | 🔲 计划中 |
-| **Phase 5** | 光线追踪（Compute + Hybrid） | 🔲 计划中 |
+| **Phase 3** | ECS 运行时、射线拾取、变换 Gizmo、编辑器 UI、场景保存 | 🔲 计划中 |
+| **Phase 4** | 后处理链、色调映射 | 🔲 计划中 |
+| **Phase 5** | 地形 + 大气 + 水体 + 体积云 | 🔲 计划中 |
+| **Phase 6** | 光线追踪（Compute + Hybrid） | 🔲 计划中 |
 
 ## 📜 许可证
 

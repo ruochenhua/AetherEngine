@@ -170,11 +170,12 @@ Resource wiring is type-checked at build time. Execution order is topological.
 | Phase | Features | Status |
 |-------|----------|--------|
 | **Phase 0** | Window, triangle, egui, launcher | ✅ Complete |
-| **Phase 1** | Deferred PBR, fly camera, debug tools, type-safe scheduler, shadow mapping | 🚧 In Progress |
+| **Phase 1** | Deferred PBR, fly camera, debug tools, type-safe scheduler, shadow mapping | ✅ Complete |
 | **Phase 2** | IBL, screen-space effects (SSAO, SSR) | 🔲 Planned |
-| **Phase 3** | Post-process chain, tone mapping | 🔲 Planned |
-| **Phase 4** | Terrain + Atmosphere + Water + Volumetric Clouds | 🔲 Planned |
-| **Phase 5** | Ray Tracing (Compute + Hybrid) | 🔲 Planned |
+| **Phase 3** | ECS runtime, ray picking, transform gizmo, editor UI shell, scene save | 🔲 Planned |
+| **Phase 4** | Post-process chain, tone mapping | 🔲 Planned |
+| **Phase 5** | Terrain + Atmosphere + Water + Volumetric Clouds | 🔲 Planned |
+| **Phase 6** | Ray Tracing (Compute + Hybrid) | 🔲 Planned |
 
 ## 📜 License
 
