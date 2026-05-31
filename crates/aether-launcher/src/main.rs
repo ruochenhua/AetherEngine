@@ -10,7 +10,7 @@ use aether_engine::{
         camera::FlyCamera,
         context::RenderContext,
         frame::RenderFrame,
-        ibl::{IblConfig, IblResources},
+        ibl::{IblResources},
         light::LightingUniforms,
         passes::{
             debug::DebugLinePass,
@@ -98,15 +98,40 @@ fn main() {
     let surface_format = ctx.surface_format();
     let depth_format = wgpu::TextureFormat::Depth32Float;
 
-    // Create IBL resources — use debug checkerboard for now
+    // Create empty IBL resources — we fill irradiance directly below for debug
+    let ibl_config = aether_engine::renderer::ibl::IblConfig::default();
     let ibl_resources = IblResources::generate(
         &ctx.device,
-        Some(&ctx.queue),
-        &IblConfig {
-            debug_checkerboard: true,
-            ..Default::default()
-        },
+        None,
+        &ibl_config,
     );
+
+    // DEBUG: Write solid magenta directly to irradiance cubemap.
+    // This bypasses ALL equirect/cubemap/convolution rendering.
+    // Press 9 — if it's still green, the LightingPass IBL bind group is wrong.
+    {
+        let size = 32u32; // irradiance_size
+        let layer_bytes = (size * size * 16) as usize;
+        let magenta: [f32; 4] = [1.0, 0.0, 1.0, 1.0];
+        let pixel_bytes = bytemuck::bytes_of(&magenta);
+        let mut data = Vec::with_capacity(layer_bytes * 6);
+        for _ in 0..(size * size * 6) as usize {
+            data.extend_from_slice(pixel_bytes);
+        }
+        ctx.queue.write_texture(
+            wgpu::ImageCopyTexture {
+                texture: &ibl_resources.irradiance_texture(),
+                mip_level: 0, origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All,
+            },
+            &data,
+            wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: Some(size * 16),
+                rows_per_image: Some(size),
+            },
+            wgpu::Extent3d { width: size, height: size, depth_or_array_layers: 6 },
+        );
+    }
 
     // Build scheduler: validates the pass graph, allocates textures, resolves passes.
     let mut scheduler = PipelineBuilder::new()

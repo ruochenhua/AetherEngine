@@ -58,6 +58,9 @@ pub struct IblResources {
 }
 
 impl IblResources {
+    /// Debug: get the raw irradiance texture (for direct write testing).
+    #[doc(hidden)]
+    pub fn irradiance_texture(&self) -> &wgpu::Texture { &self._irradiance_texture }
     /// Generate all IBL resources. Pass `None` for queue in tests.
     pub fn generate(
         device: &wgpu::Device,
