@@ -281,7 +281,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let material_sample = textureSample(gbuffer_material, gbuffer_sampler, uv);
 
     let world_pos = position_sample.xyz;
-    if (normal_sample.a < 0.5) {
+    // Sky check: G-Buffer normal is (0,0,0,0) after clear.
+    // Geometry normal is (N*0.5+0.5, 1.0) → RGB never all zero.
+    if (normal_sample.r == 0.0 && normal_sample.g == 0.0 && normal_sample.b == 0.0) {
         return vec4<f32>(0.05, 0.05, 0.05, 1.0);
     }
 
