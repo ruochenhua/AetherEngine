@@ -12,6 +12,8 @@ pub mod camera;
 pub mod context;
 /// Per-frame data context (RenderFrame).
 pub mod frame;
+/// Image-Based Lighting (IBL) loader and resources.
+pub mod ibl;
 /// Light component definitions.
 pub mod light;
 /// Pass trait and type-safe resource handles.
