@@ -375,8 +375,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         // IBL only (no direct)
         output_color = ibl_light;
     } else if (uniforms.debug_mode == 9u) {
-        // Raw irradiance cubemap (show what the irradiance map contains in N direction)
-        output_color = textureSample(irradiance_map, ibl_sampler, N).rgb;
+        // TEST: hardcoded magenta to verify shader pipeline
+        output_color = vec3<f32>(1.0, 0.0, 1.0);
     } else if (uniforms.debug_mode == 10u) {
         // Raw prefiltered cubemap at mip 0 in reflection direction
         let R = reflect(-V, N);
