@@ -12,6 +12,8 @@ use crate::renderer::resource::*;
 use crate::renderer::resource_table::ResourceTable;
 use glam::Mat4;
 
+/// G-Buffer Pass — renders world-space position, normal, albedo, and material
+/// properties into a multi-render-target (MRT) framebuffer for deferred shading.
 pub struct GBufferPass {
     pipeline: wgpu::RenderPipeline,
     view_proj_buffer: wgpu::Buffer,
@@ -122,6 +124,7 @@ impl Pass for GBufferPass {
 const MAX_OBJECTS: usize = 256;
 
 impl GBufferPass {
+    /// Create a new G-Buffer pass.
     pub fn new(device: &wgpu::Device) -> Self {
         let shader_source = r#"
 struct VertexInput { @location(0) position: vec3<f32>, @location(1) normal: vec3<f32>, @location(2) uv: vec2<f32>, @location(3) tangent: vec4<f32>, };

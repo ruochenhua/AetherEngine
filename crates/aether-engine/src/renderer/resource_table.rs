@@ -87,6 +87,7 @@ impl ResourceTable {
 
 /// Metadata about a resource entry.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub(crate) struct ResourceEntry {
     pub type_id: TypeId,
     pub name: &'static str,
@@ -94,6 +95,7 @@ pub(crate) struct ResourceEntry {
 }
 
 impl ResourceEntry {
+    #[allow(dead_code)]
     pub fn new(type_id: TypeId, name: &'static str, format: wgpu::TextureFormat) -> Self {
         Self { type_id, name, format }
     }

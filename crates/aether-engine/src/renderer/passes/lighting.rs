@@ -36,8 +36,6 @@ pub struct LightingPass {
     shadow_bind_group_layout: wgpu::BindGroupLayout,
     #[allow(dead_code)]
     uniform_bind_group_layout: wgpu::BindGroupLayout,
-    /// Surface format for render pipeline creation.
-    surface_format: wgpu::TextureFormat,
     /// Debug visualization mode (set by Launcher, used in apply_frame).
     debug_mode: u32,
 }
@@ -545,7 +543,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             texture_bind_group_layout,
             shadow_bind_group_layout,
             uniform_bind_group_layout,
-            surface_format,
             debug_mode: 0,
         }
     }

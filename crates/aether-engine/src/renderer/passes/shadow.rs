@@ -9,22 +9,27 @@ use crate::renderer::resource::*;
 use crate::renderer::resource_table::ResourceTable;
 use glam::Mat4;
 
+/// Light-space uniform: view-projection matrix from the light's perspective.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct LightSpaceUniform {
+    /// Combined light view-projection matrix.
     pub light_view_proj: [[f32; 4]; 4],
 }
 
-/// Per-object model matrix (256-byte aligned for dynamic offset).
+/// Per-object model matrix for shadow rendering (256-byte aligned for dynamic offset).
 #[repr(C, align(256))]
 #[derive(Clone, Copy, Debug)]
 pub struct ShadowObjectUniform {
+    /// World-space model matrix.
     pub model: [[f32; 4]; 4],
+    /// Padding to 256 bytes for dynamic uniform offset alignment.
     pub _pad: [u8; 192], // fill to 256 bytes
 }
 unsafe impl bytemuck::Pod for ShadowObjectUniform {}
 unsafe impl bytemuck::Zeroable for ShadowObjectUniform {}
 
+/// Shadow map pass — renders depth from the directional light's perspective.
 pub struct ShadowPass {
     pipeline: wgpu::RenderPipeline,
     light_vp_buffer: wgpu::Buffer,
@@ -107,6 +112,7 @@ impl Pass for ShadowPass {
 const MAX_OBJECTS: usize = 256;
 
 impl ShadowPass {
+    /// Create a new shadow pass.
     pub fn new(device: &wgpu::Device) -> Self {
         let src = r#"
 struct VertexInput { @location(0) position: vec3<f32>, @location(1) normal: vec3<f32>, @location(2) uv: vec2<f32>, @location(3) tangent: vec4<f32>, };
@@ -188,6 +194,10 @@ fn ortho_wgpu(left: f32, right: f32, bottom: f32, top: f32, near: f32, far: f32)
     m
 }
 
+/// Compute a WGPU-compatible orthographic light-space matrix.
+///
+/// The matrix maps world-space positions to clip space (z ∈ [0, 1])
+/// compatible with wgpu/Vulkan depth buffer conventions.
 pub fn compute_light_space_matrix(light_direction: &glam::Vec3) -> Mat4 {
     let center = glam::Vec3::ZERO;
     let half = 20.0;
