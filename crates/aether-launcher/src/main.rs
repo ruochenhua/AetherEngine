@@ -174,6 +174,8 @@ fn main() {
                             if input.key_pressed(KeyCode::Digit4) { debug_mode = 4; }
                             if input.key_pressed(KeyCode::Digit5) { debug_mode = 5; }
                             if input.key_pressed(KeyCode::Digit6) { debug_mode = 6; }
+                            if input.key_pressed(KeyCode::Digit7) { debug_mode = 7; }
+                            if input.key_pressed(KeyCode::Digit8) { debug_mode = 8; }
 
                             if let Some(idx) = pending_load.take() {
                                 let entry = &scene_entries[idx];
@@ -307,10 +309,10 @@ fn main() {
                                                     let mode_names = [
                                                         "Full", "Ambient", "Diffuse",
                                                         "Specular", "Normals", "NdotL",
-                                                        "Shadow",
+                                                        "Shadow", "DirectOnly", "IBLOnly",
                                                     ];
                                                     let mode_idx =
-                                                        debug_mode.clamp(0, 6) as usize;
+                                                        debug_mode.clamp(0, 8) as usize;
                                                     ui.label(format!(
                                                         "Debug: [{}] {}",
                                                         mode_idx, mode_names[mode_idx]

@@ -36,6 +36,8 @@ pub struct LightingPass {
     shadow_bind_group_layout: wgpu::BindGroupLayout,
     #[allow(dead_code)]
     uniform_bind_group_layout: wgpu::BindGroupLayout,
+    /// IBL bind group (created in constructor, always present).
+    ibl_bind_group: wgpu::BindGroup,
     /// Debug visualization mode (set by Launcher, used in apply_frame).
     debug_mode: u32,
 }
@@ -56,7 +58,8 @@ impl Pass for LightingPass {
 
     fn init(device: &wgpu::Device) -> Self {
         // Default format — will be set properly via new().
-        Self::new_inner(device, wgpu::TextureFormat::Bgra8UnormSrgb)
+        let placeholder = Self::create_placeholder_ibl(device);
+        Self::new_inner(device, wgpu::TextureFormat::Bgra8UnormSrgb, &placeholder)
     }
 
     fn resolve(&mut self, device: &wgpu::Device, resources: &ResourceTable) {
@@ -197,6 +200,7 @@ impl Pass for LightingPass {
         pass.set_bind_group(0, texture_bg, &[]);
         pass.set_bind_group(1, &self.uniform_bind_group, &[]);
         pass.set_bind_group(2, self.shadow_bind_group.as_ref().expect("Shadow BG not set"), &[]);
+        pass.set_bind_group(3, &self.ibl_bind_group, &[]);
         pass.set_vertex_buffer(0, self.quad_vertex_buffer.slice(..));
         pass.draw(0..self.quad_vertex_count, 0..1);
     }
@@ -205,10 +209,16 @@ impl Pass for LightingPass {
 impl LightingPass {
     /// Create a new lighting pass with the given surface format.
     pub fn new(device: &wgpu::Device, surface_format: wgpu::TextureFormat) -> Self {
-        Self::new_inner(device, surface_format)
+        let placeholder = Self::create_placeholder_ibl(device);
+        Self::new_inner(device, surface_format, &placeholder)
     }
 
-    fn new_inner(device: &wgpu::Device, surface_format: wgpu::TextureFormat) -> Self {
+    /// Create a lighting pass with custom IBL resources.
+    pub fn new_with_ibl(device: &wgpu::Device, surface_format: wgpu::TextureFormat, ibl: &crate::renderer::ibl::IblResources) -> Self {
+        Self::new_inner(device, surface_format, ibl)
+    }
+
+    fn new_inner(device: &wgpu::Device, surface_format: wgpu::TextureFormat, ibl: &crate::renderer::ibl::IblResources) -> Self {
         let shader_source = r#"
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
@@ -252,6 +262,11 @@ struct LightingUniforms {
 @group(2) @binding(0) var shadow_depth: texture_depth_2d;
 @group(2) @binding(1) var shadow_sampler: sampler_comparison;
 @group(2) @binding(2) var shadow_debug_sampler: sampler;
+
+@group(3) @binding(0) var irradiance_map: texture_cube<f32>;
+@group(3) @binding(1) var prefiltered_map: texture_cube<f32>;
+@group(3) @binding(2) var brdf_lut: texture_2d<f32>;
+@group(3) @binding(3) var ibl_sampler: sampler;
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
@@ -317,7 +332,26 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         visibility = visibility / 9.0;
     }
     let shadow_factor = mix(0.3, 1.0, visibility);
-    let final_color = lit_color * shadow_factor;
+    let direct_light = lit_color * shadow_factor;
+
+    // IBL (Image-Based Lighting)
+    let NdotV = saturate(dot(N, V));
+    let R = reflect(-V, N);
+
+    // Diffuse IBL: sample irradiance cubemap
+    let kD = (1.0 - metallic) * 0.96; // approximate Fresnel F0=0.04
+    let irradiance = textureSample(irradiance_map, ibl_sampler, N).rgb;
+    let diffuse_ibl = kD * albedo * irradiance;
+
+    // Specular IBL: sample prefiltered cubemap + BRDF LUT
+    let mip_level = roughness * 4.0; // 5 mips, mip 4 = roughness 1.0
+    let prefiltered_color = textureSampleLevel(prefiltered_map, ibl_sampler, R, mip_level).rgb;
+    let env_brdf = textureSample(brdf_lut, ibl_sampler, vec2<f32>(NdotV, roughness)).rg;
+    let F0 = mix(vec3<f32>(0.04), albedo, metallic);
+    let specular_ibl = prefiltered_color * (F0 * env_brdf.r + env_brdf.g);
+
+    let ibl_light = diffuse_ibl + specular_ibl;
+    let final_color = direct_light + ibl_light;
 
     var output_color: vec3<f32>;
     if (uniforms.debug_mode == 1u) {
@@ -334,6 +368,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         // Shadow map as seen from light: sample depth at screen UV
         let d = textureSample(shadow_depth, shadow_debug_sampler, in.uv);
         output_color = vec3<f32>(d);
+    } else if (uniforms.debug_mode == 7u) {
+        // Direct lighting only (no IBL)
+        output_color = direct_light;
+    } else if (uniforms.debug_mode == 8u) {
+        // IBL only (no direct)
+        output_color = ibl_light;
     } else {
         output_color = final_color;
     }
@@ -450,9 +490,52 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                 }],
             });
 
+        let ibl_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("IBL Bind Group Layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::Cube,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::Cube,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 3,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
+
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Lighting Pipeline Layout"),
-            bind_group_layouts: &[&texture_bind_group_layout, &uniform_bind_group_layout, &shadow_bind_group_layout],
+            bind_group_layouts: &[&texture_bind_group_layout, &uniform_bind_group_layout, &shadow_bind_group_layout, &ibl_bind_group_layout],
             push_constant_ranges: &[],
         });
 
@@ -543,8 +626,44 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             texture_bind_group_layout,
             shadow_bind_group_layout,
             uniform_bind_group_layout,
+            ibl_bind_group: device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("IBL Bind Group"),
+                layout: &ibl_bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&ibl.irradiance_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::TextureView(&ibl.prefiltered_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::TextureView(&ibl.brdf_lut_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: wgpu::BindingResource::Sampler(&ibl.ibl_sampler),
+                    },
+                ],
+            }),
             debug_mode: 0,
         }
+    }
+
+    /// Create placeholder IBL resources (white environment) when no HDR is loaded.
+    fn create_placeholder_ibl(device: &wgpu::Device) -> crate::renderer::ibl::IblResources {
+        // Create a minimal queue for initialize — we never submit, just seed textures
+        let (_, queue) = {
+            let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
+            let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+                .expect("need adapter for IBL placeholder");
+            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None))
+                .expect("need device for IBL placeholder")
+        };
+        let config = crate::renderer::ibl::IblConfig::default();
+        crate::renderer::ibl::IblResources::generate(device, &queue, &config)
     }
 
     /// Set debug visualization mode for the next frame.

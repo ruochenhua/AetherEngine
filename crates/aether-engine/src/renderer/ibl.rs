@@ -47,6 +47,9 @@ pub struct IblResources {
     /// BRDF LUT sampler (clamp to edge).
     pub brdf_lut_sampler: wgpu::Sampler,
 
+    /// IBL shared sampler (all IBL textures use same sampler).
+    pub ibl_sampler: wgpu::Sampler,
+
     _irradiance_texture: wgpu::Texture,
     _prefiltered_texture: wgpu::Texture,
     _brdf_lut_texture: wgpu::Texture,
@@ -136,6 +139,17 @@ impl IblResources {
             ..Default::default()
         });
 
+        let ibl_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("IBL Sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
+
         let _ = queue; // Used by compute dispatch in GREEN phase
 
         Self {
@@ -145,6 +159,7 @@ impl IblResources {
             irradiance_sampler,
             prefiltered_sampler,
             brdf_lut_sampler,
+            ibl_sampler,
             _irradiance_texture: irradiance_tex,
             _prefiltered_texture: prefiltered_tex,
             _brdf_lut_texture: brdf_lut_tex,
