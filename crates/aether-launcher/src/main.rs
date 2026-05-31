@@ -10,7 +10,7 @@ use aether_engine::{
         camera::FlyCamera,
         context::RenderContext,
         frame::RenderFrame,
-        ibl::{IblResources, CpuCubemap},
+        ibl::{IblResources},
         light::LightingUniforms,
         passes::{
             debug::DebugLinePass,
@@ -106,60 +106,60 @@ fn main() {
         &ibl_config,
     );
 
-    // DEBUG: Write solid magenta directly to irradiance cubemap.
-    // This bypasses ALL equirect/cubemap/convolution rendering.
-    // Press 9 — if it's still green, the LightingPass IBL bind group is wrong.
+    // DEBUG: Fill irradiance and prefiltered cubemaps via render pass clears.
+    // Clear avoids any write_texture format/layout issues.
     {
-        let size = 32u32; // irradiance_size
-        let layer_bytes = (size * size * 16) as usize;
-        let magenta: [f32; 4] = [1.0, 0.0, 1.0, 1.0];
-        let pixel_bytes = bytemuck::bytes_of(&magenta);
-        let mut data = Vec::with_capacity(layer_bytes * 6);
-        for _ in 0..(size * size * 6) as usize {
-            data.extend_from_slice(pixel_bytes);
+        let mut encoder = ctx.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("IBL Debug Fill"),
+        });
+        // Irradiance: magenta (32×32, 1 mip, 6 faces)
+        for face in 0..6 {
+            let view = ibl_resources.irradiance_texture().create_view(&wgpu::TextureViewDescriptor {
+                dimension: Some(wgpu::TextureViewDimension::D2),
+                base_array_layer: face, array_layer_count: Some(1),
+                ..Default::default()
+            });
+            encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Irr Fill"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view, resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color { r: 1.0, g: 0.0, b: 1.0, a: 1.0 }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None, timestamp_writes: None, occlusion_query_set: None,
+            });
         }
-        ctx.queue.write_texture(
-            wgpu::ImageCopyTexture {
-                texture: &ibl_resources.irradiance_texture(),
-                mip_level: 0, origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All,
-            },
-            &data,
-            wgpu::ImageDataLayout {
-                offset: 0,
-                bytes_per_row: Some(size * 16),
-                rows_per_image: Some(size),
-            },
-            wgpu::Extent3d { width: size, height: size, depth_or_array_layers: 6 },
-        );
-
-        // Also fill prefiltered cubemap with black (all mips, all faces)
-        let pf_size = 128u32; // prefilter_size
-        let black: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
-        let pf_pixel_bytes = bytemuck::bytes_of(&black);
-        for mip in 0..5u32 { // prefilter_mips = 5
-            let mip_sz = pf_size >> mip;
-            let layer_bytes = (mip_sz * mip_sz * 16) as usize;
-            let mut pf_data = Vec::with_capacity(layer_bytes * 6);
-            for _ in 0..(mip_sz * mip_sz * 6) as usize {
-                pf_data.extend_from_slice(pf_pixel_bytes);
+        // Prefiltered: black (128×128, 5 mips, 6 faces)
+        for face in 0..6 {
+            for mip in 0..5u32 {
+                let view = ibl_resources.prefiltered_texture().create_view(&wgpu::TextureViewDescriptor {
+                    dimension: Some(wgpu::TextureViewDimension::D2),
+                    base_array_layer: face, array_layer_count: Some(1),
+                    base_mip_level: mip, mip_level_count: Some(1),
+                    ..Default::default()
+                });
+                encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("Pref Fill"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &view, resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None, timestamp_writes: None, occlusion_query_set: None,
+                });
             }
-            ctx.queue.write_texture(
-                wgpu::ImageCopyTexture {
-                    texture: &ibl_resources.prefiltered_texture(),
-                    mip_level: mip, origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All,
-                },
-                &pf_data,
-                wgpu::ImageDataLayout {
-                    offset: 0,
-                    bytes_per_row: Some(mip_sz * 16),
-                    rows_per_image: Some(mip_sz),
-                },
-                wgpu::Extent3d { width: mip_sz, height: mip_sz, depth_or_array_layers: 6 },
-            );
         }
+        ctx.queue.submit(std::iter::once(encoder.finish()));
 
-        // Run BRDF LUT compute shader (no input texture needed)
-        CpuCubemap::brdf_lut_debug(&ctx.device, &ctx.queue, ibl_resources.brdf_lut_texture(), 256);
+        // Also fill BRDF LUT via compute shader
+        aether_engine::renderer::ibl::CpuCubemap::brdf_lut_debug(
+            &ctx.device, &ctx.queue,
+            ibl_resources.brdf_lut_texture(), 256,
+        );
     }
 
     // Build scheduler: validates the pass graph, allocates textures, resolves passes.
