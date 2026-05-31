@@ -98,69 +98,15 @@ fn main() {
     let surface_format = ctx.surface_format();
     let depth_format = wgpu::TextureFormat::Depth32Float;
 
-    // Create empty IBL resources — we fill irradiance directly below for debug
-    let ibl_config = aether_engine::renderer::ibl::IblConfig::default();
+    // Test with checkerboard first to verify equirect→cubemap rendering
     let ibl_resources = IblResources::generate(
         &ctx.device,
-        None,
-        &ibl_config,
+        Some(&ctx.queue),
+        &aether_engine::renderer::ibl::IblConfig {
+            debug_checkerboard: true,
+            ..Default::default()
+        },
     );
-
-    // DEBUG: Fill irradiance and prefiltered cubemaps via render pass clears.
-    // Clear avoids any write_texture format/layout issues.
-    {
-        let mut encoder = ctx.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("IBL Debug Fill"),
-        });
-        // Irradiance: magenta (32×32, 1 mip, 6 faces)
-        for face in 0..6 {
-            let view = ibl_resources.irradiance_texture().create_view(&wgpu::TextureViewDescriptor {
-                dimension: Some(wgpu::TextureViewDimension::D2),
-                base_array_layer: face, array_layer_count: Some(1),
-                ..Default::default()
-            });
-            encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Irr Fill"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view, resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color { r: 1.0, g: 0.0, b: 1.0, a: 1.0 }),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None, timestamp_writes: None, occlusion_query_set: None,
-            });
-        }
-        // Prefiltered: black (128×128, 5 mips, 6 faces)
-        for face in 0..6 {
-            for mip in 0..5u32 {
-                let view = ibl_resources.prefiltered_texture().create_view(&wgpu::TextureViewDescriptor {
-                    dimension: Some(wgpu::TextureViewDimension::D2),
-                    base_array_layer: face, array_layer_count: Some(1),
-                    base_mip_level: mip, mip_level_count: Some(1),
-                    ..Default::default()
-                });
-                encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("Pref Fill"),
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: &view, resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                            store: wgpu::StoreOp::Store,
-                        },
-                    })],
-                    depth_stencil_attachment: None, timestamp_writes: None, occlusion_query_set: None,
-                });
-            }
-        }
-        ctx.queue.submit(std::iter::once(encoder.finish()));
-
-        // Also fill BRDF LUT via compute shader
-        aether_engine::renderer::ibl::CpuCubemap::brdf_lut_debug(
-            &ctx.device, &ctx.queue,
-            ibl_resources.brdf_lut_texture(), 256,
-        );
-    }
 
     // Build scheduler: validates the pass graph, allocates textures, resolves passes.
     let mut scheduler = PipelineBuilder::new()
