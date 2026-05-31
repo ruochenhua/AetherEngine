@@ -65,10 +65,10 @@ main.rs (thin orchestration, ~80 lines)
   │
   ├── PipelineBuilder ──→ Scheduler ──→ [Passes in topological order]
   │     ↑                                    │
+  │     └── ShadowPass.init()               │
   │     └── GBufferPass.init()              │
   │     └── LightingPass.init()             │
   │     └── DebugLinePass.init()            │
-  │     └── (future) SSAOPass.init()        │
   │                                          │
   ├── SceneLoader ──→ SceneResources { renderables, lighting }
   ├── FlyCamera ──→ view/proj matrices
@@ -143,9 +143,9 @@ main.rs (thin orchestration, ~80 lines)
 
 ```
 PipelineBuilder
+  ├── ShadowPass       → writes: ShadowDepth
   ├── GBufferPass      → writes: GPosition, GNormal, GAlbedo, GMaterial, GDepth
-  ├── SSAOPass         → reads: GPosition, GNormal  → writes: AOTexture       (planned)
-  ├── LightingPass     → reads: GPosition, GNormal, GAlbedo, GMaterial, AOTexture
+  ├── LightingPass     → reads: GPosition, GNormal, GAlbedo, GMaterial, ShadowDepth
   │                        writes: Swapchain
   └── DebugLinePass    → reads: GDepth  → writes: Swapchain (LoadOp::Load)
 ```
@@ -170,8 +170,8 @@ Resource wiring is type-checked at build time. Execution order is topological.
 | Phase | Features | Status |
 |-------|----------|--------|
 | **Phase 0** | Window, triangle, egui, launcher | ✅ Complete |
-| **Phase 1** | Deferred PBR, fly camera, debug tools, type-safe scheduler | 🚧 In Progress |
-| **Phase 2** | Shadows, IBL, screen-space effects (SSAO, SSR) | 🔲 Planned |
+| **Phase 1** | Deferred PBR, fly camera, debug tools, type-safe scheduler, shadow mapping | 🚧 In Progress |
+| **Phase 2** | IBL, screen-space effects (SSAO, SSR) | 🔲 Planned |
 | **Phase 3** | Post-process chain, tone mapping | 🔲 Planned |
 | **Phase 4** | Terrain + Atmosphere + Water + Volumetric Clouds | 🔲 Planned |
 | **Phase 5** | Ray Tracing (Compute + Hybrid) | 🔲 Planned |

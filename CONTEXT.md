@@ -62,7 +62,7 @@ Phase 4: Ray Tracing (Compute + Hybrid)
 - **Shadow UV Y-flip**: NDC y=-1 对应纹理 y=0（顶部），需 `uv.y = 0.5 - ndc.y*0.5`（和全屏 quad 同样规则）
 - **球体绕序**: `sphere()` 默认索引顺序 `(base, base+s+1, base+1)` 产生 CW 绕序（from outside），导致 inside-out。正确顺序 `(base+s+1, base, base+1)`
 - **Per-object draw 顺序**: GBufferPass/ShadowPass 在 render pass 内逐物体 draw 时，若用 `queue.write_buffer` 更新 uniform，部分物体可能拿到 stale 数据。方案：pre-upload 全部 per-object 数据到 dynamic uniform buffer，render pass 内仅 `set_bind_group(offset)` + draw
-- **Shadow bias**: 使用 slope-scale bias：`max(min_bias, max_bias * (1.0 - NdotL))`。朝向光源的面（NdotL 大）用小 bias，掠射角（NdotL 小）用大 bias。正交投影下 min_bias=0.0005, max_bias=0.005 兼顾防 acne 和防 peter panning。Pipeline bias 保留 `constant: 1, slope_scale: 1.0` 作为硬件辅助
+- **Shadow bias**: 使用软件 slope-scale bias（见 ADR-0004）。公式 `tan(acos(NdotL))`，base=0.005 NDC 单位，clamp 到 base×10。硬件 `DepthBiasState` 保持全零（Depth32Float 精度不足以在当前投影尺度下调参）。不使用 world-space 法线偏移（对垂直于光源的表面无效），不使用 front-face culling（导致漏光）。
 - **Depth-only 渲染**: 不需要 fragment shader。`fragment: None` + vertex shader 只输出 `@builtin(position)`，GPU 自动从 clip_position 推导深度。手动写 `@builtin(frag_depth)` 容易出错（如 return 0.0）
 
 ## 关键文件

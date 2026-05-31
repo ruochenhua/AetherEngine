@@ -65,10 +65,10 @@ main.rs (薄编排层，~80 行)
   │
   ├── PipelineBuilder ──→ Scheduler ──→ [Passes 按拓扑序执行]
   │     ↑                                    │
+  │     └── ShadowPass.init()               │
   │     └── GBufferPass.init()              │
   │     └── LightingPass.init()             │
   │     └── DebugLinePass.init()            │
-  │     └── (未来) SSAOPass.init()          │
   │                                          │
   ├── SceneLoader ──→ SceneResources { renderables, lighting }
   ├── FlyCamera ──→ view/proj 矩阵
@@ -143,9 +143,9 @@ main.rs (薄编排层，~80 行)
 
 ```
 PipelineBuilder
+  ├── ShadowPass       → writes: ShadowDepth
   ├── GBufferPass      → writes: GPosition, GNormal, GAlbedo, GMaterial, GDepth
-  ├── SSAOPass         → reads: GPosition, GNormal  → writes: AOTexture       (计划中)
-  ├── LightingPass     → reads: GPosition, GNormal, GAlbedo, GMaterial, AOTexture
+  ├── LightingPass     → reads: GPosition, GNormal, GAlbedo, GMaterial, ShadowDepth
   │                        writes: Swapchain
   └── DebugLinePass    → reads: GDepth  → writes: Swapchain (LoadOp::Load)
 ```
@@ -170,8 +170,8 @@ PipelineBuilder
 | 阶段 | 特性 | 状态 |
 |------|------|------|
 | **Phase 0** | 窗口、三角形、egui、Launcher | ✅ 完成 |
-| **Phase 1** | Deferred PBR、飞行相机、调试工具、类型安全调度器 | 🚧 进行中 |
-| **Phase 2** | 阴影、IBL、屏幕空间效果（SSAO、SSR） | 🔲 计划中 |
+| **Phase 1** | Deferred PBR、飞行相机、调试工具、类型安全调度器、阴影映射 | 🚧 进行中 |
+| **Phase 2** | IBL、屏幕空间效果（SSAO、SSR） | 🔲 计划中 |
 | **Phase 3** | 后处理链、色调映射 | 🔲 计划中 |
 | **Phase 4** | 地形 + 大气 + 水体 + 体积云 | 🔲 计划中 |
 | **Phase 5** | 光线追踪（Compute + Hybrid） | 🔲 计划中 |

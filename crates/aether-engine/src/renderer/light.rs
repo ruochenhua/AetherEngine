@@ -45,8 +45,11 @@ pub struct LightingUniforms {
     /// 0 = full lighting, 1 = ambient only, 2 = diffuse only,
     /// 3 = specular only, 4 = normals, 5 = NdotL, 6 = shadow depth.
     pub debug_mode: u32,
+    /// Slope-scale depth bias for shadow sampling (NDC units, base value).
+    /// Formula: bias = base * tan(acos(NdotL)), clamped to base*10.
+    pub shadow_normal_bias: f32,
     #[allow(dead_code)]
-    pub(crate) _pad2: [f32; 2],
+    pub(crate) _pad3: f32,
     /// Light-space view-projection for shadow sampling.
     pub light_view_proj: [[f32; 4]; 4],
 }
@@ -59,7 +62,8 @@ impl Default for LightingUniforms {
             light: DirectionalLight::default(),
             ambient_intensity: 0.1,
             debug_mode: 0,
-            _pad2: [0.0; 2],
+            shadow_normal_bias: 0.005,
+            _pad3: 0.0,
             light_view_proj: [[0.0; 4]; 4],
         }
     }

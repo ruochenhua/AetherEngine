@@ -110,7 +110,8 @@ impl SceneLoader {
             light,
             ambient_intensity: desc.ambient,
             debug_mode: 0,
-            _pad2: [0.0; 2],
+            shadow_normal_bias: 0.005,
+            _pad3: 0.0,
             light_view_proj: [[0.0; 4]; 4],
         }
     }

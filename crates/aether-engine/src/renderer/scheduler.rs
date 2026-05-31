@@ -192,14 +192,17 @@ impl PipelineBuilder {
         }
 
         // Reorder passes to topological order and call resolve
-        let mut passes = std::mem::take(&mut self.passes);
+        let passes = std::mem::take(&mut self.passes);
+        // Use Option wrapper to safely extract by index in arbitrary order
+        let mut opt_passes: Vec<Option<Box<dyn Pass>>> = passes.into_iter().map(Some).collect();
         let mut ordered: Vec<Box<dyn Pass>> = Vec::with_capacity(order.len());
-
-        // Build ordered vec by extracting passes in reverse to preserve indices
-        for &idx in order.iter().rev() {
-            ordered.push(passes.swap_remove(idx));
+        for &idx in &order {
+            ordered.push(
+                opt_passes[idx]
+                    .take()
+                    .expect("Topological order contains duplicate or invalid index"),
+            );
         }
-        ordered.reverse();
 
         // Resolve each pass with the resource table
         for pass in &mut ordered {

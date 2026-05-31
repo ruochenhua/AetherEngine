@@ -238,7 +238,7 @@ struct LightingUniforms {
     light: DirectionalLight,
     ambient_intensity: f32,
     debug_mode: u32,
-    _pad2: f32,
+    shadow_normal_bias: f32,
     _pad3: f32,
     light_view_proj: mat4x4<f32>,
 };
@@ -289,14 +289,21 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     let lit_color = ambient + diffuse + specular;
 
-    // Shadow: transform world_pos to light space, sample with PCF
+    // Shadow: transform world_pos to light space, sample shadow map with
+    // slope-scale depth bias (OpenGL Tutorial 16 approach):
+    //   bias = base * tan(acos(NdotL)) = base * sqrt(1-NdotL²) / NdotL
+    // Grazing angles get more bias; front-facing gets less. Clamped to avoid
+    // peter panning on flat surfaces.
     let light_clip = uniforms.light_view_proj * vec4<f32>(world_pos, 1.0);
     var visibility: f32 = 1.0;
     if (light_clip.w > 0.0) {
         let light_ndc = light_clip.xyz / light_clip.w;
         let uv = vec2<f32>(light_ndc.x * 0.5 + 0.5, 0.5 - light_ndc.y * 0.5);
-        // Slope-scale bias: more bias at grazing angles, less when facing the light
-        let bias = max(0.0005, 0.005 * (1.0 - NdotL));
+        // Slope-scale bias: tan(acos(NdotL)) = sin(theta)/cos(theta)
+        let cos_theta = saturate(NdotL);
+        let sin_theta = sqrt(1.0 - cos_theta * cos_theta);
+        let slope_bias = uniforms.shadow_normal_bias * sin_theta / max(cos_theta, 0.001);
+        let bias = min(slope_bias, uniforms.shadow_normal_bias * 10.0);
         let ref_depth = light_ndc.z - bias;
         // PCF 3x3
         let texel_size = 1.0 / 1024.0;
