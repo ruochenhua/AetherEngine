@@ -1,0 +1,77 @@
+SceneDescription(
+    name: "02 Multi Object",
+    camera: (
+        position: (6.0, 4.0, 6.0),
+        yaw: -2.356,
+        pitch: -0.6,
+        speed: 4.0,
+        fov: 45.0,
+    ),
+    lights: [
+        (
+            light_type: Directional,
+            direction: (0.0, -1.0, 0.0),
+            color: (1.0, 1.0, 1.0),
+            intensity: 1.0,
+        ),
+    ],
+    ambient: 0.05,
+    objects: [
+        // Ground plane (Y-up, no rotation needed)
+        (
+            name: "Ground",
+            mesh: Builtin("plane"),
+            transform: (
+                translation: (0.0, -1.0, 0.0),
+                scale: (5.0, 1.0, 5.0),
+            ),
+            material: (
+                albedo: (0.3, 0.4, 0.3, 1.0),
+                roughness: 0.8,
+                metallic: 0.0,
+            ),
+        ),
+        // Red cube left
+        (
+            name: "RedCube",
+            mesh: Builtin("cube"),
+            transform: (
+                translation: (-1.2, 0.0, 0.0),
+                scale: (1.0, 1.0, 1.0),
+            ),
+            material: (
+                albedo: (0.8, 0.3, 0.2, 1.0),
+                roughness: 0.5,
+                metallic: 0.0,
+            ),
+        ),
+        // Blue sphere right
+        (
+            name: "BlueSphere",
+            mesh: Builtin("sphere"),
+            transform: (
+                translation: (1.2, 0.0, 0.0),
+                scale: (1.0, 1.0, 1.0),
+            ),
+            material: (
+                albedo: (0.2, 0.5, 0.8, 1.0),
+                roughness: 0.3,
+                metallic: 0.3,
+            ),
+        ),
+        // Tall yellow cube in back
+        (
+            name: "TallCube",
+            mesh: Builtin("cube"),
+            transform: (
+                translation: (0.0, 0.5, -1.5),
+                scale: (0.5, 1.5, 0.5),
+            ),
+            material: (
+                albedo: (0.6, 0.6, 0.3, 1.0),
+                roughness: 0.4,
+                metallic: 0.0,
+            ),
+        ),
+    ],
+)

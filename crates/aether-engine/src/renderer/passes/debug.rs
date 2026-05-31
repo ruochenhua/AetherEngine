@@ -1,7 +1,16 @@
 //! Debug Line Pass
 //!
 //! Renders colored lines for debug visualization (grid, gizmo, etc.).
-//! Uses line-list topology with per-vertex colors and depth testing.
+//! Uses line-list topology with LoadOp::Load on color and depth —
+//! draws over the existing swapchain content.
+//!
+//! Implements the `Pass` trait for type-safe scheduling.
+
+use crate::renderer::pass::{Pass, PassSignature, ResHandle};
+use crate::renderer::resource::*;
+use crate::renderer::resource_table::ResourceTable;
+use glam::Mat4;
+use wgpu::util::DeviceExt;
 
 /// Per-vertex data for debug lines.
 #[repr(C)]
@@ -47,11 +56,91 @@ pub struct DebugLinePass {
     pipeline: wgpu::RenderPipeline,
     uniform_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
+
+    /// Grid vertex buffer.
+    grid_vertex_buffer: wgpu::Buffer,
+    grid_vertex_count: u32,
+    /// Gizmo vertex buffer.
+    gizmo_vertex_buffer: wgpu::Buffer,
+    gizmo_vertex_count: u32,
+
+    /// Resource handles (populated by resolve).
+    depth_handle: Option<ResHandle<GDepth>>,
+}
+
+impl Pass for DebugLinePass {
+    fn name(&self) -> &str {
+        "DebugLine"
+    }
+
+    fn signature(&self) -> PassSignature {
+        PassSignature::new("DebugLine")
+            .read::<GDepth>("gbuffer_depth")
+    }
+
+    fn init(device: &wgpu::Device) -> Self {
+        Self::new_inner(device, wgpu::TextureFormat::Bgra8UnormSrgb, wgpu::TextureFormat::Depth32Float)
+    }
+
+    fn resolve(&mut self, _device: &wgpu::Device, resources: &ResourceTable) {
+        self.depth_handle = Some(resources.handle::<GDepth>("gbuffer_depth"));
+    }
+
+    fn execute(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        resources: &ResourceTable,
+        _queue: &wgpu::Queue,
+        surface_view: &wgpu::TextureView,
+    ) {
+        let depth_view = resources.get(self.depth_handle.unwrap());
+
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("Debug Line Pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: surface_view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: depth_view,
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Store,
+                }),
+                stencil_ops: None,
+            }),
+            timestamp_writes: None,
+            occlusion_query_set: None,
+        });
+
+        pass.set_pipeline(&self.pipeline);
+        pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+
+        // Draw grid
+        pass.set_vertex_buffer(0, self.grid_vertex_buffer.slice(..));
+        pass.draw(0..self.grid_vertex_count, 0..1);
+
+        // Draw gizmo
+        pass.set_vertex_buffer(0, self.gizmo_vertex_buffer.slice(..));
+        pass.draw(0..self.gizmo_vertex_count, 0..1);
+    }
 }
 
 impl DebugLinePass {
     /// Create a new debug line pass.
     pub fn new(
+        device: &wgpu::Device,
+        output_format: wgpu::TextureFormat,
+        depth_format: wgpu::TextureFormat,
+    ) -> Self {
+        Self::new_inner(device, output_format, depth_format)
+    }
+
+    fn new_inner(
         device: &wgpu::Device,
         output_format: wgpu::TextureFormat,
         depth_format: wgpu::TextureFormat,
@@ -166,63 +255,53 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             }],
         });
 
+        // Build debug geometry vertex buffers
+        let (grid_verts, grid_count) = build_grid_lines(5.0, 1.0);
+        let grid_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Debug Grid VB"),
+            contents: bytemuck::cast_slice(&grid_verts),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+
+        let (gizmo_verts, gizmo_count) = build_gizmo_lines(0.15);
+        let gizmo_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Debug Gizmo VB"),
+            contents: bytemuck::cast_slice(&gizmo_verts),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+
         Self {
             pipeline,
             uniform_buffer,
             uniform_bind_group,
+            grid_vertex_buffer,
+            grid_vertex_count: grid_count,
+            gizmo_vertex_buffer,
+            gizmo_vertex_count: gizmo_count,
+            depth_handle: None,
         }
     }
 
     /// Update view-projection uniform.
-    pub fn update_uniform(&self, queue: &wgpu::Queue, view_proj: &glam::Mat4) {
+    pub fn update_uniform(&self, queue: &wgpu::Queue, view_proj: &Mat4) {
         let uniform = DebugUniform {
             view_proj: view_proj.to_cols_array_2d(),
         };
         queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniform]));
     }
-
-    /// Draw debug lines with the given vertex buffer.
-    pub fn draw<'a>(
-        &'a self,
-        pass: &mut wgpu::RenderPass<'a>,
-        vertex_buffer: &'a wgpu::Buffer,
-        vertex_count: u32,
-    ) {
-        pass.set_pipeline(&self.pipeline);
-        pass.set_bind_group(0, &self.uniform_bind_group, &[]);
-        pass.set_vertex_buffer(0, vertex_buffer.slice(..));
-        pass.draw(0..vertex_count, 0..1);
-    }
 }
 
 /// Build a debug grid on the XZ plane.
-///
-/// `size` is half-extent (e.g. 5 for a 10×10 grid).
-/// `spacing` is the distance between grid lines.
 pub fn build_grid_lines(size: f32, spacing: f32) -> (Vec<DebugVertex>, u32) {
     let color = [0.3, 0.3, 0.3, 0.6];
     let mut vertices = Vec::new();
 
     let mut i = -size;
     while i <= size {
-        // Line along Z (constant X)
-        vertices.push(DebugVertex {
-            position: [i, 0.0, -size],
-            color,
-        });
-        vertices.push(DebugVertex {
-            position: [i, 0.0, size],
-            color,
-        });
-        // Line along X (constant Z)
-        vertices.push(DebugVertex {
-            position: [-size, 0.0, i],
-            color,
-        });
-        vertices.push(DebugVertex {
-            position: [size, 0.0, i],
-            color,
-        });
+        vertices.push(DebugVertex { position: [i, 0.0, -size], color });
+        vertices.push(DebugVertex { position: [i, 0.0, size], color });
+        vertices.push(DebugVertex { position: [-size, 0.0, i], color });
+        vertices.push(DebugVertex { position: [size, 0.0, i], color });
         i += spacing;
     }
 
@@ -231,92 +310,33 @@ pub fn build_grid_lines(size: f32, spacing: f32) -> (Vec<DebugVertex>, u32) {
 }
 
 /// Build an RGB axis gizmo at the origin.
-///
-/// `length` is the length of each axis line.
 pub fn build_gizmo_lines(length: f32) -> (Vec<DebugVertex>, u32) {
     let arrow_size = length * 0.3;
     let mut vertices = Vec::new();
 
     // X axis (red)
-    vertices.push(DebugVertex {
-        position: [0.0, 0.0, 0.0],
-        color: [1.0, 0.0, 0.0, 1.0],
-    });
-    vertices.push(DebugVertex {
-        position: [length, 0.0, 0.0],
-        color: [1.0, 0.0, 0.0, 1.0],
-    });
-    // X arrow head
-    vertices.push(DebugVertex {
-        position: [length, 0.0, 0.0],
-        color: [1.0, 0.0, 0.0, 1.0],
-    });
-    vertices.push(DebugVertex {
-        position: [length - arrow_size, arrow_size * 0.5, 0.0],
-        color: [1.0, 0.0, 0.0, 1.0],
-    });
-    vertices.push(DebugVertex {
-        position: [length, 0.0, 0.0],
-        color: [1.0, 0.0, 0.0, 1.0],
-    });
-    vertices.push(DebugVertex {
-        position: [length - arrow_size, -arrow_size * 0.5, 0.0],
-        color: [1.0, 0.0, 0.0, 1.0],
-    });
+    vertices.push(DebugVertex { position: [0.0, 0.0, 0.0], color: [1.0, 0.0, 0.0, 1.0] });
+    vertices.push(DebugVertex { position: [length, 0.0, 0.0], color: [1.0, 0.0, 0.0, 1.0] });
+    vertices.push(DebugVertex { position: [length, 0.0, 0.0], color: [1.0, 0.0, 0.0, 1.0] });
+    vertices.push(DebugVertex { position: [length - arrow_size, arrow_size * 0.5, 0.0], color: [1.0, 0.0, 0.0, 1.0] });
+    vertices.push(DebugVertex { position: [length, 0.0, 0.0], color: [1.0, 0.0, 0.0, 1.0] });
+    vertices.push(DebugVertex { position: [length - arrow_size, -arrow_size * 0.5, 0.0], color: [1.0, 0.0, 0.0, 1.0] });
 
     // Y axis (green)
-    vertices.push(DebugVertex {
-        position: [0.0, 0.0, 0.0],
-        color: [0.0, 1.0, 0.0, 1.0],
-    });
-    vertices.push(DebugVertex {
-        position: [0.0, length, 0.0],
-        color: [0.0, 1.0, 0.0, 1.0],
-    });
-    // Y arrow head
-    vertices.push(DebugVertex {
-        position: [0.0, length, 0.0],
-        color: [0.0, 1.0, 0.0, 1.0],
-    });
-    vertices.push(DebugVertex {
-        position: [arrow_size * 0.5, length - arrow_size, 0.0],
-        color: [0.0, 1.0, 0.0, 1.0],
-    });
-    vertices.push(DebugVertex {
-        position: [0.0, length, 0.0],
-        color: [0.0, 1.0, 0.0, 1.0],
-    });
-    vertices.push(DebugVertex {
-        position: [-arrow_size * 0.5, length - arrow_size, 0.0],
-        color: [0.0, 1.0, 0.0, 1.0],
-    });
+    vertices.push(DebugVertex { position: [0.0, 0.0, 0.0], color: [0.0, 1.0, 0.0, 1.0] });
+    vertices.push(DebugVertex { position: [0.0, length, 0.0], color: [0.0, 1.0, 0.0, 1.0] });
+    vertices.push(DebugVertex { position: [0.0, length, 0.0], color: [0.0, 1.0, 0.0, 1.0] });
+    vertices.push(DebugVertex { position: [arrow_size * 0.5, length - arrow_size, 0.0], color: [0.0, 1.0, 0.0, 1.0] });
+    vertices.push(DebugVertex { position: [0.0, length, 0.0], color: [0.0, 1.0, 0.0, 1.0] });
+    vertices.push(DebugVertex { position: [-arrow_size * 0.5, length - arrow_size, 0.0], color: [0.0, 1.0, 0.0, 1.0] });
 
     // Z axis (blue)
-    vertices.push(DebugVertex {
-        position: [0.0, 0.0, 0.0],
-        color: [0.0, 0.0, 1.0, 1.0],
-    });
-    vertices.push(DebugVertex {
-        position: [0.0, 0.0, length],
-        color: [0.0, 0.0, 1.0, 1.0],
-    });
-    // Z arrow head
-    vertices.push(DebugVertex {
-        position: [0.0, 0.0, length],
-        color: [0.0, 0.0, 1.0, 1.0],
-    });
-    vertices.push(DebugVertex {
-        position: [0.0, arrow_size * 0.5, length - arrow_size],
-        color: [0.0, 0.0, 1.0, 1.0],
-    });
-    vertices.push(DebugVertex {
-        position: [0.0, 0.0, length],
-        color: [0.0, 0.0, 1.0, 1.0],
-    });
-    vertices.push(DebugVertex {
-        position: [0.0, -arrow_size * 0.5, length - arrow_size],
-        color: [0.0, 0.0, 1.0, 1.0],
-    });
+    vertices.push(DebugVertex { position: [0.0, 0.0, 0.0], color: [0.0, 0.0, 1.0, 1.0] });
+    vertices.push(DebugVertex { position: [0.0, 0.0, length], color: [0.0, 0.0, 1.0, 1.0] });
+    vertices.push(DebugVertex { position: [0.0, 0.0, length], color: [0.0, 0.0, 1.0, 1.0] });
+    vertices.push(DebugVertex { position: [0.0, arrow_size * 0.5, length - arrow_size], color: [0.0, 0.0, 1.0, 1.0] });
+    vertices.push(DebugVertex { position: [0.0, 0.0, length], color: [0.0, 0.0, 1.0, 1.0] });
+    vertices.push(DebugVertex { position: [0.0, -arrow_size * 0.5, length - arrow_size], color: [0.0, 0.0, 1.0, 1.0] });
 
     let count = vertices.len() as u32;
     (vertices, count)

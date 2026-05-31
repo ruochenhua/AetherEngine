@@ -4,15 +4,17 @@
 
 A modern rendering engine built with **Rust** and **wgpu**, designed for learning real-time graphics from Deferred PBR to ray tracing.
 
+> **This is an AI-first codebase.** Every architectural decision — module boundaries, interface design, test strategy, and contribution workflow — is optimized for AI agents as the primary developers, with humans in the review loop. See [AI-First Design](#-ai-first-design) below.
+
 ## 🌟 Features
 
-- **Modern Architecture**: ECS (hecs) + RenderGraph-driven pipeline
+- **Modern Architecture**: ECS (hecs) + type-safe pass scheduling (PipelineBuilder / Scheduler)
 - **Cross-Platform**: wgpu automatically targets Vulkan/Metal/DX12
 - **Deferred Shading**: G-Buffer-based Blinn-Phong PBR with debug visualisation
 - **UE-style Fly Camera**: Right-click fly mode, WASD + QE movement, scroll speed
 - **Debug Tools**: World grid, RGB axis gizmo, per-component lighting debug
-- **Extensible**: Add new RenderPasses without touching existing code
-- **AI-Friendly**: Modular design, each module fits in a single AI context window
+- **AI-First**: Every module fits a single AI context window; adding a pass = one file + one registration line
+- **Test-Driven**: Red-green-refactor on every change; build-time catch for resource wiring errors
 
 ## 🚀 Quick Start
 
@@ -26,14 +28,9 @@ cargo build
 
 # Launcher (recommended entry point)
 cargo run -p aether-launcher
-
-# Or run individual examples
-cargo run --example 01_triangle
-cargo run --example 02_deferred
-cargo run --example 03_gltf_scene
 ```
 
-## 🎮 Controls (02_deferred)
+## 🎮 Controls
 
 | Input | Action |
 |-------|--------|
@@ -45,38 +42,99 @@ cargo run --example 03_gltf_scene
 | `0` – `5` | Lighting debug: Full / Ambient / Diffuse / Specular / Normals / NdotL |
 | `Esc` | Return to launcher menu |
 
+## 🤖 AI-First Design
+
+Aether Engine is not just built *with* AI — it is built **for** AI. Every design choice is evaluated through the lens of an AI agent's capabilities and limitations.
+
+### Core Principles
+
+| Principle | What it means |
+|-----------|---------------|
+| **Single-file modules** | Each module < 500 LOC. An AI can read, understand, and regenerate a module in one context window. |
+| **Declarative over imperative** | Pipeline structure is declared via `PipelineBuilder::add(pass)`, not hidden in a 600-line render loop. |
+| **Type-safe wiring** | `ResHandle<GPosition>` vs `ResHandle<GNormal>` — the compiler catches resource mix-ups before render time. |
+| **Build-time failure** | Missing resource producer → panic at `build()`. TDD first cycle catches it. No runtime black-screen debugging. |
+| **Template-driven creation** | Adding a new pass = copy `passes/template.rs` → fill in signature + shader → register one line in `build_pipeline()`. |
+| **Flat dependency graph** | No deep inheritance. Passes depend on a single `Pass` trait. Systems depend on a single `System` trait. |
+| **Human in review, AI in writing** | AI writes PRs; human reviews for architectural fit and visual correctness. Tests prove the code works. |
+
+### Module Dependency Graph
+
+```
+main.rs (thin orchestration, ~80 lines)
+  │
+  ├── PipelineBuilder ──→ Scheduler ──→ [Passes in topological order]
+  │     ↑                                    │
+  │     └── GBufferPass.init()              │
+  │     └── LightingPass.init()             │
+  │     └── DebugLinePass.init()            │
+  │     └── (future) SSAOPass.init()        │
+  │                                          │
+  ├── SceneLoader ──→ SceneResources { renderables, lighting }
+  ├── FlyCamera ──→ view/proj matrices
+  ├── InputManager ──→ keyboard/mouse state
+  └── egui ──→ debug overlay
+```
+
+**Dependency rules:**
+- `main.rs` depends on all public APIs — but only through thin orchestration
+- Pass modules only depend on `Pass` trait + `wgpu` + their own shaders
+- Adding a pass: create `passes/new_pass.rs` → add one line in `build_pipeline()` → add one setter call in main loop
+- Scheduler, PipelineBuilder, ResourceTable are **write-once** infrastructure
+
+### How AI Adds a New Pass (e.g. SSAO)
+
+```
+1. Copy     passes/template.rs       → passes/ssao.rs
+2. Fill in  signature()              → reads: GPosition, GNormal; writes: AOTexture
+3. Fill in  init() / resolve()       → create pipeline + bind groups
+4. Fill in  execute()                → record commands
+5. Register builder.add(SSAOPass::init(device))  ← 1 line
+6. Add      ssao_pass.set_config(...)            ← 1 line in main loop
+7. Run tests → fix build-time errors → PR
+```
+
+**Files touched: 2** (new pass file, main.rs). **Files to review: 1** (the new pass).
+
+### Development Conventions
+
+- **Tests first**: write the failing test → write minimal code to pass → refactor. Never write implementation before tests.
+- **Public interface testing**: tests verify behavior through public APIs. Never test private functions.
+- **Build-time errors > runtime errors**: prefer types that make invalid states unrepresentable.
+- **No implicit coupling**: if pass B depends on pass A's output, it must declare it in `signature()`.
+- **Shaders inline**: WGSL lives inside the Rust pass file. One file = complete context for AI.
+
 ## 📁 Project Structure
 
 ```
 ├── Cargo.toml
 ├── crates/
-│   ├── aether-engine/          # Main engine crate
+│   ├── aether-engine/          # Engine library
 │   │   └── src/
 │   │       ├── lib.rs
-│   │       ├── app.rs            # Standalone app entry
 │   │       ├── ecs/              # ECS (hecs wrapper)
-│   │       ├── scene/            # Scene loading/serialization
-│   │       ├── asset/            # Asset management
+│   │       ├── scene/            # Scene loading + RON deserialization
+│   │       ├── asset/            # Asset management + mesh registry
 │   │       ├── renderer/         # Rendering core
-│   │       │   ├── graph.rs      # RenderGraph
-│   │       │   ├── context.rs    # wgpu context + GBuffer
-│   │       │   ├── camera.rs     # FlyCamera + OrbitCamera
+│   │       │   ├── pass.rs       # Pass trait (signature / init / resolve / execute)
+│   │       │   ├── scheduler.rs  # Scheduler + PipelineBuilder
+│   │       │   ├── resource.rs   # ResHandle<T> + ResourceTable
+│   │       │   ├── context.rs    # wgpu context + RenderContext
+│   │       │   ├── camera.rs     # FlyCamera
 │   │       │   └── passes/
+│   │       │       ├── template.rs  # AI copy-paste template
 │   │       │       ├── gbuffer.rs   # G-Buffer (MRT)
 │   │       │       ├── lighting.rs  # Deferred lighting
 │   │       │       └── debug.rs     # Line rendering (grid, gizmo)
 │   │       ├── physics/          # Physics (reserved)
 │   │       ├── math.rs
 │   │       ├── input.rs
-│   │       └── examples/         # Example implementations
-│   └── aether-launcher/         # Unified launcher binary
-├── assets/
-│   ├── scenes/                   # .ron scene files
-│   ├── shaders/                  # .wgsl shaders
-│   ├── meshes/                   # GLTF models
-│   └── textures/                 # Textures
+│   │       └── window.rs
+│   └── aether-launcher/         # Launcher binary (thin orchestration)
+├── scenes/                      # .ron scene files
+├── assets/                      # Meshes, textures, shaders
 └── docs/
-    └── adr/                      # Architectural decision records
+    └── adr/                     # Architectural Decision Records
 ```
 
 ## 🏗️ Architecture
@@ -84,45 +142,39 @@ cargo run --example 03_gltf_scene
 ### Render Pipeline
 
 ```
-Launcher (winit event loop)
-  └── Example (trait)
-        ├── update(dt, input)     # Camera, input, logic
-        ├── prepare()             # GPU uploads
-        └── render(encoder)       # Command recording
-              ├── GBufferPass     # → position, normal, albedo, material
-              ├── LightingPass    # → fullscreen quad, Blinn-Phong
-              └── DebugLinePass   # → grid, gizmo (depth-tested)
+PipelineBuilder
+  ├── GBufferPass      → writes: GPosition, GNormal, GAlbedo, GMaterial, GDepth
+  ├── SSAOPass         → reads: GPosition, GNormal  → writes: AOTexture       (planned)
+  ├── LightingPass     → reads: GPosition, GNormal, GAlbedo, GMaterial, AOTexture
+  │                        writes: Swapchain
+  └── DebugLinePass    → reads: GDepth  → writes: Swapchain (LoadOp::Load)
 ```
+
+Resource wiring is type-checked at build time. Execution order is topological.
 
 ### Key Design Decisions
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
+| Pass Scheduling | PipelineBuilder + Scheduler | Declaration over imperative loop — AI understands structure without reading main.rs |
+| Resource Wiring | `ResHandle<T>` type tags | Compile-time safety — AI can't confuse texture semantics |
 | ECS Library | `hecs` | Minimal API, AI-friendly, no macro magic |
 | Render API | `wgpu` | Single backend, auto-adapts to Vulkan/Metal/DX12 |
-| Shader Language | WGSL | Unified, no pre-compilation scripts |
-| Scene Format | RON | Rust-native, type-safe, AI-friendly |
+| Shader Language | WGSL | Unified, inline — complete context for AI |
+| Scene Format | RON | Rust-native, type-safe, AI generates clean RON |
 | UI | `egui` | Immediate mode, easy debugging panels |
+| Test Strategy | TDD + public-interface only | AI writes test first, gets compiler feedback, refactors safely |
 
 ## 📅 Roadmap
 
 | Phase | Features | Status |
 |-------|----------|--------|
 | **Phase 0** | Window, triangle, egui, launcher | ✅ Complete |
-| **Phase 1** | Deferred PBR, fly camera, debug tools | 🚧 In Progress |
-| **Phase 2** | Shadows, IBL, scene YAML | 🔲 Planned |
-| **Phase 3** | SSR + SSAO + Post-Process | 🔲 Planned |
-| **Phase 4** | Terrain + Atmosphere + Water + Clouds | 🔲 Planned |
+| **Phase 1** | Deferred PBR, fly camera, debug tools, type-safe scheduler | 🚧 In Progress |
+| **Phase 2** | Shadows, IBL, screen-space effects (SSAO, SSR) | 🔲 Planned |
+| **Phase 3** | Post-process chain, tone mapping | 🔲 Planned |
+| **Phase 4** | Terrain + Atmosphere + Water + Volumetric Clouds | 🔲 Planned |
 | **Phase 5** | Ray Tracing (Compute + Hybrid) | 🔲 Planned |
-
-## 🤝 Contributing
-
-This is a personal learning project. The codebase is designed to be AI-collaboration friendly:
-
-- Each module is self-contained (< 500 LOC)
-- Clear trait interfaces (`RenderPass`, `System`, `Asset`)
-- No complex generic constraints
-- Comprehensive doc comments
 
 ## 📜 License
 
@@ -130,4 +182,4 @@ MIT OR Apache-2.0
 
 ---
 
-*Aether Engine is the spiritual successor to [KongEngine](https://github.com/ruochenhua/KongEngine), rebuilt with modern architecture and Rust.*
+*Aether Engine is the spiritual successor to KongEngine, rebuilt with AI-first architecture.*

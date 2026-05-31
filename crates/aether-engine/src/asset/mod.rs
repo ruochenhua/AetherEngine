@@ -4,6 +4,8 @@
 
 /// Mesh asset types.
 pub mod mesh;
+/// Built-in mesh registry.
+pub mod registry;
 /// Texture asset types.
 pub mod texture;
 /// Material definitions.

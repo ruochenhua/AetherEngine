@@ -108,11 +108,11 @@ impl CpuMesh {
         for r in 0..rings {
             for s in 0..sectors {
                 let base = r * (sectors + 1) + s;
+                indices.push(base + sectors + 1);
                 indices.push(base);
-                indices.push(base + sectors + 1);
-                indices.push(base + 1);
                 indices.push(base + 1);
                 indices.push(base + sectors + 1);
+                indices.push(base + 1);
                 indices.push(base + sectors + 2);
             }
         }
@@ -147,6 +147,37 @@ impl CpuMesh {
             [0.0, 0.0],
         ];
         let indices = vec![0, 1, 2, 0, 2, 3];
+
+        Self {
+            positions,
+            normals,
+            uvs,
+            tangents: Vec::new(),
+            indices,
+        }
+    }
+
+    /// Y-up horizontal plane in XZ plane (normal = +Y, no rotation needed).
+    pub fn plane() -> Self {
+        let positions = vec![
+            [-1.0, 0.0, -1.0],
+            [ 1.0, 0.0, -1.0],
+            [ 1.0, 0.0,  1.0],
+            [-1.0, 0.0,  1.0],
+        ];
+        let normals = vec![
+            [0.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+        ];
+        let uvs = vec![
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [1.0, 1.0],
+            [0.0, 1.0],
+        ];
+        let indices = vec![0, 3, 2, 0, 2, 1];
 
         Self {
             positions,

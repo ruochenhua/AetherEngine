@@ -1,13 +1,27 @@
-//! Aether Engine Example Launcher
+//! Aether Engine Launcher
 //!
-//! Unified entry point for all engine demos. Creates a single window and
-//! `RenderContext` shared across every example. Switching examples does not
-//! recreate the window or the GPU device.
+//! Unified entry point. PipelineBuilder validates pass graph, allocates
+//! transient textures, and sets up per-frame execution.
 
 use aether_engine::{
-    examples::{DeferredExample, Example, GltfSceneExample, TriangleExample},
+    asset::registry::BuiltinMeshRegistry,
     input::InputManager,
-    renderer::context::RenderContext,
+    renderer::{
+        camera::FlyCamera,
+        context::RenderContext,
+        pass::Pass,
+        passes::{
+            debug::DebugLinePass,
+            gbuffer::GBufferPass,
+            lighting::LightingPass,
+            lighting::LightingUniforms,
+            shadow::{self, ShadowPass},
+        },
+        resource::Swapchain,
+        resource_table::ResourceTable,
+        scheduler::PipelineBuilder,
+    },
+    scene::loader::{SceneLoader, SceneResources},
 };
 use std::sync::Arc;
 use tracing::{error, info};
@@ -18,50 +32,56 @@ use winit::{
     window::WindowBuilder,
 };
 
-// ---------------------------------------------------------------------------
-// Example registry
-// ---------------------------------------------------------------------------
+// ── Launcher state ──────────────────────────────────────────────────
 
-struct RegistryEntry {
-    name: &'static str,
-    description: &'static str,
-    factory: Box<dyn Fn() -> Box<dyn Example>>,
+enum LauncherState {
+    Menu,
+    Running { resources: SceneResources },
 }
 
-/// Declarative example registration.  Adding a new example only requires
-/// appending one line here.
-macro_rules! register_examples {
-    ($($name:expr => $factory:expr, $desc:expr),* $(,)?) => {
-        fn build_registry() -> Vec<RegistryEntry> {
-            vec![
-                $(RegistryEntry {
-                    name: $name,
-                    description: $desc,
-                    factory: Box::new($factory),
-                }),*
-            ]
-        }
+struct SceneEntry {
+    name: String,
+    path: std::path::PathBuf,
+}
+
+// ── Render pipeline (concrete, named fields) ────────────────────────
+
+struct RenderPipeline {
+    shadow: ShadowPass,
+    gbuffer: GBufferPass,
+    lighting: LightingPass,
+    debug: DebugLinePass,
+    resource_table: ResourceTable,
+}
+
+fn discover_scenes() -> Vec<SceneEntry> {
+    let mut entries = Vec::new();
+    let scenes_dir = std::path::Path::new("scenes");
+    if !scenes_dir.is_dir() {
+        return entries;
+    }
+    let Ok(dir) = std::fs::read_dir(scenes_dir) else {
+        return entries;
     };
+    for entry in dir.flatten() {
+        let path = entry.path();
+        if path.extension().map_or(false, |e| e == "ron") {
+            let name = match SceneLoader::from_file(&path) {
+                Ok(desc) => desc.name,
+                Err(_) => path.file_stem().unwrap_or_default().to_string_lossy().into(),
+            };
+            entries.push(SceneEntry { name, path });
+        }
+    }
+    entries.sort_by(|a, b| a.name.cmp(&b.name));
+    entries
 }
 
-register_examples!(
-    "01_triangle" => || Box::new(TriangleExample::new()),
-        "Minimal bootstrap: winit window, wgpu context, colored triangle.",
-    "02_deferred" => || Box::new(DeferredExample::new()),
-        "Deferred shading: cube + sphere with Blinn-Phong lighting and tonemap.",
-    "03_gltf_scene" => || Box::new(GltfSceneExample::with_default_model()),
-        "Scene loading with GLTF/OBJ + Deferred shading + Shadow mapping.",
-);
-
-// ---------------------------------------------------------------------------
-// Launcher main
-// ---------------------------------------------------------------------------
+// ── Main ────────────────────────────────────────────────────────────
 
 fn main() {
     tracing_subscriber::fmt::init();
     info!("Aether Engine Launcher starting...");
-
-    let registry = build_registry();
 
     let event_loop = EventLoop::new().expect("Failed to create event loop");
     let window = Arc::new(
@@ -74,7 +94,6 @@ fn main() {
 
     let mut ctx = pollster::block_on(RenderContext::new(&window));
 
-    // Shared infrastructure
     let egui_ctx = egui::Context::default();
     let viewport_id = egui_ctx.viewport_id();
     let mut egui_winit_state =
@@ -83,14 +102,71 @@ fn main() {
         egui_wgpu::Renderer::new(&ctx.device, ctx.surface_format(), None, 1);
 
     let mut input = InputManager::new();
-    let mut last_frame_time = std::time::Instant::now();
+    let mesh_registry = BuiltinMeshRegistry::new();
+    let depth_format = wgpu::TextureFormat::Depth32Float;
 
-    // Launcher state
-    let mut active_example: Option<Box<dyn Example>> = None;
-    let mut show_menu = true;
-    let mut pending_switch: Option<usize> = None;
+    // Build typed passes
+    let shadow_pass = ShadowPass::new(&ctx.device);
+    let gbuffer_pass = GBufferPass::new(&ctx.device);
+    let lighting_pass = LightingPass::new(&ctx.device, ctx.surface_format());
+    let debug_line_pass =
+        DebugLinePass::new(&ctx.device, ctx.surface_format(), depth_format);
+
+    // Validate and allocate resources
+    let resource_table = PipelineBuilder::validate_and_allocate(
+        &[
+            &shadow_pass as &dyn Pass,
+            &gbuffer_pass as &dyn Pass,
+            &lighting_pass as &dyn Pass,
+            &debug_line_pass as &dyn Pass,
+        ],
+        &ctx.device,
+        ctx.config.width,
+        ctx.config.height,
+    );
+
+    let mut pipeline = RenderPipeline {
+        shadow: shadow_pass,
+        gbuffer: gbuffer_pass,
+        lighting: lighting_pass,
+        debug: debug_line_pass,
+        resource_table,
+    };
+
+    // Resolve passes
+    pipeline.shadow.resolve(&ctx.device, &pipeline.resource_table);
+    pipeline.gbuffer.resolve(&ctx.device, &pipeline.resource_table);
+    pipeline.lighting.resolve(&ctx.device, &pipeline.resource_table);
+    pipeline.debug.resolve(&ctx.device, &pipeline.resource_table);
+
+    // Camera
+    let mut camera = FlyCamera {
+        position: glam::Vec3::new(3.0, 3.0, 3.0),
+        yaw: -std::f32::consts::FRAC_PI_4 - std::f32::consts::FRAC_PI_2,
+        pitch: -std::f32::consts::FRAC_PI_4,
+        speed: 4.0,
+        base_speed: 4.0,
+        min_speed: 0.1,
+        max_speed: 100.0,
+        sensitivity: 0.002,
+        active: false,
+        fov: 45.0f32.to_radians(),
+        near: 0.1,
+        far: 1000.0,
+    };
+
+    let mut last_frame_time = std::time::Instant::now();
+    let mut scroll_input: f32 = 0.0;
+    let mut fps: f32 = 0.0;
+
+    let scene_entries = discover_scenes();
+    info!("Discovered {} scenes", scene_entries.len());
+
+    let mut state = LauncherState::Menu;
+    let mut pending_load: Option<usize> = None;
     let mut pending_back = false;
-    let mut show_overlay = false; // toggled by ≡ button
+    let mut show_overlay = false;
+    let mut debug_mode: i32 = 0;
 
     event_loop.set_control_flow(ControlFlow::Poll);
 
@@ -104,185 +180,198 @@ fn main() {
                     }
 
                     match event {
-                        WindowEvent::CloseRequested => {
-                            info!("Window close requested");
-                            if let Some(ref mut ex) = active_example {
-                                ex.cleanup(&ctx);
-                            }
-                            elwt.exit();
-                        }
-                        WindowEvent::Resized(physical_size)
-                            if physical_size.width > 0 && physical_size.height > 0 =>
+                        WindowEvent::CloseRequested => elwt.exit(),
+                        WindowEvent::Resized(size)
+                            if size.width > 0 && size.height > 0 =>
                         {
-                            ctx.resize(physical_size.width, physical_size.height);
-                            if let Some(ref mut ex) = active_example {
-                                ex.resize(&ctx, physical_size.width, physical_size.height);
-                            }
+                            ctx.resize(size.width, size.height);
+                            // Rebuild transient textures and re-resolve
+                            pipeline.resource_table = PipelineBuilder::validate_and_allocate(
+                                &[
+                                    &pipeline.shadow as &dyn Pass,
+                                    &pipeline.gbuffer as &dyn Pass,
+                                    &pipeline.lighting as &dyn Pass,
+                                    &pipeline.debug as &dyn Pass,
+                                ],
+                                &ctx.device,
+                                size.width,
+                                size.height,
+                            );
+                            pipeline.shadow.resolve(&ctx.device, &pipeline.resource_table);
+                            pipeline.gbuffer.resolve(&ctx.device, &pipeline.resource_table);
+                            pipeline.lighting.resolve(&ctx.device, &pipeline.resource_table);
+                            pipeline.debug.resolve(&ctx.device, &pipeline.resource_table);
                         }
                         WindowEvent::RedrawRequested => {
-                            // --------------------------------------------------
-                            // Timing
-                            // --------------------------------------------------
                             let now = std::time::Instant::now();
                             let dt = now.duration_since(last_frame_time).as_secs_f32();
                             last_frame_time = now;
-                            let fps = 1.0 / dt.max(0.0001);
+                            if dt > 0.0 {
+                                fps = fps * 0.9 + (1.0 / dt) * 0.1;
+                            }
 
-                            // --------------------------------------------------
-                            // Input: Esc returns to menu
-                            // --------------------------------------------------
-                            if !show_menu && input.key_pressed(KeyCode::Escape) {
+                            if matches!(state, LauncherState::Running { .. })
+                                && input.key_pressed(KeyCode::Escape)
+                            {
                                 pending_back = true;
                             }
 
-                            // --------------------------------------------------
-                            // Apply pending state transitions
-                            // --------------------------------------------------
-                            if let Some(idx) = pending_switch.take() {
-                                if let Some(ref mut ex) = active_example {
-                                    ex.cleanup(&ctx);
-                                }
-                                let mut new_ex = (registry[idx].factory)();
-                                if let Err(e) = new_ex.init(&ctx) {
-                                    error!("Example init failed: {:?}", e);
-                                } else {
-                                    active_example = Some(new_ex);
-                                    show_menu = false;
-                                    show_overlay = false;
-                                    info!("Switched to example: {}", registry[idx].name);
+                            if input.key_pressed(KeyCode::Digit0) { debug_mode = 0; }
+                            if input.key_pressed(KeyCode::Digit1) { debug_mode = 1; }
+                            if input.key_pressed(KeyCode::Digit2) { debug_mode = 2; }
+                            if input.key_pressed(KeyCode::Digit3) { debug_mode = 3; }
+                            if input.key_pressed(KeyCode::Digit4) { debug_mode = 4; }
+                            if input.key_pressed(KeyCode::Digit5) { debug_mode = 5; }
+                            if input.key_pressed(KeyCode::Digit6) { debug_mode = 6; }
+
+                            if let Some(idx) = pending_load.take() {
+                                let entry = &scene_entries[idx];
+                                match SceneLoader::from_file(&entry.path) {
+                                    Ok(desc) => {
+                                        camera.position =
+                                            glam::Vec3::from_array(desc.camera.position);
+                                        camera.yaw = desc.camera.yaw;
+                                        camera.pitch = desc.camera.pitch;
+                                        camera.speed = desc.camera.speed;
+                                        camera.base_speed = desc.camera.speed;
+                                        camera.fov = desc.camera.fov.to_radians();
+                                        camera.active = false;
+
+                                        match SceneLoader::build_resources(
+                                            &desc, &ctx.device, &mesh_registry,
+                                        ) {
+                                            Ok(resources) => {
+                                                state =
+                                                    LauncherState::Running { resources };
+                                                show_overlay = false;
+                                            }
+                                            Err(e) => {
+                                                error!("Build scene error: {:?}", e);
+                                            }
+                                        }
+                                    }
+                                    Err(e) => error!("Load scene error: {:?}", e),
                                 }
                             }
+
                             if pending_back {
-                                if let Some(ref mut ex) = active_example {
-                                    ex.cleanup(&ctx);
-                                }
-                                active_example = None;
-                                show_menu = true;
+                                state = LauncherState::Menu;
                                 show_overlay = false;
                                 pending_back = false;
-                                info!("Returned to menu");
                             }
 
-                            // --------------------------------------------------
-                            // Update + Prepare (only when running an example)
-                            // --------------------------------------------------
-                            if let Some(ref mut ex) = active_example {
-                                ex.update(&ctx, dt, &input);
-                                ex.prepare(&ctx);
+                            if matches!(state, LauncherState::Running { .. }) {
+                                let (dx, dy) = input.mouse_delta();
+                                camera.update(dt, dx, dy, scroll_input, &input);
+                                scroll_input = 0.0;
                             }
 
-                            // --------------------------------------------------
                             // egui UI
-                            // --------------------------------------------------
                             let raw_input = egui_winit_state.take_egui_input(&window);
                             let egui_output = egui_ctx.run(raw_input, |ctx| {
-                                if show_menu {
-                                    // --------------------------------------------------
-                                    // Menu mode
-                                    // --------------------------------------------------
-                                    egui::CentralPanel::default().show(ctx, |ui| {
-                                        ui.heading("Aether Engine Examples");
-                                        ui.separator();
-                                        for (idx, entry) in registry.iter().enumerate() {
-                                            ui.horizontal(|ui| {
-                                                ui.label(
-                                                    egui::RichText::new(format!(
-                                                        "{}. {}",
-                                                        idx + 1,
-                                                        entry.name
-                                                    ))
-                                                    .monospace()
-                                                    .strong(),
-                                                );
-                                                if ui.button("▶ Launch").clicked() {
-                                                    pending_switch = Some(idx);
-                                                }
-                                            });
-                                            ui.label(entry.description);
+                                scroll_input +=
+                                    ctx.input(|i| i.smooth_scroll_delta.y * 0.01);
+
+                                match &state {
+                                    LauncherState::Menu => {
+                                        egui::CentralPanel::default().show(ctx, |ui| {
+                                            ui.heading("Aether Engine Scenes");
                                             ui.separator();
-                                        }
-                                    });
-                                } else {
-                                    // --------------------------------------------------
-                                    // Runtime:常驻 ≡ 按钮
-                                    // --------------------------------------------------
-                                    egui::Area::new("launcher_menu_button".into())
-                                        .anchor(egui::Align2::LEFT_TOP, [8.0, 8.0])
-                                        .show(ctx, |ui| {
-                                            if ui
-                                                .button(
-                                                    egui::RichText::new("≡")
-                                                        .size(20.0)
-                                                        .strong(),
-                                                )
-                                                .clicked()
-                                            {
-                                                show_overlay = !show_overlay;
+                                            if scene_entries.is_empty() {
+                                                ui.label("No scenes found.");
+                                            } else {
+                                                for (idx, entry) in
+                                                    scene_entries.iter().enumerate()
+                                                {
+                                                    ui.horizontal(|ui| {
+                                                        ui.label(
+                                                            egui::RichText::new(format!(
+                                                                "{}. {}",
+                                                                idx + 1, entry.name
+                                                            ))
+                                                            .monospace()
+                                                            .strong(),
+                                                        );
+                                                        if ui.button("▶ Launch").clicked() {
+                                                            pending_load = Some(idx);
+                                                        }
+                                                    });
+                                                    ui.separator();
+                                                }
                                             }
                                         });
-
-                                    // --------------------------------------------------
-                                    // Overlay panel (toggled by ≡)
-                                    // --------------------------------------------------
-                                    if show_overlay {
-                                        egui::Window::new("Aether Launcher")
-                                            .resizable(false)
-                                            .collapsible(false)
-                                            .anchor(egui::Align2::LEFT_TOP, [48.0, 8.0])
+                                    }
+                                    LauncherState::Running { resources } => {
+                                        egui::Area::new("menu_btn".into())
+                                            .anchor(egui::Align2::LEFT_TOP, [8.0, 8.0])
                                             .show(ctx, |ui| {
-                                                if let Some(ref ex) = active_example {
-                                                    ui.heading(ex.name());
+                                                if ui
+                                                    .button(egui::RichText::new("≡").size(20.0).strong())
+                                                    .clicked()
+                                                {
+                                                    show_overlay = !show_overlay;
+                                                }
+                                            });
+                                        if show_overlay {
+                                            egui::Window::new("Aether Launcher")
+                                                .resizable(false)
+                                                .collapsible(false)
+                                                .anchor(
+                                                    egui::Align2::LEFT_TOP,
+                                                    [48.0, 8.0],
+                                                )
+                                                .show(ctx, |ui| {
+                                                    ui.heading("Scene Info");
                                                     ui.separator();
-
-                                                    // Global timing
                                                     ui.label(format!("FPS: {:.1}", fps));
                                                     ui.label(format!(
                                                         "Frame: {:.2} ms",
                                                         dt * 1000.0
                                                     ));
-
-                                                    // Snapshot from example
-                                                    if let Some(snap) = ex.snapshot() {
-                                                        ui.separator();
-                                                        ui.label(
-                                                            egui::RichText::new("Snapshot")
-                                                                .small()
-                                                                .weak(),
-                                                        );
-                                                        if let Some(n) = snap.renderable_count {
-                                                            ui.label(format!("Renderables: {}", n));
+                                                    ui.label(format!(
+                                                        "Renderables: {}",
+                                                        resources.renderables.len()
+                                                    ));
+                                                    let p = camera.position;
+                                                    ui.label(format!(
+                                                        "Camera: ({:.1}, {:.1}, {:.1})",
+                                                        p.x, p.y, p.z
+                                                    ));
+                                                    ui.label(format!(
+                                                        "Speed: {:.1}",
+                                                        camera.speed
+                                                    ));
+                                                    ui.label(format!(
+                                                        "FlyCam: {}",
+                                                        if camera.active {
+                                                            "◉ ACTIVE"
+                                                        } else {
+                                                            "○ IDLE"
                                                         }
-                                                        if let Some(pos) = snap.camera_position {
-                                                            ui.label(format!(
-                                                                "Camera: {:.2}, {:.2}, {:.2}",
-                                                                pos[0], pos[1], pos[2]
-                                                            ));
-                                                        }
-                                                        if let Some(n) = snap.entity_count {
-                                                            ui.label(format!("Entities: {}", n));
-                                                        }
-                                                        for (k, v) in &snap.custom {
-                                                            ui.label(format!("{}: {}", k, v));
-                                                        }
-                                                    }
-
+                                                    ));
+                                                    let mode_names = [
+                                                        "Full", "Ambient", "Diffuse",
+                                                        "Specular", "Normals", "NdotL",
+                                                        "Shadow",
+                                                    ];
+                                                    let mode_idx =
+                                                        debug_mode.clamp(0, 6) as usize;
+                                                    ui.label(format!(
+                                                        "Debug: [{}] {}",
+                                                        mode_idx, mode_names[mode_idx]
+                                                    ));
                                                     ui.separator();
-                                                    if ui.button("Back to Menu (Esc)").clicked() {
+                                                    if ui.button("Back to Menu (Esc)").clicked()
+                                                    {
                                                         pending_back = true;
                                                     }
-                                                }
-                                            });
-                                    }
-
-                                    // Example-specific UI
-                                    if let Some(ref mut ex) = active_example {
-                                        ex.ui(ctx);
+                                                });
+                                        }
                                     }
                                 }
                             });
                             egui_winit_state
                                 .handle_platform_output(&window, egui_output.platform_output);
-
                             let paint_jobs = egui_ctx
                                 .tessellate(egui_output.shapes, egui_output.pixels_per_point);
                             let screen_descriptor = egui_wgpu::ScreenDescriptor {
@@ -290,9 +379,7 @@ fn main() {
                                 pixels_per_point: window.scale_factor() as f32,
                             };
 
-                            // --------------------------------------------------
                             // Acquire surface
-                            // --------------------------------------------------
                             let output = match ctx.get_current_texture() {
                                 Ok(o) => o,
                                 Err(wgpu::SurfaceError::Lost) => {
@@ -300,12 +387,11 @@ fn main() {
                                     return;
                                 }
                                 Err(wgpu::SurfaceError::OutOfMemory) => {
-                                    error!("GPU out of memory");
                                     elwt.exit();
                                     return;
                                 }
                                 Err(e) => {
-                                    error!("Surface error: {:?}", e);
+                                    error!("Surface: {:?}", e);
                                     return;
                                 }
                             };
@@ -313,20 +399,16 @@ fn main() {
                                 .texture
                                 .create_view(&wgpu::TextureViewDescriptor::default());
 
-                            // --------------------------------------------------
-                            // Render
-                            // --------------------------------------------------
                             let mut encoder = ctx.device.create_command_encoder(
                                 &wgpu::CommandEncoderDescriptor {
-                                    label: Some("LauncherRenderEncoder"),
+                                    label: Some("Encoder"),
                                 },
                             );
 
-                            if show_menu {
-                                // Menu background
-                                encoder.begin_render_pass(
-                                    &wgpu::RenderPassDescriptor {
-                                        label: Some("Menu Background"),
+                            match &state {
+                                LauncherState::Menu => {
+                                    encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                                        label: Some("Menu"),
                                         color_attachments: &[Some(
                                             wgpu::RenderPassColorAttachment {
                                                 view: &target_view,
@@ -345,23 +427,77 @@ fn main() {
                                         depth_stencil_attachment: None,
                                         timestamp_writes: None,
                                         occlusion_query_set: None,
-                                    },
-                                );
-                            } else if let Some(ref mut ex) = active_example {
-                                if let Err(e) = ex.render(&ctx, &mut encoder, &target_view) {
-                                    error!("Example render error: {:?}", e);
+                                    });
+                                }
+                                LauncherState::Running { ref resources } => {
+                                    let aspect =
+                                        ctx.config.width as f32 / ctx.config.height as f32;
+                                    let view = camera.view_matrix();
+                                    let proj = camera.projection_matrix(aspect);
+                                    let view_proj = proj * view;
+
+                                    // Compute light-space matrix from directional light
+                                    let light_dir = glam::Vec3::from_array(
+                                        resources.lighting_uniforms.light.direction,
+                                    ).normalize();
+                                    let light_view_proj = shadow::compute_light_space_matrix(&light_dir);
+
+                                    // Shadow pass: render depth from light perspective
+                                    pipeline.shadow.set_frame_data(
+                                        &resources.renderables,
+                                        light_view_proj,
+                                    );
+                                    pipeline.shadow.execute(
+                                        &mut encoder,
+                                        &pipeline.resource_table,
+                                        &ctx.queue,
+                                        &target_view,
+                                    );
+
+                                    // GBuffer pass
+                                    pipeline.gbuffer.set_frame_data(
+                                        &resources.renderables,
+                                        view,
+                                        proj,
+                                    );
+
+                                    let lighting = &resources.lighting_uniforms;
+                                    let mut uniforms = *lighting;
+                                    uniforms.camera_pos = camera.position.into();
+                                    uniforms.debug_mode = debug_mode as u32;
+                                    uniforms.light_view_proj = light_view_proj.to_cols_array_2d();
+                                    pipeline.lighting.update_uniforms(
+                                        &ctx.queue,
+                                        &uniforms,
+                                    );
+                                    pipeline.debug.update_uniform(&ctx.queue, &view_proj);
+
+                                    // Execute passes in order
+                                    pipeline.gbuffer.execute(
+                                        &mut encoder,
+                                        &pipeline.resource_table,
+                                        &ctx.queue,
+                                        &target_view,
+                                    );
+                                    pipeline.lighting.execute(
+                                        &mut encoder,
+                                        &pipeline.resource_table,
+                                        &ctx.queue,
+                                        &target_view,
+                                    );
+                                    pipeline.debug.execute(
+                                        &mut encoder,
+                                        &pipeline.resource_table,
+                                        &ctx.queue,
+                                        &target_view,
+                                    );
                                 }
                             }
 
-                            // --------------------------------------------------
-                            // egui pass (drawn on top)
-                            // --------------------------------------------------
+                            // egui pass
                             for (id, image_delta) in &egui_output.textures_delta.set {
                                 egui_renderer.update_texture(
-                                    &ctx.device,
-                                    &ctx.queue,
-                                    *id,
-                                    image_delta,
+                                    &ctx.device, &ctx.queue, *id, image_delta,
                                 );
                             }
                             egui_renderer.update_buffers(
@@ -372,9 +508,9 @@ fn main() {
                                 &screen_descriptor,
                             );
                             {
-                                let mut render_pass = encoder.begin_render_pass(
+                                let mut rp = encoder.begin_render_pass(
                                     &wgpu::RenderPassDescriptor {
-                                        label: Some("egui Pass"),
+                                        label: Some("egui"),
                                         color_attachments: &[Some(
                                             wgpu::RenderPassColorAttachment {
                                                 view: &target_view,
@@ -391,7 +527,7 @@ fn main() {
                                     },
                                 );
                                 egui_renderer.render(
-                                    &mut render_pass,
+                                    &mut rp,
                                     &paint_jobs,
                                     &screen_descriptor,
                                 );
@@ -399,10 +535,6 @@ fn main() {
 
                             ctx.queue.submit(std::iter::once(encoder.finish()));
                             output.present();
-
-                            // --------------------------------------------------
-                            // Clear per-frame input
-                            // --------------------------------------------------
                             input.end_frame();
                         }
                         _ => {}
