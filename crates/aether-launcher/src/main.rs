@@ -322,7 +322,7 @@ fn main() {
                                                         "Full", "Ambient", "Diffuse",
                                                         "Specular", "Normals", "NdotL",
                                                         "Shadow", "Direct", "IBL",
-                                                        "Irradiance",
+                                                        "NormalAlpha",
                                                     ];
                                                     let mode_idx =
                                                         debug_mode.clamp(0, 9) as usize;
