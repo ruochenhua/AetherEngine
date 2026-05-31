@@ -52,6 +52,8 @@ pub struct LightingUniforms {
     pub(crate) _pad3: f32,
     /// Light-space view-projection for shadow sampling.
     pub light_view_proj: [[f32; 4]; 4],
+    /// Inverse view-projection matrix for skybox view-ray reconstruction.
+    pub inv_view_proj: [[f32; 4]; 4],
 }
 
 impl Default for LightingUniforms {
@@ -65,6 +67,7 @@ impl Default for LightingUniforms {
             shadow_normal_bias: 0.005,
             _pad3: 0.0,
             light_view_proj: [[0.0; 4]; 4],
+            inv_view_proj: [[0.0; 4]; 4],
         }
     }
 }

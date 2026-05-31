@@ -43,8 +43,8 @@ Rust + wgpu 现代渲染引擎，KongEngine 的精神续作。目标：从 Defer
 
 ```
 Phase 0: Skeleton (window, triangle, egui)         ← ✅ 已完成
-Phase 1: Deferred PBR + Shadow + Pipeline + RON    ← ✅ 已完成
-Phase 2: IBL + SSAO + SSR                          ← 🔲 计划中
+Phase 1: Deferred PBR + Shadow + Pipeline + RON + IBL ← ✅ 已完成
+Phase 2: SSAO + SSR                                    ← 🔲 计划中
 Phase 3: Editor (ECS runtime, Picking, Gizmo, UI)  ← 🔲 计划中
 Phase 4: Post-process chain + Tone mapping
 Phase 5: Terrain + Atmosphere + Water + Clouds
@@ -63,6 +63,11 @@ Phase 6: Ray Tracing (Compute + Hybrid)
 - **Shadow map Z 映射**: `glam::Mat4::orthographic_rh` 输出 OpenGL 约定 z∈[-1,1]，但 wgpu/Vulkan depth buffer 使用 z∈[0,1]。必须自写 wgpu 兼容的正交矩阵（`-1/(f-n)` + `-n/(f-n)`）
 - **Shadow UV Y-flip**: NDC y=-1 对应纹理 y=0（顶部），需 `uv.y = 0.5 - ndc.y*0.5`（和全屏 quad 同样规则）
 - **球体绕序**: `sphere()` 默认索引顺序 `(base, base+s+1, base+1)` 产生 CW 绕序（from outside），导致 inside-out。正确顺序 `(base+s+1, base, base+1)`
+- **IBL cubemap 投影**: `capture_projection()` 必须用 `correction * p_gl`（先 GL 投影再 z 修正），且 x/y 要同步缩放 2x 补偿 w 的变化。详见 ADR-0006。
+- **HDR 加载翻转**: `image` crate 加载 HDR 原点在左上角，equirect 贴图原点在左下角 → 图像垂直翻转。通过 `capture_views` 的 ±Y 面对调补偿，IBL 反射采样时 Y 取反。详见 ADR-0006。
+- **天空盒视线重建**: `world_ray.xyz / world_ray.w` 是从世界原点出发的方向，必须减 `camera_pos` 才是相机视线方向。
+- **天空盒色调映射**: 天空路径和几何路径必须共用同一个 tone mapping，不能各自独立 return。
+- **鼠标 Delta 累加**: `InputManager` 的 `mouse_delta` 必须 `+=` 累加，不能 `=` 覆盖（winit 每帧多次 CursorMoved 事件）。
 - **Per-object draw 顺序**: GBufferPass/ShadowPass 在 render pass 内逐物体 draw 时，若用 `queue.write_buffer` 更新 uniform，部分物体可能拿到 stale 数据。方案：pre-upload 全部 per-object 数据到 dynamic uniform buffer，render pass 内仅 `set_bind_group(offset)` + draw
 - **Shadow bias**: 使用软件 slope-scale bias（见 ADR-0004）。公式 `tan(acos(NdotL))`，base=0.005 NDC 单位，clamp 到 base×10。硬件 `DepthBiasState` 保持全零（Depth32Float 精度不足以在当前投影尺度下调参）。不使用 world-space 法线偏移（对垂直于光源的表面无效），不使用 front-face culling（导致漏光）。
 - **Depth-only 渲染**: 不需要 fragment shader。`fragment: None` + vertex shader 只输出 `@builtin(position)`，GPU 自动从 clip_position 推导深度。手动写 `@builtin(frag_depth)` 容易出错（如 return 0.0）

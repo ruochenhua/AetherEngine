@@ -113,6 +113,7 @@ impl SceneLoader {
             shadow_normal_bias: 0.005,
             _pad3: 0.0,
             light_view_proj: [[0.0; 4]; 4],
+            inv_view_proj: [[0.0; 4]; 4],
         }
     }
 }

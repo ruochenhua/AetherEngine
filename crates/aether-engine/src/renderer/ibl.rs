@@ -43,6 +43,8 @@ impl Default for IblConfig {
 
 /// Precomputed IBL resources.
 pub struct IblResources {
+    /// Full-resolution environment cubemap (512×512, 1 mip, Rgba16Float). Used for skybox.
+    pub env_view: wgpu::TextureView,
     /// Diffuse irradiance cubemap (32×32, Rgba16Float).
     pub irradiance_view: wgpu::TextureView,
     /// Prefiltered specular cubemap (128×128, 5 mips, Rgba16Float).
@@ -51,6 +53,7 @@ pub struct IblResources {
     pub brdf_lut_view: wgpu::TextureView,
     /// Shared sampler (trilinear, clamp-to-edge) for all IBL textures.
     pub ibl_sampler: wgpu::Sampler,
+    _env_texture: wgpu::Texture,
     _irradiance_texture: wgpu::Texture,
     _prefiltered_texture: wgpu::Texture,
     _brdf_lut_texture: wgpu::Texture,
@@ -142,10 +145,12 @@ impl IblResources {
         }
 
         Self {
+            env_view,
             irradiance_view,
             prefiltered_view,
             brdf_lut_view,
             ibl_sampler,
+            _env_texture: env_tex,
             _irradiance_texture: irradiance_tex,
             _prefiltered_texture: prefiltered_tex,
             _brdf_lut_texture: brdf_lut_tex,
@@ -319,8 +324,8 @@ fn capture_views() -> [[f32; 16]; 6] {
     [
         look_at([0.,0.,0.], [ 1.,0.,0.], [0.,-1.,0.]),  // +X
         look_at([0.,0.,0.], [-1.,0.,0.], [0.,-1.,0.]),  // -X
-        look_at([0.,0.,0.], [0., 1.,0.], [0.,0., 1.]),  // +Y
-        look_at([0.,0.,0.], [0.,-1.,0.], [0.,0.,-1.]),  // -Y
+        look_at([0.,0.,0.], [0.,-1.,0.], [0.,0.,-1.]),  // +Y layer ← render -Y view
+        look_at([0.,0.,0.], [0., 1.,0.], [0.,0., 1.]),  // -Y layer ← render +Y view
         look_at([0.,0.,0.], [0.,0., 1.], [0.,-1.,0.]),  // +Z
         look_at([0.,0.,0.], [0.,0.,-1.], [0.,-1.,0.]),  // -Z
     ]
@@ -328,16 +333,18 @@ fn capture_views() -> [[f32; 16]; 6] {
 
 fn capture_projection() -> [f32; 16] {
     // glam::perspective_rh outputs OpenGL z∈[-1,1]. wgpu expects z∈[0,1].
-    // Apply correction: z_wgpu = (z_gl + 1) / 2
+    // Correction: z_wgpu_ndc = (z_gl_ndc + 1) / 2
+    //   z' = z_gl + w_gl,  w' = 2*w_gl    (maps z to [0,1])
+    //   x' = 2*x_gl,      y' = 2*y_gl    (compensate to keep x/w, y/w unchanged)
     let p_gl = glam::Mat4::perspective_rh(90.0f32.to_radians(), 1.0, 0.1, 10.0);
     let correction = glam::Mat4::from_cols_array(&[
-        1.0, 0.0, 0.0, 0.0,
-        0.0, 1.0, 0.0, 0.0,
-        0.0, 0.0, 0.5, 0.5,
-        0.0, 0.0, 0.0, 1.0,
+        2.0, 0.0, 0.0, 0.0,
+        0.0, 2.0, 0.0, 0.0,
+        0.0, 0.0, 1.0, 0.0,
+        0.0, 0.0, 1.0, 2.0,
     ]);
-    // p_gl * correction: world → OpenGL clip → wgpu clip
-    (p_gl * correction).to_cols_array()
+    // correction * p_gl: apply GL projection first, then z-correction
+    (correction * p_gl).to_cols_array()
 }
 
 // ── Render-to-cubemap logic ──────────────────────────────────────────
@@ -368,12 +375,25 @@ impl CpuCubemap {
         );
 
         let views = capture_views();
+        let flips: [[u32; 4]; 6] = [
+            [0, 0, 0, 0],  // +X
+            [0, 0, 0, 0],  // -X
+            [0, 0, 0, 0],  // -Y view
+            [0, 0, 0, 0],  // +Y view
+            [0, 0, 0, 0],  // +Z
+            [0, 0, 0, 0],  // -Z
+        ];
         let mut encoder =
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         for face in 0u32..6 {
             let view_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: None,
                 contents: bytemuck::cast_slice(&views[face as usize]),
+                usage: wgpu::BufferUsages::UNIFORM,
+            });
+            let flip_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: None,
+                contents: bytemuck::cast_slice(&flips[face as usize]),
                 usage: wgpu::BufferUsages::UNIFORM,
             });
             let vp_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -387,6 +407,10 @@ impl CpuCubemap {
                     wgpu::BindGroupEntry {
                         binding: 1,
                         resource: view_buf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: flip_buf.as_entire_binding(),
                     },
                 ],
             });
@@ -460,6 +484,11 @@ impl CpuCubemap {
             min_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
+        let flip_zero = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: None,
+            contents: bytemuck::cast_slice(&[0u32, 0u32, 0u32, 0u32]),
+            usage: wgpu::BufferUsages::UNIFORM,
+        });
 
         let views = capture_views();
         let mut encoder =
@@ -481,6 +510,10 @@ impl CpuCubemap {
                     wgpu::BindGroupEntry {
                         binding: 1,
                         resource: view_buf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: flip_zero.as_entire_binding(),
                     },
                 ],
             });
@@ -544,6 +577,11 @@ impl CpuCubemap {
         let proj_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: None,
             contents: bytemuck::cast_slice(&proj),
+            usage: wgpu::BufferUsages::UNIFORM,
+        });
+        let flip_zero = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: None,
+            contents: bytemuck::cast_slice(&[0u32, 0u32, 0u32, 0u32]),
             usage: wgpu::BufferUsages::UNIFORM,
         });
         let (bgl0, bgl1) = Self::bgl_pair(device, wgpu::TextureViewDimension::Cube);
@@ -652,6 +690,10 @@ impl CpuCubemap {
                         wgpu::BindGroupEntry {
                             binding: 1,
                             resource: view_buf.as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: flip_zero.as_entire_binding(),
                         },
                     ],
                 });
@@ -788,6 +830,16 @@ impl CpuCubemap {
                     },
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
         });
         let bgl1 = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -866,6 +918,7 @@ struct VertexOutput {
     @location(0) local_pos: vec3<f32>,
 };
 struct Uniforms { proj: mat4x4<f32>, };
+struct Flip { flip_x: u32, flip_y: u32, flip_z: u32, _pad: u32, };
 
 @group(0) @binding(0) var<uniform> proj: Uniforms;
 @group(0) @binding(1) var<uniform> view: Uniforms;
@@ -879,12 +932,17 @@ fn vs_main(@location(0) pos: vec3<f32>) -> VertexOutput {
 }
 
 const invAtan: vec2<f32> = vec2<f32>(0.1591, 0.3183);
-fn sample_spherical_map(v: vec3<f32>) -> vec2<f32> {
-    var uv = vec2<f32>(atan2(v.z, v.x), asin(v.y));
+fn sample_spherical_map(v: vec3<f32>, flip_x: u32, flip_y: u32, flip_z: u32) -> vec2<f32> {
+    let vx = select(v.x, -v.x, flip_x == 1u);
+    let vy = select(v.y, -v.y, flip_y == 1u);
+    let vz = select(v.z, -v.z, flip_z == 1u);
+    var uv = vec2<f32>(atan2(vz, vx), asin(vy));
     uv = uv * invAtan;
     uv = uv + vec2<f32>(0.5);
     return uv;
 }
+
+@group(0) @binding(2) var<uniform> flip: Flip;
 
 @group(1) @binding(0) var equirect_map: texture_2d<f32>;
 @group(1) @binding(1) var equirect_sampler: sampler;
@@ -892,7 +950,7 @@ fn sample_spherical_map(v: vec3<f32>) -> vec2<f32> {
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let dir = normalize(in.local_pos);
-    let uv = sample_spherical_map(dir);
+    let uv = sample_spherical_map(dir, flip.flip_x, flip.flip_y, flip.flip_z);
     return textureSample(equirect_map, equirect_sampler, uv);
 }
 "#;

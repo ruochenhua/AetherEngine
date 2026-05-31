@@ -48,7 +48,8 @@ impl InputManager {
             }
             WindowEvent::CursorMoved { position, .. } => {
                 let new_pos = (position.x as f32, position.y as f32);
-                self.mouse_delta = (new_pos.0 - self.mouse_position.0, new_pos.1 - self.mouse_position.1);
+                self.mouse_delta.0 += new_pos.0 - self.mouse_position.0;
+                self.mouse_delta.1 += new_pos.1 - self.mouse_position.1;
                 self.mouse_position = new_pos;
             }
             WindowEvent::MouseInput { state, button, .. } => {

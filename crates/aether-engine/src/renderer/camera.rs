@@ -90,29 +90,21 @@ impl FlyCamera {
     /// Update camera from input state.
     ///
     /// `dt` is frame delta time in seconds. `input` provides mouse/key state.
-    /// The caller should toggle `active` via `input.mouse_pressed(Right)`
-    /// before calling this method.
+    /// Hold left mouse + drag to rotate. WASD to move.
     pub fn update(&mut self, dt: f32, mouse_dx: f32, mouse_dy: f32, scroll: f32, input: &crate::input::InputManager) {
-        // Toggle fly mode on right-click
-        if input.mouse_pressed(winit::event::MouseButton::Right) {
-            self.active = !self.active;
-        }
-
-        // Speed adjustment via scroll wheel (only when active)
-        if self.active && scroll != 0.0 {
+        // Speed adjustment via scroll wheel
+        if scroll != 0.0 {
             self.speed = (self.speed + scroll * self.base_speed * 0.5)
                 .clamp(self.min_speed, self.max_speed);
         }
 
-        if !self.active {
-            return;
-        }
-
-        // Mouse look
-        if mouse_dx != 0.0 || mouse_dy != 0.0 {
-            self.yaw -= mouse_dx * self.sensitivity;
-            self.pitch = (self.pitch + mouse_dy * self.sensitivity)
-                .clamp(-std::f32::consts::FRAC_PI_2 + 0.01, std::f32::consts::FRAC_PI_2 - 0.01);
+        // Mouse look only when left mouse is held
+        if input.mouse_held(winit::event::MouseButton::Left) {
+            if mouse_dx.abs() > 0.0 || mouse_dy.abs() > 0.0 {
+                self.yaw -= mouse_dx * self.sensitivity;
+                self.pitch = (self.pitch + mouse_dy * self.sensitivity)
+                    .clamp(-std::f32::consts::FRAC_PI_2 + 0.01, std::f32::consts::FRAC_PI_2 - 0.01);
+            }
         }
 
         // WASD movement along camera axes

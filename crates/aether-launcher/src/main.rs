@@ -188,6 +188,10 @@ fn main() {
                             if input.key_pressed(KeyCode::Digit7) { debug_mode = 7; }
                             if input.key_pressed(KeyCode::Digit8) { debug_mode = 8; }
                             if input.key_pressed(KeyCode::Digit9) { debug_mode = 9; }
+                            if input.key_pressed(KeyCode::F1) { debug_mode = 10; }
+                            if input.key_pressed(KeyCode::F2) { debug_mode = 11; }
+                            if input.key_pressed(KeyCode::F3) { debug_mode = 12; }
+                            if input.key_pressed(KeyCode::F4) { debug_mode = 13; }
 
                             if let Some(idx) = pending_load.take() {
                                 let entry = &scene_entries[idx];
@@ -311,21 +315,17 @@ fn main() {
                                                         camera.speed
                                                     ));
                                                     ui.label(format!(
-                                                        "FlyCam: {}",
-                                                        if camera.active {
-                                                            "◉ ACTIVE"
-                                                        } else {
-                                                            "○ IDLE"
-                                                        }
+                                                        "FlyCam: drag to look"
                                                     ));
                                                     let mode_names = [
                                                         "Full", "Ambient", "Diffuse",
                                                         "Specular", "Normals", "NdotL",
                                                         "Shadow", "Direct", "IBL",
-                                                        "NormalAlpha",
+                                                        "Alpha(P)", "Alpha(N)",
+                                                        "NDC(F2)", "EnvFix(F3)", "VDir(F4)",
                                                     ];
                                                     let mode_idx =
-                                                        debug_mode.clamp(0, 9) as usize;
+                                                        debug_mode.clamp(0, 13) as usize;
                                                     ui.label(format!(
                                                         "Debug: [{}] {}",
                                                         mode_idx, mode_names[mode_idx]

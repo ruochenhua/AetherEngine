@@ -10,9 +10,11 @@ A modern rendering engine built with **Rust** and **wgpu**, designed for learnin
 
 - **Modern Architecture**: ECS (hecs) + type-safe pass scheduling (PipelineBuilder / Scheduler)
 - **Cross-Platform**: wgpu automatically targets Vulkan/Metal/DX12
-- **Deferred Shading**: G-Buffer-based Blinn-Phong PBR with debug visualisation
-- **UE-style Fly Camera**: Right-click fly mode, WASD + QE movement, scroll speed
-- **Debug Tools**: World grid, RGB axis gizmo, per-component lighting debug
+- **Deferred Shading**: G-Buffer-based Cook-Torrance PBR (GGX NDF + Smith G + Schlick Fresnel)
+- **Image-Based Lighting**: Diffuse irradiance + specular prefiltered cubemap + BRDF LUT
+- **Skybox**: High-resolution environment cubemap rendering
+- **UE-style Fly Camera**: Left-click drag to look, WASD + QE movement, scroll speed
+- **Debug Tools**: World grid, RGB axis gizmo, per-component lighting + IBL debug
 - **AI-First**: Every module fits a single AI context window; adding a pass = one file + one registration line
 - **Test-Driven**: Red-green-refactor on every change; build-time catch for resource wiring errors
 
@@ -34,12 +36,12 @@ cargo run -p aether-launcher
 
 | Input | Action |
 |-------|--------|
-| `Right Mouse` | Toggle fly mode |
+| `Left Mouse + Drag` | Look around |
 | `W A S D` | Move forward / left / back / right |
 | `Q` / `E` | Move down / up (world space) |
-| `Mouse` | Look around (fly mode) |
 | `Scroll` | Adjust movement speed |
-| `0` – `5` | Lighting debug: Full / Ambient / Diffuse / Specular / Normals / NdotL |
+| `0` – `9` | Lighting debug: Full / Ambient / Diffuse / Specular / Normals / NdotL / Shadow / Direct / IBL / Alpha |
+| `F1` – `F4` | IBL/Skybox debug: NormalAlpha / NDC / EnvFix / VDir |
 | `Esc` | Return to launcher menu |
 
 ## 🤖 AI-First Design
@@ -119,7 +121,7 @@ main.rs (thin orchestration, ~80 lines)
 │   │       │   ├── pass.rs       # Pass trait (signature / init / resolve / execute)
 │   │       │   ├── scheduler.rs  # Scheduler + PipelineBuilder
 │   │       │   ├── resource.rs   # ResHandle<T> + ResourceTable
-│   │       │   ├── context.rs    # wgpu context + RenderContext
+│   │       │   ├── ibl.rs        # IBL precomputation + skybox
 │   │       │   ├── camera.rs     # FlyCamera
 │   │       │   └── passes/
 │   │       │       ├── template.rs  # AI copy-paste template
@@ -170,8 +172,8 @@ Resource wiring is type-checked at build time. Execution order is topological.
 | Phase | Features | Status |
 |-------|----------|--------|
 | **Phase 0** | Window, triangle, egui, launcher | ✅ Complete |
-| **Phase 1** | Deferred PBR, fly camera, debug tools, type-safe scheduler, shadow mapping | ✅ Complete |
-| **Phase 2** | IBL, screen-space effects (SSAO, SSR) | 🔲 Planned |
+| **Phase 1** | Deferred PBR, fly camera, debug tools, type-safe scheduler, shadow mapping, IBL + skybox | ✅ Complete |
+| **Phase 2** | Screen-space effects (SSAO, SSR) | 🔲 Planned |
 | **Phase 3** | ECS runtime, ray picking, transform gizmo, editor UI shell, scene save | 🔲 Planned |
 | **Phase 4** | Post-process chain, tone mapping | 🔲 Planned |
 | **Phase 5** | Terrain + Atmosphere + Water + Volumetric Clouds | 🔲 Planned |

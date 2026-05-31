@@ -165,6 +165,10 @@ impl Pass for LightingPass {
         uniforms.camera_pos = frame.camera.position.into();
         uniforms.debug_mode = self.debug_mode;
         uniforms.light_view_proj = light_view_proj.to_cols_array_2d();
+        let proj = frame.camera.projection_matrix(frame.aspect);
+        let view = frame.camera.view_matrix();
+        let inv_view_proj = (proj * view).inverse();
+        uniforms.inv_view_proj = inv_view_proj.to_cols_array_2d();
         frame.queue.write_buffer(
             &self.uniform_buffer,
             0,
@@ -253,6 +257,7 @@ struct LightingUniforms {
     shadow_normal_bias: f32,
     _pad3: f32,
     light_view_proj: mat4x4<f32>,
+    inv_view_proj: mat4x4<f32>,
 };
 
 @group(0) @binding(0) var gbuffer_position: texture_2d<f32>;
@@ -271,6 +276,34 @@ struct LightingUniforms {
 @group(3) @binding(1) var prefiltered_map: texture_cube<f32>;
 @group(3) @binding(2) var brdf_lut: texture_2d<f32>;
 @group(3) @binding(3) var ibl_sampler: sampler;
+@group(3) @binding(4) var env_map: texture_cube<f32>;
+
+// ── Cook-Torrance BRDF ──────────────────────────────────────────────
+
+const PI: f32 = 3.14159265359;
+
+fn distribution_ggx(NdotH: f32, roughness: f32) -> f32 {
+    let a = roughness * roughness;
+    let a2 = a * a;
+    let denom = NdotH * NdotH * (a2 - 1.0) + 1.0;
+    return a2 / (PI * denom * denom);
+}
+
+fn geometry_schlick_ggx(NdotV: f32, roughness: f32) -> f32 {
+    let r = roughness + 1.0;
+    let k = (r * r) / 8.0;
+    return NdotV / (NdotV * (1.0 - k) + k);
+}
+
+fn geometry_smith(NdotV: f32, NdotL: f32, roughness: f32) -> f32 {
+    let ggx2 = geometry_schlick_ggx(NdotV, roughness);
+    let ggx1 = geometry_schlick_ggx(NdotL, roughness);
+    return ggx1 * ggx2;
+}
+
+fn fresnel_schlick(cos_theta: f32, F0: vec3<f32>) -> vec3<f32> {
+    return F0 + (vec3<f32>(1.0) - F0) * pow(clamp(1.0 - cos_theta, 0.0, 1.0), 5.0);
+}
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
@@ -281,32 +314,71 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let material_sample = textureSample(gbuffer_material, gbuffer_sampler, uv);
 
     let world_pos = position_sample.xyz;
-    // Sky check: G-Buffer normal is (0,0,0,0) after clear.
-    // Geometry normal is (N*0.5+0.5, 1.0) → RGB never all zero.
-    if (normal_sample.r == 0.0 && normal_sample.g == 0.0 && normal_sample.b == 0.0) {
-        return vec4<f32>(0.05, 0.05, 0.05, 1.0);
+
+    // Reconstruct view ray once for sky + debug modes
+    let clip = vec4<f32>(in.uv.x * 2.0 - 1.0, 1.0 - in.uv.y * 2.0, 0.0, 1.0);
+    let world_ray = uniforms.inv_view_proj * clip;
+    let world_pos_rc = world_ray.xyz / world_ray.w;
+    let view_dir = normalize(world_pos_rc - uniforms.camera_pos);
+
+    // Debug modes that override everything (no tone mapping for raw values)
+    if (uniforms.debug_mode == 11u) {
+        // NDC coordinates as RGB (no matrix — verifies UV→NDC reconstruction)
+        let test = vec3<f32>(clip.xy * 0.5 + 0.5, 0.0);
+        return vec4<f32>(test, 1.0);
+    }
+    if (uniforms.debug_mode == 12u) {
+        // Raw env_map sample at FIXED forward direction — bypasses inv_view_proj
+        let env_fixed = textureSampleLevel(env_map, ibl_sampler, vec3<f32>(0.0, 0.0, -1.0), 0.0).rgb;
+        return vec4<f32>(env_fixed, 1.0);
+    }
+    if (uniforms.debug_mode == 13u) {
+        // view_dir as RGB — should change when camera rotates
+        return vec4<f32>(view_dir * 0.5 + 0.5, 1.0);
     }
 
+    // Sky check: G-Buffer normal is (0,0,0,0) after clear.
+    // Geometry normal is (N*0.5+0.5, 1.0) → RGB never all zero.
+    var output_color: vec3<f32>;
+    if (normal_sample.r == 0.0 && normal_sample.g == 0.0 && normal_sample.b == 0.0) {
+        output_color = textureSampleLevel(env_map, ibl_sampler, view_dir, 0.0).rgb;
+    } else {
     let N = normalize(normal_sample.xyz * 2.0 - 1.0);
     let albedo = albedo_sample.rgb;
     let roughness = material_sample.r;
     let metallic = material_sample.g;
 
+    // PBR material parameters
+    let F0 = mix(vec3<f32>(0.04), albedo, metallic);
+
     let L = normalize(-uniforms.light.direction);
     let V = normalize(uniforms.camera_pos - world_pos);
     let H = normalize(L + V);
 
-    let ambient = albedo * uniforms.ambient_intensity;
     let NdotL = max(dot(N, L), 0.0);
-    let diffuse = albedo * NdotL * uniforms.light.color * uniforms.light.intensity;
-
+    let NdotV = max(dot(N, V), 0.0);
     let NdotH = max(dot(N, H), 0.0);
-    let shininess = mix(8.0, 128.0, 1.0 - roughness);
-    let specular_intensity = pow(NdotH, shininess);
-    let specular_color = mix(vec3<f32>(0.04), albedo, metallic);
-    let specular = specular_color * specular_intensity * uniforms.light.intensity;
+    let VdotH = max(dot(V, H), 0.0);
 
-    let lit_color = ambient + diffuse + specular;
+    // Cook-Torrance specular
+    let NDF = distribution_ggx(NdotH, roughness);
+    let G = geometry_smith(NdotV, NdotL, roughness);
+    let F = fresnel_schlick(VdotH, F0);
+
+    let numerator = NDF * G * F;
+    let denominator = 4.0 * NdotV * NdotL + 0.0001;
+    let specular = numerator / denominator;
+
+    // Diffuse with energy conservation (Fresnel-based kD)
+    let kS = F;
+    let kD = (vec3<f32>(1.0) - kS) * (1.0 - metallic);
+
+    let ambient = albedo * uniforms.ambient_intensity;
+    let radiance = uniforms.light.color * uniforms.light.intensity;
+    let diffuse_direct = kD * albedo / PI * NdotL * radiance;
+    let specular_direct = specular * NdotL * radiance;
+
+    let lit_color = ambient + diffuse_direct + specular_direct;
 
     // Shadow: transform world_pos to light space, sample shadow map with
     // slope-scale depth bias (OpenGL Tutorial 16 approach):
@@ -340,35 +412,28 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let shadow_factor = mix(0.3, 1.0, visibility);
     let direct_light = lit_color * shadow_factor;
 
-    // IBL (Image-Based Lighting)
-    let NdotV = saturate(dot(N, V));
+    // IBL (Image-Based Lighting) — uses same F (Fresnel) and kD as direct light
     let R = reflect(-V, N);
 
     // Diffuse IBL: sample irradiance cubemap
-    let kD = (1.0 - metallic) * 0.96; // approximate Fresnel F0=0.04
     let irradiance = textureSample(irradiance_map, ibl_sampler, N).rgb;
     let diffuse_ibl = kD * albedo * irradiance;
 
     // Specular IBL: sample prefiltered cubemap + BRDF LUT
     let mip_level = roughness * 4.0; // 5 mips, mip 4 = roughness 1.0
-    let prefiltered_color = textureSampleLevel(prefiltered_map, ibl_sampler, R, mip_level).rgb;
+    let prefiltered_color = textureSampleLevel(prefiltered_map, ibl_sampler, vec3<f32>(R.x, -R.y, R.z), mip_level).rgb;
     let env_brdf = textureSample(brdf_lut, ibl_sampler, vec2<f32>(NdotV, roughness)).rg;
-
-    // Fresnel-Schlick with roughness: rough dielectrics reflect more at grazing angles
-    let F0 = mix(vec3<f32>(0.04), albedo, metallic);
-    let F = F0 + (max(vec3<f32>(1.0 - roughness), F0) - F0) * pow(clamp(1.0 - NdotV, 0.0, 1.0), 5.0);
     let specular_ibl = prefiltered_color * (F * env_brdf.r + env_brdf.g);
 
     let ibl_light = diffuse_ibl + specular_ibl;
     let final_color = direct_light + ibl_light;
 
-    var output_color: vec3<f32>;
     if (uniforms.debug_mode == 1u) {
         output_color = ambient;
     } else if (uniforms.debug_mode == 2u) {
-        output_color = diffuse;
+        output_color = diffuse_direct;
     } else if (uniforms.debug_mode == 3u) {
-        output_color = specular;
+        output_color = specular_direct;
     } else if (uniforms.debug_mode == 4u) {
         output_color = N * 0.5 + 0.5;
     } else if (uniforms.debug_mode == 5u) {
@@ -393,7 +458,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         output_color = final_color;
     }
 
-    // Tone mapping — skip for debug mode 6 to see raw depth values
+    }  // closes geometry else block
+
+    // Tone mapping — shared between sky and geometry
+    // Skip for debug modes 6 (raw depth), 11-13 (view-ray/env/checker already returned)
     let mapped = select(
         output_color / (output_color + vec3<f32>(1.0)),
         output_color,
@@ -545,6 +613,16 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                         ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                         count: None,
                     },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 4,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::Cube,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
                 ],
             });
 
@@ -660,6 +738,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                     wgpu::BindGroupEntry {
                         binding: 3,
                         resource: wgpu::BindingResource::Sampler(&ibl.ibl_sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
+                        resource: wgpu::BindingResource::TextureView(&ibl.env_view),
                     },
                 ],
             }),
