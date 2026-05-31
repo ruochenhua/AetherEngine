@@ -10,14 +10,14 @@
 pub mod camera;
 /// wgpu context and device management.
 pub mod context;
-/// RenderGraph pass scheduling (legacy).
-pub mod graph;
+/// Per-frame data context (RenderFrame).
+pub mod frame;
 /// Light component definitions.
 pub mod light;
-/// Mesh rendering utilities.
-pub mod mesh;
 /// Pass trait and type-safe resource handles.
 pub mod pass;
+/// Shared renderable types (Renderable, MaterialUniform, ...).
+pub mod renderable;
 /// Render pass implementations.
 pub mod passes;
 /// Resource type tags (GPosition, GNormal, ...).

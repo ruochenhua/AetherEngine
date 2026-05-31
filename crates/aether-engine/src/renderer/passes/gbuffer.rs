@@ -4,50 +4,13 @@
 //! are uploaded to a single buffer before the render pass, avoiding
 //! in-pass write synchronization issues.
 
-use crate::asset::mesh::{GpuMesh, Vertex};
+use crate::asset::mesh::Vertex;
+use crate::renderer::frame::RenderFrame;
 use crate::renderer::pass::{Pass, PassSignature, ResHandle};
+use crate::renderer::renderable::*;
 use crate::renderer::resource::*;
 use crate::renderer::resource_table::ResourceTable;
 use glam::Mat4;
-use std::sync::Arc;
-
-/// Per-object uniform (model + material), 256-byte aligned for dynamic offset.
-#[repr(C, align(256))]
-#[derive(Clone, Copy, Debug)]
-pub struct ObjectUniform {
-    pub model: [[f32; 4]; 4],
-    pub albedo: [f32; 4],
-    pub roughness: f32,
-    pub metallic: f32,
-    pub _pad: [u8; 168], // fill to exactly 256 bytes
-}
-
-// Safety: ObjectUniform is #[repr(C, align(256))] with no invalid bit patterns
-unsafe impl bytemuck::Pod for ObjectUniform {}
-unsafe impl bytemuck::Zeroable for ObjectUniform {}
-
-/// View-projection uniform (shared).
-#[repr(C)]
-#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct ViewProjUniform {
-    pub view: [[f32; 4]; 4],
-    pub proj: [[f32; 4]; 4],
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct MaterialUniform { pub albedo: [f32; 4], pub roughness: f32, pub metallic: f32, pub _pad: [f32; 2], }
-
-impl Default for MaterialUniform {
-    fn default() -> Self { Self { albedo: [0.8, 0.3, 0.2, 1.0], roughness: 0.5, metallic: 0.0, _pad: [0.0, 0.0] } }
-}
-
-#[derive(Clone)]
-pub struct Renderable {
-    pub mesh: Arc<GpuMesh>,
-    pub transform: Mat4,
-    pub material: MaterialUniform,
-}
 
 pub struct GBufferPass {
     pipeline: wgpu::RenderPipeline,
@@ -90,10 +53,17 @@ impl Pass for GBufferPass {
         self.depth_handle = Some(resources.handle::<GDepth>("gbuffer_depth"));
     }
 
-    fn execute(&self, encoder: &mut wgpu::CommandEncoder, resources: &ResourceTable, queue: &wgpu::Queue, _surface_view: &wgpu::TextureView) {
+    fn apply_frame(&mut self, frame: &RenderFrame) {
+        self.renderables = frame.renderables.to_vec();
+        self.view = frame.camera.view_matrix();
+        self.proj = frame.camera.projection_matrix(frame.aspect);
+
         // Upload view/proj
-        let vp = ViewProjUniform { view: self.view.to_cols_array_2d(), proj: self.proj.to_cols_array_2d() };
-        queue.write_buffer(&self.view_proj_buffer, 0, bytemuck::cast_slice(&[vp]));
+        let vp = ViewProjUniform {
+            view: self.view.to_cols_array_2d(),
+            proj: self.proj.to_cols_array_2d(),
+        };
+        frame.queue.write_buffer(&self.view_proj_buffer, 0, bytemuck::cast_slice(&[vp]));
 
         // Upload all per-object data at once (before render pass)
         let obj_size = std::mem::size_of::<ObjectUniform>() as wgpu::BufferAddress;
@@ -108,12 +78,12 @@ impl Pass for GBufferPass {
             };
             obj_data.extend_from_slice(bytemuck::cast_slice(&[obj]));
         }
-        // Recreate object buffer if needed
-        // For now, the buffer is pre-allocated in new() with MAX_OBJECTS * obj_size
         if !obj_data.is_empty() {
-            queue.write_buffer(&self.object_buffer, 0, &obj_data);
+            frame.queue.write_buffer(&self.object_buffer, 0, &obj_data);
         }
+    }
 
+    fn execute(&self, encoder: &mut wgpu::CommandEncoder, resources: &ResourceTable, _surface_view: &wgpu::TextureView) {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("GBuffer"),
             color_attachments: &[
@@ -134,6 +104,7 @@ impl Pass for GBufferPass {
         pass.set_bind_group(0, &self.view_proj_bind_group, &[]);
 
         for (i, renderable) in self.renderables.iter().enumerate() {
+            let obj_size = std::mem::size_of::<ObjectUniform>() as wgpu::BufferAddress;
             let offset = i as wgpu::DynamicOffset * obj_size as wgpu::DynamicOffset;
             pass.set_bind_group(1, &self.object_bind_group, &[offset as u32]);
 
@@ -253,12 +224,6 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
             pos_handle: None, normal_handle: None, albedo_handle: None, material_handle: None, depth_handle: None,
             renderables: Vec::new(), view: Mat4::IDENTITY, proj: Mat4::IDENTITY,
         }
-    }
-
-    pub fn set_frame_data(&mut self, renderables: &[Renderable], view: Mat4, proj: Mat4) {
-        self.renderables = renderables.to_vec();
-        self.view = view;
-        self.proj = proj;
     }
 }
 

@@ -5,71 +5,12 @@
 //!
 //! Implements the `Pass` trait for type-safe scheduling.
 
+use crate::renderer::frame::RenderFrame;
+use crate::renderer::light::LightingUniforms;
 use crate::renderer::pass::{Pass, PassSignature, ResHandle};
 use crate::renderer::resource::*;
 use crate::renderer::resource_table::ResourceTable;
 use wgpu::util::DeviceExt;
-
-/// Directional light data.
-#[repr(C)]
-#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct DirectionalLight {
-    /// Light direction (pointing FROM the light).
-    pub direction: [f32; 3],
-    /// Padding.
-    pub _pad: f32,
-    /// Light color.
-    pub color: [f32; 3],
-    /// Light intensity.
-    pub intensity: f32,
-}
-
-impl Default for DirectionalLight {
-    fn default() -> Self {
-        Self {
-            direction: [-1.0, -1.0, -1.0],
-            _pad: 0.0,
-            color: [1.0, 1.0, 1.0],
-            intensity: 1.0,
-        }
-    }
-}
-
-/// Lighting uniform data.
-#[repr(C)]
-#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct LightingUniforms {
-    /// Camera world position.
-    pub camera_pos: [f32; 3],
-    /// Padding.
-    pub _pad1: f32,
-    /// Directional light.
-    pub light: DirectionalLight,
-    /// Ambient light intensity.
-    pub ambient_intensity: f32,
-    /// Debug visualization mode:
-    /// 0 = full lighting, 1 = ambient only, 2 = diffuse only,
-    /// 3 = specular only, 4 = normals, 5 = NdotL.
-    pub debug_mode: u32,
-    #[allow(dead_code)]
-    pub(crate) _pad2: [f32; 2],
-    /// Light-space view-projection for shadow sampling.
-    pub light_view_proj: [[f32; 4]; 4],
-}
-
-impl Default for LightingUniforms {
-    fn default() -> Self {
-        Self {
-            camera_pos: [3.0, 3.0, 3.0],
-            _pad1: 0.0,
-            light: DirectionalLight::default(),
-            ambient_intensity: 0.1,
-            debug_mode: 0,
-            _pad2: [0.0; 2],
-            light_view_proj: [[0.0; 4]; 4],
-        }
-    }
-}
 
 /// Lighting Pass implementation.
 pub struct LightingPass {
@@ -97,6 +38,8 @@ pub struct LightingPass {
     uniform_bind_group_layout: wgpu::BindGroupLayout,
     /// Surface format for render pipeline creation.
     surface_format: wgpu::TextureFormat,
+    /// Debug visualization mode (set by Launcher, used in apply_frame).
+    debug_mode: u32,
 }
 
 impl Pass for LightingPass {
@@ -211,11 +154,27 @@ impl Pass for LightingPass {
         ));
     }
 
+    fn apply_frame(&mut self, frame: &RenderFrame) {
+        let light_dir =
+            glam::Vec3::from_array(frame.lighting.light.direction).normalize();
+        let light_view_proj =
+            crate::renderer::passes::shadow::compute_light_space_matrix(&light_dir);
+
+        let mut uniforms = *frame.lighting;
+        uniforms.camera_pos = frame.camera.position.into();
+        uniforms.debug_mode = self.debug_mode;
+        uniforms.light_view_proj = light_view_proj.to_cols_array_2d();
+        frame.queue.write_buffer(
+            &self.uniform_buffer,
+            0,
+            bytemuck::cast_slice(&[uniforms]),
+        );
+    }
+
     fn execute(
         &self,
         encoder: &mut wgpu::CommandEncoder,
         _resources: &ResourceTable,
-        _queue: &wgpu::Queue,
         surface_view: &wgpu::TextureView,
     ) {
         let texture_bg = self.texture_bind_group.as_ref()
@@ -580,15 +539,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             shadow_bind_group_layout,
             uniform_bind_group_layout,
             surface_format,
+            debug_mode: 0,
         }
     }
 
-    /// Update lighting uniforms.
-    pub fn update_uniforms(&self, queue: &wgpu::Queue, uniforms: &LightingUniforms) {
-        queue.write_buffer(
-            &self.uniform_buffer,
-            0,
-            bytemuck::cast_slice(&[*uniforms]),
-        );
+    /// Set debug visualization mode for the next frame.
+    pub fn set_debug_mode(&mut self, mode: u32) {
+        self.debug_mode = mode;
     }
 }

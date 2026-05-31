@@ -5,9 +5,9 @@
 
 use crate::{
     asset::{mesh::GpuMesh, registry::BuiltinMeshRegistry},
-    renderer::passes::{
-        gbuffer::{MaterialUniform, Renderable},
-        lighting::{DirectionalLight, LightingUniforms},
+    renderer::{
+        light::{DirectionalLight, LightingUniforms},
+        renderable::{MaterialUniform, Renderable},
     },
     scene::{MeshRef, SceneDescription},
 };

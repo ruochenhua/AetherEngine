@@ -2,7 +2,9 @@
 //! Uses dynamic uniform offsets for per-object model matrices.
 
 use crate::asset::mesh::Vertex;
+use crate::renderer::frame::RenderFrame;
 use crate::renderer::pass::{Pass, PassSignature, ResHandle};
+use crate::renderer::renderable::Renderable;
 use crate::renderer::resource::*;
 use crate::renderer::resource_table::ResourceTable;
 use glam::Mat4;
@@ -30,7 +32,7 @@ pub struct ShadowPass {
     object_buffer: wgpu::Buffer,
     object_bind_group: wgpu::BindGroup,
     shadow_depth_handle: Option<ResHandle<ShadowDepth>>,
-    renderables: Vec<crate::renderer::passes::gbuffer::Renderable>,
+    renderables: Vec<Renderable>,
     light_view_proj: Mat4,
 }
 
@@ -43,19 +45,37 @@ impl Pass for ShadowPass {
     fn resolve(&mut self, _device: &wgpu::Device, resources: &ResourceTable) {
         self.shadow_depth_handle = Some(resources.handle::<ShadowDepth>("shadow_depth"));
     }
-    fn execute(&self, encoder: &mut wgpu::CommandEncoder, resources: &ResourceTable, queue: &wgpu::Queue, _surface_view: &wgpu::TextureView) {
+
+    fn apply_frame(&mut self, frame: &RenderFrame) {
+        self.renderables = frame.renderables.to_vec();
+        let light_dir =
+            glam::Vec3::from_array(frame.lighting.light.direction).normalize();
+        self.light_view_proj = compute_light_space_matrix(&light_dir);
+
         // Upload light VP
-        let vp = LightSpaceUniform { light_view_proj: self.light_view_proj.to_cols_array_2d() };
-        queue.write_buffer(&self.light_vp_buffer, 0, bytemuck::cast_slice(&[vp]));
+        let vp = LightSpaceUniform {
+            light_view_proj: self.light_view_proj.to_cols_array_2d(),
+        };
+        frame
+            .queue
+            .write_buffer(&self.light_vp_buffer, 0, bytemuck::cast_slice(&[vp]));
 
         // Upload all model matrices
         let obj_size = std::mem::size_of::<ShadowObjectUniform>() as wgpu::BufferAddress;
-        let mut data: Vec<u8> = Vec::with_capacity(self.renderables.len() * obj_size as usize);
+        let mut data: Vec<u8> =
+            Vec::with_capacity(self.renderables.len() * obj_size as usize);
         for r in &self.renderables {
-            data.extend_from_slice(bytemuck::cast_slice(&[ShadowObjectUniform { model: r.transform.to_cols_array_2d(), _pad: [0u8; 192] }]));
+            data.extend_from_slice(bytemuck::cast_slice(&[ShadowObjectUniform {
+                model: r.transform.to_cols_array_2d(),
+                _pad: [0u8; 192],
+            }]));
         }
-        if !data.is_empty() { queue.write_buffer(&self.object_buffer, 0, &data); }
+        if !data.is_empty() {
+            frame.queue.write_buffer(&self.object_buffer, 0, &data);
+        }
+    }
 
+    fn execute(&self, encoder: &mut wgpu::CommandEncoder, resources: &ResourceTable, _surface_view: &wgpu::TextureView) {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Shadow"), color_attachments: &[],
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
@@ -70,6 +90,7 @@ impl Pass for ShadowPass {
         pass.set_bind_group(0, &self.light_vp_bind_group, &[]);
 
         for (i, r) in self.renderables.iter().enumerate() {
+            let obj_size = std::mem::size_of::<ShadowObjectUniform>() as wgpu::BufferAddress;
             let offset = i as u32 * obj_size as u32;
             pass.set_bind_group(1, &self.object_bind_group, &[offset]);
             pass.set_vertex_buffer(0, r.mesh.vertex_buffer.slice(..));
@@ -152,11 +173,6 @@ fn vs_main(in: VertexInput) -> VertexOutput {
         });
 
         Self { pipeline, light_vp_buffer: vp_buf, light_vp_bind_group: vp_bg, object_buffer: obj_buf, object_bind_group: obj_bg, shadow_depth_handle: None, renderables: Vec::new(), light_view_proj: Mat4::IDENTITY }
-    }
-
-    pub fn set_frame_data(&mut self, renderables: &[crate::renderer::passes::gbuffer::Renderable], light_view_proj: Mat4) {
-        self.renderables = renderables.to_vec();
-        self.light_view_proj = light_view_proj;
     }
 }
 

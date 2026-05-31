@@ -1,7 +1,7 @@
 //! Aether Engine Launcher
 //!
-//! Unified entry point. PipelineBuilder validates pass graph, allocates
-//! transient textures, and sets up per-frame execution.
+//! Thin orchestration layer. Builds the Scheduler from passes,
+//! injects per-frame data via `RenderFrame`, and delegates execution.
 
 use aether_engine::{
     asset::registry::BuiltinMeshRegistry,
@@ -9,16 +9,14 @@ use aether_engine::{
     renderer::{
         camera::FlyCamera,
         context::RenderContext,
-        pass::Pass,
+        frame::RenderFrame,
+        light::LightingUniforms,
         passes::{
             debug::DebugLinePass,
             gbuffer::GBufferPass,
             lighting::LightingPass,
-            lighting::LightingUniforms,
-            shadow::{self, ShadowPass},
+            shadow::ShadowPass,
         },
-        resource::Swapchain,
-        resource_table::ResourceTable,
         scheduler::PipelineBuilder,
     },
     scene::loader::{SceneLoader, SceneResources},
@@ -36,22 +34,15 @@ use winit::{
 
 enum LauncherState {
     Menu,
-    Running { resources: SceneResources },
+    Running {
+        resources: SceneResources,
+        lighting: LightingUniforms,
+    },
 }
 
 struct SceneEntry {
     name: String,
     path: std::path::PathBuf,
-}
-
-// ── Render pipeline (concrete, named fields) ────────────────────────
-
-struct RenderPipeline {
-    shadow: ShadowPass,
-    gbuffer: GBufferPass,
-    lighting: LightingPass,
-    debug: DebugLinePass,
-    resource_table: ResourceTable,
 }
 
 fn discover_scenes() -> Vec<SceneEntry> {
@@ -103,41 +94,16 @@ fn main() {
 
     let mut input = InputManager::new();
     let mesh_registry = BuiltinMeshRegistry::new();
+    let surface_format = ctx.surface_format();
     let depth_format = wgpu::TextureFormat::Depth32Float;
 
-    // Build typed passes
-    let shadow_pass = ShadowPass::new(&ctx.device);
-    let gbuffer_pass = GBufferPass::new(&ctx.device);
-    let lighting_pass = LightingPass::new(&ctx.device, ctx.surface_format());
-    let debug_line_pass =
-        DebugLinePass::new(&ctx.device, ctx.surface_format(), depth_format);
-
-    // Validate and allocate resources
-    let resource_table = PipelineBuilder::validate_and_allocate(
-        &[
-            &shadow_pass as &dyn Pass,
-            &gbuffer_pass as &dyn Pass,
-            &lighting_pass as &dyn Pass,
-            &debug_line_pass as &dyn Pass,
-        ],
-        &ctx.device,
-        ctx.config.width,
-        ctx.config.height,
-    );
-
-    let mut pipeline = RenderPipeline {
-        shadow: shadow_pass,
-        gbuffer: gbuffer_pass,
-        lighting: lighting_pass,
-        debug: debug_line_pass,
-        resource_table,
-    };
-
-    // Resolve passes
-    pipeline.shadow.resolve(&ctx.device, &pipeline.resource_table);
-    pipeline.gbuffer.resolve(&ctx.device, &pipeline.resource_table);
-    pipeline.lighting.resolve(&ctx.device, &pipeline.resource_table);
-    pipeline.debug.resolve(&ctx.device, &pipeline.resource_table);
+    // Build scheduler: validates the pass graph, allocates textures, resolves passes.
+    let mut scheduler = PipelineBuilder::new()
+        .add(ShadowPass::new(&ctx.device))
+        .add(GBufferPass::new(&ctx.device))
+        .add(LightingPass::new(&ctx.device, surface_format))
+        .add(DebugLinePass::new(&ctx.device, surface_format, depth_format))
+        .build(&ctx.device, ctx.config.width, ctx.config.height);
 
     // Camera
     let mut camera = FlyCamera {
@@ -185,22 +151,7 @@ fn main() {
                             if size.width > 0 && size.height > 0 =>
                         {
                             ctx.resize(size.width, size.height);
-                            // Rebuild transient textures and re-resolve
-                            pipeline.resource_table = PipelineBuilder::validate_and_allocate(
-                                &[
-                                    &pipeline.shadow as &dyn Pass,
-                                    &pipeline.gbuffer as &dyn Pass,
-                                    &pipeline.lighting as &dyn Pass,
-                                    &pipeline.debug as &dyn Pass,
-                                ],
-                                &ctx.device,
-                                size.width,
-                                size.height,
-                            );
-                            pipeline.shadow.resolve(&ctx.device, &pipeline.resource_table);
-                            pipeline.gbuffer.resolve(&ctx.device, &pipeline.resource_table);
-                            pipeline.lighting.resolve(&ctx.device, &pipeline.resource_table);
-                            pipeline.debug.resolve(&ctx.device, &pipeline.resource_table);
+                            scheduler.rebuild(&ctx.device, size.width, size.height);
                         }
                         WindowEvent::RedrawRequested => {
                             let now = std::time::Instant::now();
@@ -241,8 +192,12 @@ fn main() {
                                             &desc, &ctx.device, &mesh_registry,
                                         ) {
                                             Ok(resources) => {
-                                                state =
-                                                    LauncherState::Running { resources };
+                                                let lighting =
+                                                    resources.lighting_uniforms;
+                                                state = LauncherState::Running {
+                                                    resources,
+                                                    lighting,
+                                                };
                                                 show_overlay = false;
                                             }
                                             Err(e) => {
@@ -301,7 +256,7 @@ fn main() {
                                             }
                                         });
                                     }
-                                    LauncherState::Running { resources } => {
+                                    LauncherState::Running { resources, .. } => {
                                         egui::Area::new("menu_btn".into())
                                             .anchor(egui::Align2::LEFT_TOP, [8.0, 8.0])
                                             .show(ctx, |ui| {
@@ -429,68 +384,25 @@ fn main() {
                                         occlusion_query_set: None,
                                     });
                                 }
-                                LauncherState::Running { ref resources } => {
+                                LauncherState::Running {
+                                                    ref resources,
+                                                    ref lighting,
+                                                } => {
                                     let aspect =
                                         ctx.config.width as f32 / ctx.config.height as f32;
-                                    let view = camera.view_matrix();
-                                    let proj = camera.projection_matrix(aspect);
-                                    let view_proj = proj * view;
 
-                                    // Compute light-space matrix from directional light
-                                    let light_dir = glam::Vec3::from_array(
-                                        resources.lighting_uniforms.light.direction,
-                                    ).normalize();
-                                    let light_view_proj = shadow::compute_light_space_matrix(&light_dir);
-
-                                    // Shadow pass: render depth from light perspective
-                                    pipeline.shadow.set_frame_data(
-                                        &resources.renderables,
-                                        light_view_proj,
-                                    );
-                                    pipeline.shadow.execute(
-                                        &mut encoder,
-                                        &pipeline.resource_table,
-                                        &ctx.queue,
-                                        &target_view,
-                                    );
-
-                                    // GBuffer pass
-                                    pipeline.gbuffer.set_frame_data(
-                                        &resources.renderables,
-                                        view,
-                                        proj,
-                                    );
-
-                                    let lighting = &resources.lighting_uniforms;
-                                    let mut uniforms = *lighting;
-                                    uniforms.camera_pos = camera.position.into();
-                                    uniforms.debug_mode = debug_mode as u32;
-                                    uniforms.light_view_proj = light_view_proj.to_cols_array_2d();
-                                    pipeline.lighting.update_uniforms(
-                                        &ctx.queue,
-                                        &uniforms,
-                                    );
-                                    pipeline.debug.update_uniform(&ctx.queue, &view_proj);
-
-                                    // Execute passes in order
-                                    pipeline.gbuffer.execute(
-                                        &mut encoder,
-                                        &pipeline.resource_table,
-                                        &ctx.queue,
-                                        &target_view,
-                                    );
-                                    pipeline.lighting.execute(
-                                        &mut encoder,
-                                        &pipeline.resource_table,
-                                        &ctx.queue,
-                                        &target_view,
-                                    );
-                                    pipeline.debug.execute(
-                                        &mut encoder,
-                                        &pipeline.resource_table,
-                                        &ctx.queue,
-                                        &target_view,
-                                    );
+                                    // Build per-frame context — all passes extract
+                                    // what they need via apply_frame.
+                                    let frame = RenderFrame {
+                                        renderables: &resources.renderables,
+                                        camera: &camera,
+                                        lighting,
+                                        queue: &ctx.queue,
+                                        aspect,
+                                        delta_time: dt,
+                                    };
+                                    scheduler.apply_frame_all(&frame);
+                                    scheduler.execute_all(&mut encoder, &target_view);
                                 }
                             }
 

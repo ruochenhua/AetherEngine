@@ -6,10 +6,10 @@
 //!
 //! Implements the `Pass` trait for type-safe scheduling.
 
+use crate::renderer::frame::RenderFrame;
 use crate::renderer::pass::{Pass, PassSignature, ResHandle};
 use crate::renderer::resource::*;
 use crate::renderer::resource_table::ResourceTable;
-use glam::Mat4;
 use wgpu::util::DeviceExt;
 
 /// Per-vertex data for debug lines.
@@ -86,11 +86,22 @@ impl Pass for DebugLinePass {
         self.depth_handle = Some(resources.handle::<GDepth>("gbuffer_depth"));
     }
 
+    fn apply_frame(&mut self, frame: &RenderFrame) {
+        let view = frame.camera.view_matrix();
+        let proj = frame.camera.projection_matrix(frame.aspect);
+        let vp = proj * view;
+        let uniform = DebugUniform {
+            view_proj: vp.to_cols_array_2d(),
+        };
+        frame
+            .queue
+            .write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniform]));
+    }
+
     fn execute(
         &self,
         encoder: &mut wgpu::CommandEncoder,
         resources: &ResourceTable,
-        _queue: &wgpu::Queue,
         surface_view: &wgpu::TextureView,
     ) {
         let depth_view = resources.get(self.depth_handle.unwrap());
@@ -282,13 +293,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         }
     }
 
-    /// Update view-projection uniform.
-    pub fn update_uniform(&self, queue: &wgpu::Queue, view_proj: &Mat4) {
-        let uniform = DebugUniform {
-            view_proj: view_proj.to_cols_array_2d(),
-        };
-        queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniform]));
-    }
 }
 
 /// Build a debug grid on the XZ plane.

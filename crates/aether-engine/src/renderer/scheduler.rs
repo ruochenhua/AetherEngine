@@ -19,6 +19,7 @@
 
 use std::any::TypeId;
 use std::collections::{HashMap, HashSet, VecDeque};
+use crate::renderer::frame::RenderFrame;
 use crate::renderer::pass::{Pass, PassSignature};
 use crate::renderer::resource_table::ResourceTable;
 use tracing::debug;
@@ -244,24 +245,24 @@ pub struct Scheduler {
 }
 
 impl Scheduler {
-    /// Execute all passes in topological order.
-    pub fn execute(
-        &self,
-        encoder: &mut wgpu::CommandEncoder,
-        queue: &wgpu::Queue,
-        surface_view: &wgpu::TextureView,
-    ) {
-        for pass in &self.passes {
-            pass.execute(encoder, &self.resource_table, queue, surface_view);
+    /// Dispatch per-frame data to all passes via `apply_frame`.
+    ///
+    /// Called by the Launcher each frame before `execute_all`.
+    pub fn apply_frame_all(&mut self, frame: &RenderFrame) {
+        for pass in &mut self.passes {
+            pass.apply_frame(frame);
         }
     }
 
-    /// Get mutable access to the pass at the given index for per-frame setters.
-    ///
-    /// # Panics
-    /// Panics if index is out of bounds.
-    pub fn pass_mut(&mut self, index: usize) -> &mut dyn Pass {
-        self.passes[index].as_mut()
+    /// Execute all passes in topological order.
+    pub fn execute_all(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        surface_view: &wgpu::TextureView,
+    ) {
+        for pass in &self.passes {
+            pass.execute(encoder, &self.resource_table, surface_view);
+        }
     }
 
     /// Number of passes in the schedule.
@@ -331,7 +332,7 @@ fn compute_topological_order(passes: &[Box<dyn Pass>]) -> Vec<usize> {
             let key = (read_slot.type_id, read_slot.name);
             match producer.get(&key) {
                 Some(&producer_idx) => {
-                    if producer_idx != i {
+                    if producer_idx != i && !deps[i].contains(&producer_idx) {
                         deps[i].push(producer_idx);
                         consumers[producer_idx].insert(i);
                     }
@@ -439,6 +440,7 @@ fn dfs(node: usize, deps: &[Vec<usize>], color: &mut [CycleColor], passes: &[Box
 mod tests {
     use super::*;
     use crate::renderer::pass::{PassSignature, ResSlot, SlotKind};
+    use crate::renderer::passes::debug::DebugLinePass;
     use crate::renderer::passes::gbuffer::GBufferPass;
     use crate::renderer::passes::lighting::LightingPass;
     use crate::renderer::passes::shadow::ShadowPass;
@@ -487,7 +489,7 @@ mod tests {
         fn init(_device: &wgpu::Device) -> Self {
             panic!("MockPass does not support init()")
         }
-        fn execute(&self, _encoder: &mut wgpu::CommandEncoder, _resources: &ResourceTable, _queue: &wgpu::Queue, _surface_view: &wgpu::TextureView) {
+        fn execute(&self, _encoder: &mut wgpu::CommandEncoder, _resources: &ResourceTable, _surface_view: &wgpu::TextureView) {
             self.order_log.lock().unwrap().push(self.name.to_string());
         }
     }
@@ -613,6 +615,22 @@ mod tests {
 
         let table2 = PipelineBuilder::validate_and_allocate(&passes, &device, 128, 128);
         assert!(table2.len() >= 5);
+    }
+
+    #[test] fn build_all_passes_works() {
+        let device = headless_device();
+        let sf = wgpu::TextureFormat::Bgra8UnormSrgb;
+        let df = wgpu::TextureFormat::Depth32Float;
+        let debug_pass = DebugLinePass::new(&device, sf, df);
+
+        let scheduler = PipelineBuilder::new()
+            .add(ShadowPass::new(&device))
+            .add(GBufferPass::new(&device))
+            .add(LightingPass::new(&device, sf))
+            .add(debug_pass)
+            .build(&device, 64, 64);
+
+        assert_eq!(scheduler.pass_count(), 4);
     }
 
     fn headless_device() -> wgpu::Device {

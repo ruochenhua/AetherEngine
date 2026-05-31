@@ -22,22 +22,27 @@
 //!             .write::<GNormal>("gbuffer_normal", wgpu::TextureFormat::Rgba16Float)
 //!     }
 //!     fn init(device: &wgpu::Device) -> Self { MyPass }
-//!     fn execute(&self, encoder: &mut wgpu::CommandEncoder, resources: &crate::renderer::resource_table::ResourceTable) {}
+//!     fn apply_frame(&mut self, frame: &crate::renderer::frame::RenderFrame) {
+//!         // Extract per-frame data here
+//!     }
+//!     fn execute(&self, encoder: &mut wgpu::CommandEncoder, resources: &crate::renderer::resource_table::ResourceTable, surface_view: &wgpu::TextureView) {}
 //! }
 //! ```
 
 use std::any::TypeId;
 use std::marker::PhantomData;
 
+use crate::renderer::frame::RenderFrame;
 use crate::renderer::resource::ResourceTag;
 use crate::renderer::resource_table::ResourceTable;
 
 /// A render pass that declares its resource dependencies.
 ///
-/// Three-phase lifecycle:
+/// Four-phase lifecycle:
 /// 1. `init()` — create pipelines, shaders, uniform buffers (no texture access)
 /// 2. `resolve()` — create texture-dependent bind groups from ResourceTable
-/// 3. `execute()` — record render commands
+/// 3. `apply_frame()` — receive per-frame data (renderables, camera, lighting)
+/// 4. `execute()` — record render commands
 pub trait Pass {
     /// Human-readable pass name.
     fn name(&self) -> &str;
@@ -55,12 +60,18 @@ pub trait Pass {
     /// Called by the Scheduler after transient textures are allocated.
     fn resolve(&mut self, _device: &wgpu::Device, _resources: &ResourceTable) {}
 
+    /// Receive per-frame data before execution.
+    ///
+    /// Called by the Scheduler every frame, before `execute()`.
+    /// Default implementation is a no-op — passes that don't need
+    /// per-frame data don't need to override this.
+    fn apply_frame(&mut self, _frame: &RenderFrame) {}
+
     /// Record render commands.
     fn execute(
         &self,
         encoder: &mut wgpu::CommandEncoder,
         resources: &ResourceTable,
-        queue: &wgpu::Queue,
         surface_view: &wgpu::TextureView,
     );
 }
