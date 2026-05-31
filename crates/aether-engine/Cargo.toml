@@ -18,6 +18,7 @@ winit = { workspace = true }
 hecs = { workspace = true }
 glam = { workspace = true }
 bytemuck = { workspace = true }
+half = { workspace = true }
 
 # Window
 raw-window-handle = { workspace = true }

@@ -17,6 +17,7 @@ winit = "0.29"
 hecs = "0.10"
 glam = { version = "0.25", features = ["bytemuck"] }
 bytemuck = { version = "1.14", features = ["derive"] }
+half = "2"
 
 # Window / Surface
 raw-window-handle = "0.6"

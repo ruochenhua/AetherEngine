@@ -9,7 +9,6 @@
 
 use std::path::Path;
 use wgpu::util::DeviceExt;
-
 /// Configuration for IBL precomputation.
 pub struct IblConfig {
     /// Environment cubemap size per face (default: 512).
@@ -165,18 +164,17 @@ fn load_hdr_texture(
         // Generate a 16×8 magenta/cyan checkerboard for debugging
         let w = 16u32;
         let h = 8u32;
-        let mut data = Vec::with_capacity((w * h * 4) as usize);
+        let mut data: Vec<u8> = Vec::with_capacity((w * h * 8) as usize);  // Rgba16Float = 8 bytes/pixel
         for y in 0..h {
             for x in 0..w {
                 let is_magenta = ((x / 2) + (y / 2)) % 2 == 0;
-                if is_magenta {
-                    data.extend_from_slice(&[1.0f32, 0.0, 1.0, 1.0]); // magenta
-                } else {
-                    data.extend_from_slice(&[0.0f32, 1.0, 1.0, 1.0]); // cyan
+                let (r, g, b) = if is_magenta { (1.0f32, 0.0, 1.0) } else { (0.0f32, 1.0, 1.0) };
+                for c in [r, g, b, 1.0f32] {
+                    data.extend_from_slice(&half::f16::from_f32(c).to_bits().to_le_bytes());
                 }
             }
         }
-        (w, h, bytemuck::cast_slice::<f32, u8>(&data).to_vec())
+        (w, h, data)
     } else {
         let path = config
             .environment_path
@@ -187,14 +185,14 @@ fn load_hdr_texture(
             .to_rgb32f();
 
         let (iw, ih) = (img.width(), img.height());
-        let mut rgba_data: Vec<f32> = Vec::with_capacity((iw * ih * 4) as usize);
+        let mut data2: Vec<u8> = Vec::with_capacity((iw * ih * 8) as usize);
         for p in img.pixels() {
-            rgba_data.push(p.0[0]);
-            rgba_data.push(p.0[1]);
-            rgba_data.push(p.0[2]);
-            rgba_data.push(1.0);
+            for c in 0..3 {
+                data2.extend_from_slice(&half::f16::from_f32(p.0[c]).to_bits().to_le_bytes());
+            }
+            data2.extend_from_slice(&half::f16::from_f32(1.0).to_bits().to_le_bytes());
         }
-        (iw, ih, bytemuck::cast_slice::<f32, u8>(&rgba_data).to_vec())
+        (iw, ih, data2)
     };
 
     let tex = device.create_texture(&wgpu::TextureDescriptor {
@@ -222,7 +220,7 @@ fn load_hdr_texture(
         &rgba,
         wgpu::ImageDataLayout {
             offset: 0,
-            bytes_per_row: Some(16 * w),
+            bytes_per_row: Some(8 * w),  // Rgba16Float = 8 bytes/pixel
             rows_per_image: Some(h),
         },
         wgpu::Extent3d {
@@ -344,6 +342,7 @@ fn capture_projection() -> [f32; 16] {
 
 // ── Render-to-cubemap logic ──────────────────────────────────────────
 
+/// CPU-side cubemap utilities: render-to-cubemap and compute shaders.
 pub struct CpuCubemap;
 
 impl CpuCubemap {
@@ -892,8 +891,9 @@ fn sample_spherical_map(v: vec3<f32>) -> vec2<f32> {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    // TEST: solid magenta to verify render-to-cubemap works
-    return vec4<f32>(1.0, 0.0, 1.0, 1.0);
+    let dir = normalize(in.local_pos);
+    let uv = sample_spherical_map(dir);
+    return textureSample(equirect_map, equirect_sampler, uv);
 }
 "#;
 
