@@ -353,8 +353,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let mip_level = roughness * 4.0; // 5 mips, mip 4 = roughness 1.0
     let prefiltered_color = textureSampleLevel(prefiltered_map, ibl_sampler, R, mip_level).rgb;
     let env_brdf = textureSample(brdf_lut, ibl_sampler, vec2<f32>(NdotV, roughness)).rg;
+
+    // Fresnel-Schlick with roughness: rough dielectrics reflect more at grazing angles
     let F0 = mix(vec3<f32>(0.04), albedo, metallic);
-    let specular_ibl = prefiltered_color * (F0 * env_brdf.r + env_brdf.g);
+    let F = F0 + (max(vec3<f32>(1.0 - roughness), F0) - F0) * pow(clamp(1.0 - NdotV, 0.0, 1.0), 5.0);
+    let specular_ibl = prefiltered_color * (F * env_brdf.r + env_brdf.g);
 
     let ibl_light = diffuse_ibl + specular_ibl;
     let final_color = direct_light + ibl_light;
