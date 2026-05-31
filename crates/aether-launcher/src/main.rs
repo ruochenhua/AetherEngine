@@ -98,12 +98,12 @@ fn main() {
     let surface_format = ctx.surface_format();
     let depth_format = wgpu::TextureFormat::Depth32Float;
 
-    // Test with checkerboard first to verify equirect→cubemap rendering
+    // Create IBL resources from HDR environment map
     let ibl_resources = IblResources::generate(
         &ctx.device,
         Some(&ctx.queue),
         &aether_engine::renderer::ibl::IblConfig {
-            debug_checkerboard: true,
+            environment_path: Some("assets/hdr/newport_loft.hdr".into()),
             ..Default::default()
         },
     );
