@@ -10,7 +10,7 @@ use aether_engine::{
         camera::FlyCamera,
         context::RenderContext,
         frame::RenderFrame,
-        ibl::{IblResources},
+        ibl::{IblResources, CpuCubemap},
         light::LightingUniforms,
         passes::{
             debug::DebugLinePass,
@@ -131,6 +131,35 @@ fn main() {
             },
             wgpu::Extent3d { width: size, height: size, depth_or_array_layers: 6 },
         );
+
+        // Also fill prefiltered cubemap with black (all mips, all faces)
+        let pf_size = 128u32; // prefilter_size
+        let black: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
+        let pf_pixel_bytes = bytemuck::bytes_of(&black);
+        for mip in 0..5u32 { // prefilter_mips = 5
+            let mip_sz = pf_size >> mip;
+            let layer_bytes = (mip_sz * mip_sz * 16) as usize;
+            let mut pf_data = Vec::with_capacity(layer_bytes * 6);
+            for _ in 0..(mip_sz * mip_sz * 6) as usize {
+                pf_data.extend_from_slice(pf_pixel_bytes);
+            }
+            ctx.queue.write_texture(
+                wgpu::ImageCopyTexture {
+                    texture: &ibl_resources.prefiltered_texture(),
+                    mip_level: mip, origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All,
+                },
+                &pf_data,
+                wgpu::ImageDataLayout {
+                    offset: 0,
+                    bytes_per_row: Some(mip_sz * 16),
+                    rows_per_image: Some(mip_sz),
+                },
+                wgpu::Extent3d { width: mip_sz, height: mip_sz, depth_or_array_layers: 6 },
+            );
+        }
+
+        // Run BRDF LUT compute shader (no input texture needed)
+        CpuCubemap::brdf_lut_debug(&ctx.device, &ctx.queue, ibl_resources.brdf_lut_texture(), 256);
     }
 
     // Build scheduler: validates the pass graph, allocates textures, resolves passes.

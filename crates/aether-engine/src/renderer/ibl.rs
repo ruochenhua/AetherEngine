@@ -61,6 +61,12 @@ impl IblResources {
     /// Debug: get the raw irradiance texture (for direct write testing).
     #[doc(hidden)]
     pub fn irradiance_texture(&self) -> &wgpu::Texture { &self._irradiance_texture }
+    /// Debug: get the raw prefiltered texture.
+    #[doc(hidden)]
+    pub fn prefiltered_texture(&self) -> &wgpu::Texture { &self._prefiltered_texture }
+    /// Debug: get the raw BRDF LUT texture.
+    #[doc(hidden)]
+    pub fn brdf_lut_texture(&self) -> &wgpu::Texture { &self._brdf_lut_texture }
     /// Generate all IBL resources. Pass `None` for queue in tests.
     pub fn generate(
         device: &wgpu::Device,
@@ -338,7 +344,7 @@ fn capture_projection() -> [f32; 16] {
 
 // ── Render-to-cubemap logic ──────────────────────────────────────────
 
-struct CpuCubemap;
+pub struct CpuCubemap;
 
 impl CpuCubemap {
     /// Equirectangular → Cubemap
@@ -688,6 +694,16 @@ impl CpuCubemap {
 
     /// BRDF integration LUT via compute shader.
     fn brdf_integration(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        lut_tex: &wgpu::Texture,
+        size: u32,
+    ) {
+        Self::brdf_lut_debug(device, queue, lut_tex, size);
+    }
+
+    /// Public entry point for BRDF LUT compute (debug/testing).
+    pub fn brdf_lut_debug(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         lut_tex: &wgpu::Texture,
