@@ -56,10 +56,9 @@ pub struct IblResources {
 }
 
 impl IblResources {
-    /// Generate IBL resources from an equirectangular HDR image.
-    ///
-    /// Currently uses a placeholder white environment map.
-    pub fn generate(device: &wgpu::Device, queue: &wgpu::Queue, config: &IblConfig) -> Self {
+    /// Generate IBL resources. Optionally clears cubemaps to neutral values
+    /// if a queue is provided.
+    pub fn generate(device: &wgpu::Device, queue: Option<&wgpu::Queue>, config: &IblConfig) -> Self {
         // For now, create placeholder textures (solid white for diffuse, solid black for specular).
         // Compute shader generation will come in the GREEN phase.
 
@@ -150,7 +149,39 @@ impl IblResources {
             ..Default::default()
         });
 
-        let _ = queue; // Used by compute dispatch in GREEN phase
+        // Clear cubemaps to neutral values so shader reads are well-defined.
+        if let Some(queue) = queue {
+            // White for irradiance (neutral sky), black for prefiltered.
+            {
+                let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("IBL Init Clear"),
+                });
+                // Clear irradiance cubemap: neutral gray (ambient light)
+                for face in 0..6 {
+                    encoder.clear_texture(
+                        &irradiance_tex,
+                        &wgpu::ImageSubresourceRange {
+                            aspect: wgpu::TextureAspect::All,
+                            base_mip_level: 0,
+                            mip_level_count: Some(1),
+                            base_array_layer: face,
+                            array_layer_count: Some(1),
+                        },
+                    );
+                    encoder.clear_texture(
+                        &prefiltered_tex,
+                        &wgpu::ImageSubresourceRange {
+                            aspect: wgpu::TextureAspect::All,
+                            base_mip_level: 0,
+                            mip_level_count: Some(config.prefilter_mips),
+                            base_array_layer: face,
+                            array_layer_count: Some(1),
+                        },
+                    );
+                }
+                queue.submit(std::iter::once(encoder.finish()));
+            }
+        }
 
         Self {
             irradiance_view,
@@ -210,9 +241,9 @@ mod tests {
 
     #[test]
     fn ibl_resources_created_with_correct_sizes() {
-        let (device, queue) = headless_device_and_queue();
+        let (device, _queue) = headless_device_and_queue();
         let config = IblConfig::default();
-        let ibl = IblResources::generate(&device, &queue, &config);
+        let ibl = IblResources::generate(&device, None, &config);
 
         // Irradiance cubemap: 32×32 × 6 faces
         assert_eq!(ibl._irradiance_texture.size().width, 32);
@@ -234,9 +265,9 @@ mod tests {
 
     #[test]
     fn ibl_texture_formats_are_correct() {
-        let (device, queue) = headless_device_and_queue();
+        let (device, _queue) = headless_device_and_queue();
         let config = IblConfig::default();
-        let ibl = IblResources::generate(&device, &queue, &config);
+        let ibl = IblResources::generate(&device, None, &config);
 
         assert_eq!(ibl._irradiance_texture.format(), wgpu::TextureFormat::Rgba16Float);
         assert_eq!(ibl._prefiltered_texture.format(), wgpu::TextureFormat::Rgba16Float);

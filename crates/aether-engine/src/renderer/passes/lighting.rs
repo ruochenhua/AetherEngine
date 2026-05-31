@@ -654,16 +654,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     /// Create placeholder IBL resources (white environment) when no HDR is loaded.
     fn create_placeholder_ibl(device: &wgpu::Device) -> crate::renderer::ibl::IblResources {
-        // Create a minimal queue for initialize — we never submit, just seed textures
-        let (_, queue) = {
-            let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
-            let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
-                .expect("need adapter for IBL placeholder");
-            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None))
-                .expect("need device for IBL placeholder")
-        };
         let config = crate::renderer::ibl::IblConfig::default();
-        crate::renderer::ibl::IblResources::generate(device, &queue, &config)
+        crate::renderer::ibl::IblResources::generate(device, None, &config)
     }
 
     /// Set debug visualization mode for the next frame.

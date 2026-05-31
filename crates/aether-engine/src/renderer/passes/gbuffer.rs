@@ -233,7 +233,6 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::renderer::pass::SlotKind;
 
     fn headless_device() -> wgpu::Device {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
