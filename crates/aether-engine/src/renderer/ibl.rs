@@ -1055,8 +1055,8 @@ fn importance_sample_ggx(Xi: vec2<f32>, N: vec3<f32>, roughness: f32) -> vec3<f3
     return normalize(tangent * H.x + bitangent * H.y + N * H.z);
 }
 fn geometry_smith(NdotV: f32, NdotL: f32, roughness: f32) -> f32 {
-    let a = roughness * roughness;
-    let k = a * a / 2.0;
+    let r = roughness + 1.0;
+    let k = (r * r) / 8.0;  // Schlick-GGX (matches LearnOpenGL tutorial)
     return (NdotV / (NdotV * (1.0 - k) + k)) * (NdotL / (NdotL * (1.0 - k) + k));
 }
 fn integrate_brdf(NdotV: f32, roughness: f32) -> vec2<f32> {
