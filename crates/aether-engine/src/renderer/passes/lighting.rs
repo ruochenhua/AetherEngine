@@ -379,12 +379,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         // IBL only (no direct)
         output_color = ibl_light;
     } else if (uniforms.debug_mode == 9u) {
-        // Show normal alpha: white=geometry, black=sky
-        output_color = vec3<f32>(normal_sample.a);
+        // Show position alpha (sky flag in GPosition): white=geometry, black=sky
+        output_color = vec3<f32>(position_sample.a);
     } else if (uniforms.debug_mode == 10u) {
-        // Raw prefiltered cubemap at mip 0 in reflection direction
-        let R = reflect(-V, N);
-        output_color = textureSampleLevel(prefiltered_map, ibl_sampler, R, 0.0).rgb;
+        // Show normal alpha for comparison
+        output_color = vec3<f32>(normal_sample.a);
     } else {
         output_color = final_color;
     }
