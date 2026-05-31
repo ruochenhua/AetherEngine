@@ -374,6 +374,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     } else if (uniforms.debug_mode == 8u) {
         // IBL only (no direct)
         output_color = ibl_light;
+    } else if (uniforms.debug_mode == 9u) {
+        // Raw irradiance cubemap (show what the irradiance map contains in N direction)
+        output_color = textureSample(irradiance_map, ibl_sampler, N).rgb;
+    } else if (uniforms.debug_mode == 10u) {
+        // Raw prefiltered cubemap at mip 0 in reflection direction
+        let R = reflect(-V, N);
+        output_color = textureSampleLevel(prefiltered_map, ibl_sampler, R, 0.0).rgb;
     } else {
         output_color = final_color;
     }

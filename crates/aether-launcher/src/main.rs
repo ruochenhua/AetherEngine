@@ -98,12 +98,12 @@ fn main() {
     let surface_format = ctx.surface_format();
     let depth_format = wgpu::TextureFormat::Depth32Float;
 
-    // Create IBL resources from HDR environment map.
+    // Create IBL resources — use debug checkerboard for now
     let ibl_resources = IblResources::generate(
         &ctx.device,
         Some(&ctx.queue),
         &IblConfig {
-            environment_path: Some("assets/hdr/newport_loft.hdr".into()),
+            debug_checkerboard: true,
             ..Default::default()
         },
     );
@@ -187,6 +187,7 @@ fn main() {
                             if input.key_pressed(KeyCode::Digit6) { debug_mode = 6; }
                             if input.key_pressed(KeyCode::Digit7) { debug_mode = 7; }
                             if input.key_pressed(KeyCode::Digit8) { debug_mode = 8; }
+                            if input.key_pressed(KeyCode::Digit9) { debug_mode = 9; }
 
                             if let Some(idx) = pending_load.take() {
                                 let entry = &scene_entries[idx];
@@ -320,10 +321,11 @@ fn main() {
                                                     let mode_names = [
                                                         "Full", "Ambient", "Diffuse",
                                                         "Specular", "Normals", "NdotL",
-                                                        "Shadow", "DirectOnly", "IBLOnly",
+                                                        "Shadow", "Direct", "IBL",
+                                                        "Irradiance",
                                                     ];
                                                     let mode_idx =
-                                                        debug_mode.clamp(0, 8) as usize;
+                                                        debug_mode.clamp(0, 9) as usize;
                                                     ui.label(format!(
                                                         "Debug: [{}] {}",
                                                         mode_idx, mode_names[mode_idx]

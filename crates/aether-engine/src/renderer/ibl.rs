@@ -24,6 +24,8 @@ pub struct IblConfig {
     pub brdf_lut_size: u32,
     /// Path to HDR environment map.
     pub environment_path: Option<String>,
+    /// When true, use a magenta/cyan checkerboard instead of HDR file (for debugging).
+    pub debug_checkerboard: bool,
 }
 
 impl Default for IblConfig {
@@ -35,6 +37,7 @@ impl Default for IblConfig {
             prefilter_mips: 5,
             brdf_lut_size: 256,
             environment_path: None,
+            debug_checkerboard: false,
         }
     }
 }
@@ -149,22 +152,41 @@ fn load_hdr_texture(
     queue: &wgpu::Queue,
     config: &IblConfig,
 ) -> (wgpu::Texture, wgpu::TextureView, wgpu::Sampler) {
-    let path = config
-        .environment_path
-        .as_deref()
-        .unwrap_or("assets/hdr/newport_loft.hdr");
-    let img = image::open(Path::new(path))
-        .unwrap_or_else(|e| panic!("Failed to load HDR '{}': {}", path, e))
-        .to_rgb32f();
+    let (w, h, rgba) = if config.debug_checkerboard {
+        // Generate a 16×8 magenta/cyan checkerboard for debugging
+        let w = 16u32;
+        let h = 8u32;
+        let mut data = Vec::with_capacity((w * h * 4) as usize);
+        for y in 0..h {
+            for x in 0..w {
+                let is_magenta = ((x / 2) + (y / 2)) % 2 == 0;
+                if is_magenta {
+                    data.extend_from_slice(&[1.0f32, 0.0, 1.0, 1.0]); // magenta
+                } else {
+                    data.extend_from_slice(&[0.0f32, 1.0, 1.0, 1.0]); // cyan
+                }
+            }
+        }
+        (w, h, bytemuck::cast_slice::<f32, u8>(&data).to_vec())
+    } else {
+        let path = config
+            .environment_path
+            .as_deref()
+            .unwrap_or("assets/hdr/newport_loft.hdr");
+        let img = image::open(Path::new(path))
+            .unwrap_or_else(|e| panic!("Failed to load HDR '{}': {}", path, e))
+            .to_rgb32f();
 
-    let (w, h) = (img.width(), img.height());
-    let mut rgba: Vec<f32> = Vec::with_capacity((w * h * 4) as usize);
-    for p in img.pixels() {
-        rgba.push(p.0[0]);
-        rgba.push(p.0[1]);
-        rgba.push(p.0[2]);
-        rgba.push(1.0);
-    }
+        let (iw, ih) = (img.width(), img.height());
+        let mut rgba_data: Vec<f32> = Vec::with_capacity((iw * ih * 4) as usize);
+        for p in img.pixels() {
+            rgba_data.push(p.0[0]);
+            rgba_data.push(p.0[1]);
+            rgba_data.push(p.0[2]);
+            rgba_data.push(1.0);
+        }
+        (iw, ih, bytemuck::cast_slice::<f32, u8>(&rgba_data).to_vec())
+    };
 
     let tex = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("HDR"),
@@ -188,7 +210,7 @@ fn load_hdr_texture(
             origin: wgpu::Origin3d::ZERO,
             aspect: wgpu::TextureAspect::All,
         },
-        bytemuck::cast_slice(&rgba),
+        &rgba,
         wgpu::ImageDataLayout {
             offset: 0,
             bytes_per_row: Some(16 * w),

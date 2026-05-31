@@ -1,0 +1,77 @@
+SceneDescription(
+    name: "04 IBL Debug",
+    camera: (
+        position: (5.0, 3.0, 8.0),
+        yaw: -2.5,
+        pitch: -0.35,
+        speed: 5.0,
+        fov: 55.0,
+    ),
+    lights: [
+        (
+            light_type: Directional,
+            direction: (-0.5, -0.8, -0.3),
+            color: (1.0, 1.0, 1.0),
+            intensity: 0.3,
+        ),
+    ],
+    ambient: 0.02,
+    objects: [
+        // Ground plane
+        (
+            name: "Ground",
+            mesh: Builtin("plane"),
+            transform: (
+                translation: (0.0, -1.5, 0.0),
+                scale: (10.0, 1.0, 10.0),
+            ),
+            material: (
+                albedo: (0.5, 0.5, 0.5, 1.0),
+                roughness: 0.9,
+                metallic: 0.0,
+            ),
+        ),
+        // Smooth sphere — should show specular IBL reflections
+        (
+            name: "ShinySphere",
+            mesh: Builtin("sphere"),
+            transform: (
+                translation: (0.0, 1.5, 0.0),
+                scale: (1.5, 1.5, 1.5),
+            ),
+            material: (
+                albedo: (0.9, 0.85, 0.8, 1.0),
+                roughness: 0.05,
+                metallic: 0.9,
+            ),
+        ),
+        // Rough sphere — should show diffuse IBL only
+        (
+            name: "RoughSphere",
+            mesh: Builtin("sphere"),
+            transform: (
+                translation: (3.5, 0.8, -1.0),
+                scale: (0.8, 0.8, 0.8),
+            ),
+            material: (
+                albedo: (0.7, 0.3, 0.3, 1.0),
+                roughness: 0.9,
+                metallic: 0.0,
+            ),
+        ),
+        // Medium roughness cube
+        (
+            name: "MedCube",
+            mesh: Builtin("cube"),
+            transform: (
+                translation: (-3.0, 0.7, 0.0),
+                scale: (1.0, 1.0, 1.0),
+            ),
+            material: (
+                albedo: (0.3, 0.6, 0.3, 1.0),
+                roughness: 0.4,
+                metallic: 0.3,
+            ),
+        ),
+    ],
+)
