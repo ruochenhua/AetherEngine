@@ -10,6 +10,7 @@ use aether_engine::{
         camera::FlyCamera,
         context::RenderContext,
         frame::RenderFrame,
+        ibl::{IblConfig, IblResources},
         light::LightingUniforms,
         passes::{
             debug::DebugLinePass,
@@ -97,11 +98,18 @@ fn main() {
     let surface_format = ctx.surface_format();
     let depth_format = wgpu::TextureFormat::Depth32Float;
 
+    // Create IBL resources (placeholder white environment for now).
+    let ibl_resources = IblResources::generate(
+        &ctx.device,
+        Some(&ctx.queue),
+        &IblConfig::default(),
+    );
+
     // Build scheduler: validates the pass graph, allocates textures, resolves passes.
     let mut scheduler = PipelineBuilder::new()
         .add(ShadowPass::new(&ctx.device))
         .add(GBufferPass::new(&ctx.device))
-        .add(LightingPass::new(&ctx.device, surface_format))
+        .add(LightingPass::new_with_ibl(&ctx.device, surface_format, &ibl_resources))
         .add(DebugLinePass::new(&ctx.device, surface_format, depth_format))
         .build(&ctx.device, ctx.config.width, ctx.config.height);
 
