@@ -26,4 +26,10 @@ What are the trade-offs?
 
 ## Existing ADRs
 
-*None yet.*
+- ADR-0001: Unified Example Launcher
+- ADR-0002: RON Scenes Replace Example Trait
+- ADR-0003: Type-Safe Pass Scheduling
+- ADR-0004: Shadow Bias Strategy
+- ADR-0005: Unified Cook-Torrance BRDF
+- ADR-0006: IBL + Skybox Implementation Pitfalls
+- ADR-0007: SSAO Implementation Pitfalls

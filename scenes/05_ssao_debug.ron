@@ -1,0 +1,91 @@
+SceneDescription(
+    name: "05 SSAO Debug",
+    camera: (
+        position: (2.0, 2.5, 6.0),
+        yaw: 3.2,
+        pitch: -0.3,
+        speed: 4.0,
+        fov: 60.0,
+    ),
+    lights: [
+        (
+            light_type: Directional,
+            direction: (0.4, -0.8, -0.3),
+            color: (1.0, 1.0, 1.0),
+            intensity: 2.5,
+        ),
+    ],
+    ambient: 0.04,
+    objects: [
+        // Large ground plane — contact shadows visible at cube/plane junction
+        (
+            name: "Ground",
+            mesh: Builtin("plane"),
+            transform: (
+                translation: (0.0, -1.5, 0.0),
+                scale: (12.0, 1.0, 12.0),
+            ),
+            material: (
+                albedo: (0.6, 0.6, 0.6, 1.0),
+                roughness: 0.9,
+                metallic: 0.0,
+            ),
+        ),
+        // Cube 1 — right on the ground, strongest contact AO
+        (
+            name: "CubeLeft",
+            mesh: Builtin("cube"),
+            transform: (
+                translation: (-2.0, -0.8, 0.0),
+                scale: (1.2, 1.2, 1.2),
+            ),
+            material: (
+                albedo: (0.8, 0.3, 0.3, 1.0),
+                roughness: 0.6,
+                metallic: 0.0,
+            ),
+        ),
+        // Cube 2 — slightly elevated, weaker contact AO
+        (
+            name: "CubeCenter",
+            mesh: Builtin("cube"),
+            transform: (
+                translation: (0.0, -0.2, -1.0),
+                scale: (0.8, 0.8, 0.8),
+            ),
+            material: (
+                albedo: (0.3, 0.7, 0.4, 1.0),
+                roughness: 0.4,
+                metallic: 0.0,
+            ),
+        ),
+        // Cube 3 — elevated, no contact AO
+        (
+            name: "CubeRight",
+            mesh: Builtin("cube"),
+            transform: (
+                translation: (2.5, 0.5, 0.5),
+                scale: (0.7, 0.7, 0.7),
+            ),
+            material: (
+                albedo: (0.3, 0.4, 0.8, 1.0),
+                roughness: 0.5,
+                metallic: 0.1,
+            ),
+        ),
+        // Tall box — cast shadow on plane for reference
+        (
+            name: "TallBox",
+            mesh: Builtin("cube"),
+            transform: (
+                translation: (-1.0, 0.2, -2.5),
+                scale: (0.6, 2.5, 0.6),
+            ),
+            material: (
+                albedo: (0.9, 0.8, 0.3, 1.0),
+                roughness: 0.5,
+                metallic: 0.0,
+            ),
+        ),
+    ],
+)

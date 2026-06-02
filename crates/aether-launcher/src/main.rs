@@ -17,6 +17,7 @@ use aether_engine::{
             gbuffer::GBufferPass,
             lighting::LightingPass,
             shadow::ShadowPass,
+            ssao::SSAOPass,
         },
         scheduler::PipelineBuilder,
     },
@@ -112,9 +113,12 @@ fn main() {
     let mut scheduler = PipelineBuilder::new()
         .add(ShadowPass::new(&ctx.device))
         .add(GBufferPass::new(&ctx.device))
+        .add(SSAOPass::new(&ctx.device))
         .add(LightingPass::new_with_ibl(&ctx.device, surface_format, &ibl_resources))
         .add(DebugLinePass::new(&ctx.device, surface_format, depth_format))
         .build(&ctx.device, ctx.config.width, ctx.config.height);
+
+    scheduler.set_ssao_screen_size(ctx.config.width, ctx.config.height);
 
     // Camera
     let mut camera = FlyCamera {
@@ -145,6 +149,14 @@ fn main() {
     let mut show_overlay = false;
     let mut debug_mode: i32 = 0;
 
+    // Feature toggles (controlled via egui overlay)
+    let mut ssao_enabled = true;
+    let mut shadow_enabled = true;
+    let mut ibl_enabled = true;
+    let mut ssao_radius = 0.15f32;
+    let mut ssao_bias = 0.025f32;
+    let mut ssao_intensity = 1.5f32;
+
     event_loop.set_control_flow(ControlFlow::Poll);
 
     event_loop
@@ -163,6 +175,7 @@ fn main() {
                         {
                             ctx.resize(size.width, size.height);
                             scheduler.rebuild(&ctx.device, size.width, size.height);
+                            scheduler.set_ssao_screen_size(size.width, size.height);
                         }
                         WindowEvent::RedrawRequested => {
                             let now = std::time::Instant::now();
@@ -192,6 +205,7 @@ fn main() {
                             if input.key_pressed(KeyCode::F2) { debug_mode = 11; }
                             if input.key_pressed(KeyCode::F3) { debug_mode = 12; }
                             if input.key_pressed(KeyCode::F4) { debug_mode = 13; }
+                            if input.key_pressed(KeyCode::F5) { debug_mode = 14; }
 
                             if let Some(idx) = pending_load.take() {
                                 let entry = &scene_entries[idx];
@@ -323,14 +337,39 @@ fn main() {
                                                         "Shadow", "Direct", "IBL",
                                                         "Alpha(P)", "Alpha(N)",
                                                         "NDC(F2)", "EnvFix(F3)", "VDir(F4)",
+                                                        "SSAO(F5)",
                                                     ];
                                                     let mode_idx =
-                                                        debug_mode.clamp(0, 13) as usize;
+                                                        debug_mode.clamp(0, 14) as usize;
                                                     ui.label(format!(
                                                         "Debug: [{}] {}",
                                                         mode_idx, mode_names[mode_idx]
                                                     ));
                                                     ui.separator();
+
+                                                    ui.heading("Features");
+                                                    ui.checkbox(&mut ssao_enabled, "SSAO");
+                                                    ui.checkbox(&mut shadow_enabled, "Shadow Map");
+                                                    ui.checkbox(&mut ibl_enabled, "IBL");
+                                                    ui.separator();
+
+                                                    ui.heading("SSAO Settings");
+                                                    ui.add(
+                                                        egui::Slider::new(&mut ssao_radius, 0.01..=1.0)
+                                                            .text("Radius")
+                                                            .logarithmic(true),
+                                                    );
+                                                    ui.add(
+                                                        egui::Slider::new(&mut ssao_bias, 0.001..=0.1)
+                                                            .text("Bias")
+                                                            .logarithmic(true),
+                                                    );
+                                                    ui.add(
+                                                        egui::Slider::new(&mut ssao_intensity, 0.5..=5.0)
+                                                            .text("Intensity"),
+                                                    );
+                                                    ui.separator();
+
                                                     if ui.button("Back to Menu (Esc)").clicked()
                                                     {
                                                         pending_back = true;
@@ -416,6 +455,8 @@ fn main() {
                                         aspect,
                                         delta_time: dt,
                                     };
+                                    scheduler.set_feature_flags(ssao_enabled, shadow_enabled, ibl_enabled);
+                                    scheduler.set_ssao_params(ssao_radius, ssao_bias, ssao_intensity);
                                     scheduler.set_debug_mode(debug_mode as u32);
                                     scheduler.apply_frame_all(&frame);
                                     scheduler.execute_all(&mut encoder, &target_view);

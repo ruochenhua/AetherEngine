@@ -57,6 +57,22 @@ impl ResourceTag for Swapchain {}
 pub enum AOTexture {}
 impl ResourceTag for AOTexture {}
 
+/// Irradiance cubemap (Rgba16Float, 32×32 per face).
+pub enum IrradianceMap {}
+impl ResourceTag for IrradianceMap {}
+
+/// Prefiltered specular cubemap (Rgba16Float, 128×128 base, 5 mip levels).
+pub enum PrefilteredMap {}
+impl ResourceTag for PrefilteredMap {}
+
+/// BRDF integration LUT (Rgba16Float 2D, 256×256).
+pub enum BrdfLUT {}
+impl ResourceTag for BrdfLUT {}
+
+/// Screen-space reflection texture (R11G11B10Float, half-resolution).
+pub enum ReflectionTexture {}
+impl ResourceTag for ReflectionTexture {}
+
 // ---------------------------------------------------------------------------
 // Shadow tags
 // ---------------------------------------------------------------------------
@@ -84,6 +100,10 @@ mod tests {
         let depth: ResHandle<GDepth> = ResHandle::new(0);
         let swap: ResHandle<Swapchain> = ResHandle::new(0);
         let ao: ResHandle<AOTexture> = ResHandle::new(0);
+        let irradiance: ResHandle<IrradianceMap> = ResHandle::new(0);
+        let prefiltered: ResHandle<PrefilteredMap> = ResHandle::new(0);
+        let brdf_lut: ResHandle<BrdfLUT> = ResHandle::new(0);
+        let reflection: ResHandle<ReflectionTexture> = ResHandle::new(0);
 
         // All have the same index — that's fine, types differ.
         // The compiler enforces: pos cannot be passed where norm is expected.

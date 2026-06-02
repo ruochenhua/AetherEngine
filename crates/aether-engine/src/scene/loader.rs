@@ -114,6 +114,10 @@ impl SceneLoader {
             _pad3: 0.0,
             light_view_proj: [[0.0; 4]; 4],
             inv_view_proj: [[0.0; 4]; 4],
+            ssao_enabled: 1,
+            shadow_enabled: 1,
+            ibl_enabled: 1,
+            _pad4: 0,
         }
     }
 }

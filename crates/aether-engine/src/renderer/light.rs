@@ -54,6 +54,14 @@ pub struct LightingUniforms {
     pub light_view_proj: [[f32; 4]; 4],
     /// Inverse view-projection matrix for skybox view-ray reconstruction.
     pub inv_view_proj: [[f32; 4]; 4],
+    /// Feature toggle: SSAO enabled (0 = off, 1 = on).
+    pub ssao_enabled: u32,
+    /// Feature toggle: shadow mapping enabled (0 = off, 1 = on).
+    pub shadow_enabled: u32,
+    /// Feature toggle: IBL enabled (0 = off, 1 = on).
+    pub ibl_enabled: u32,
+    /// Padding to 16-byte alignment.
+    pub _pad4: u32,
 }
 
 impl Default for LightingUniforms {
@@ -68,6 +76,10 @@ impl Default for LightingUniforms {
             _pad3: 0.0,
             light_view_proj: [[0.0; 4]; 4],
             inv_view_proj: [[0.0; 4]; 4],
+            ssao_enabled: 1,
+            shadow_enabled: 1,
+            ibl_enabled: 1,
+            _pad4: 0,
         }
     }
 }

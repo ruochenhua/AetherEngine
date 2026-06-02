@@ -1,0 +1,105 @@
+SceneDescription(
+    name: "06 SSAO Extreme",
+    camera: (
+        position: (1.5, 0.5, 5.0),
+        yaw: 3.2,
+        pitch: -0.15,
+        speed: 3.0,
+        fov: 60.0,
+    ),
+    lights: [
+        (
+            light_type: Directional,
+            direction: (0.5, -0.7, -0.4),
+            color: (1.0, 1.0, 1.0),
+            intensity: 3.0,
+        ),
+    ],
+    ambient: 0.05,
+    objects: [
+        // Ground plane
+        (
+            name: "Ground",
+            mesh: Builtin("plane"),
+            transform: (
+                translation: (0.0, -1.5, 0.0),
+                scale: (10.0, 1.0, 10.0),
+            ),
+            material: (
+                albedo: (0.7, 0.7, 0.7, 1.0),
+                roughness: 0.9,
+                metallic: 0.0,
+            ),
+        ),
+        // Cube A — sits exactly on ground, tight corner
+        (
+            name: "CubeA",
+            mesh: Builtin("cube"),
+            transform: (
+                translation: (-1.5, -0.9, 0.0),
+                scale: (1.2, 1.2, 1.2),
+            ),
+            material: (
+                albedo: (0.9, 0.3, 0.3, 1.0),
+                roughness: 0.6,
+                metallic: 0.0,
+            ),
+        ),
+        // Cube B — pushed right against Cube A, tight crevice between them
+        (
+            name: "CubeB",
+            mesh: Builtin("cube"),
+            transform: (
+                translation: (-0.2, -0.9, 0.0),
+                scale: (1.2, 1.2, 1.2),
+            ),
+            material: (
+                albedo: (0.3, 0.8, 0.3, 1.0),
+                roughness: 0.6,
+                metallic: 0.0,
+            ),
+        ),
+        // Cube C — sits on ground, forms corner with Cube B
+        (
+            name: "CubeC",
+            mesh: Builtin("cube"),
+            transform: (
+                translation: (-0.2, -0.9, -1.3),
+                scale: (1.2, 1.2, 1.2),
+            ),
+            material: (
+                albedo: (0.3, 0.4, 0.9, 1.0),
+                roughness: 0.5,
+                metallic: 0.0,
+            ),
+        ),
+        // Wall behind — create an L-shaped corner with ground
+        (
+            name: "BackWall",
+            mesh: Builtin("cube"),
+            transform: (
+                translation: (0.0, 0.0, -2.5),
+                scale: (5.0, 3.0, 0.3),
+            ),
+            material: (
+                albedo: (0.6, 0.5, 0.5, 1.0),
+                roughness: 0.8,
+                metallic: 0.0,
+            ),
+        ),
+        // Small cube right against ground + wall corner (triple corner)
+        (
+            name: "CornerPiece",
+            mesh: Builtin("cube"),
+            transform: (
+                translation: (1.8, -1.1, -2.1),
+                scale: (0.5, 0.8, 0.5),
+            ),
+            material: (
+                albedo: (0.9, 0.8, 0.3, 1.0),
+                roughness: 0.5,
+                metallic: 0.1,
+            ),
+        ),
+    ],
+)

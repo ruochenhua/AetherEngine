@@ -273,6 +273,18 @@ impl Scheduler {
         self.passes.len()
     }
 
+    /// Set screen size on the SSAOPass (for texel-accurate blur).
+    pub fn set_ssao_screen_size(&mut self, width: u32, height: u32) {
+        for pass in &mut self.passes {
+            if pass.name() == "SSAO" {
+                if let Some(ssao) = pass.as_any_mut().downcast_mut::<crate::renderer::passes::ssao::SSAOPass>() {
+                    ssao.set_screen_size(width, height);
+                }
+                break;
+            }
+        }
+    }
+
     /// Set the debug visualization mode on the LightingPass.
     pub fn set_debug_mode(&mut self, mode: u32) {
         for pass in &mut self.passes {
@@ -280,6 +292,34 @@ impl Scheduler {
                 // Downcast: we know LightingPass has set_debug_mode
                 if let Some(lp) = pass.as_any_mut().downcast_mut::<crate::renderer::passes::lighting::LightingPass>() {
                     lp.set_debug_mode(mode);
+                }
+                break;
+            }
+        }
+    }
+
+    /// Set SSAO parameters (radius, bias, intensity).
+    pub fn set_ssao_params(&mut self, radius: f32, bias: f32, intensity: f32) {
+        for pass in &mut self.passes {
+            if pass.name() == "SSAO" {
+                if let Some(ssao) = pass.as_any_mut().downcast_mut::<crate::renderer::passes::ssao::SSAOPass>() {
+                    ssao.set_radius(radius);
+                    ssao.set_bias(bias);
+                    ssao.set_intensity(intensity);
+                }
+                break;
+            }
+        }
+    }
+
+    /// Toggle rendering features in the LightingPass.
+    pub fn set_feature_flags(&mut self, ssao: bool, shadow: bool, ibl: bool) {
+        for pass in &mut self.passes {
+            if pass.name() == "Lighting" {
+                if let Some(lp) = pass.as_any_mut().downcast_mut::<crate::renderer::passes::lighting::LightingPass>() {
+                    lp.set_ssao_enabled(ssao);
+                    lp.set_shadow_enabled(shadow);
+                    lp.set_ibl_enabled(ibl);
                 }
                 break;
             }
@@ -622,18 +662,20 @@ mod tests {
         let device = headless_device();
         let pass_a = ShadowPass::new(&device);
         let pass_b = GBufferPass::new(&device);
+        let pass_ssao = crate::renderer::passes::ssao::SSAOPass::new(&device);
         let pass_c = LightingPass::new(&device, wgpu::TextureFormat::Bgra8UnormSrgb);
 
         let passes: Vec<&dyn Pass> = vec![
             &pass_a as &dyn Pass,
             &pass_b as &dyn Pass,
+            &pass_ssao as &dyn Pass,
             &pass_c as &dyn Pass,
         ];
         let table = PipelineBuilder::validate_and_allocate(&passes, &device, 64, 64);
-        assert!(table.len() >= 5); // shadow + 4-5 GBuffer
+        assert!(table.len() >= 6); // shadow + 4-5 GBuffer + AO
 
         let table2 = PipelineBuilder::validate_and_allocate(&passes, &device, 128, 128);
-        assert!(table2.len() >= 5);
+        assert!(table2.len() >= 6);
     }
 
     #[test] fn build_all_passes_works() {
@@ -645,11 +687,12 @@ mod tests {
         let scheduler = PipelineBuilder::new()
             .add(ShadowPass::new(&device))
             .add(GBufferPass::new(&device))
+            .add(crate::renderer::passes::ssao::SSAOPass::new(&device))
             .add(LightingPass::new(&device, sf))
             .add(debug_pass)
             .build(&device, 64, 64);
 
-        assert_eq!(scheduler.pass_count(), 4);
+        assert_eq!(scheduler.pass_count(), 5);
     }
 
     fn headless_device() -> wgpu::Device {

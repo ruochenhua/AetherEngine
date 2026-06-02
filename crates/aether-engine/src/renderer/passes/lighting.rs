@@ -38,8 +38,16 @@ pub struct LightingPass {
     uniform_bind_group_layout: wgpu::BindGroupLayout,
     /// IBL bind group (created in constructor, always present).
     ibl_bind_group: wgpu::BindGroup,
+    /// AO texture handle (populated by resolve).
+    ao_handle: Option<ResHandle<AOTexture>>,
     /// Debug visualization mode (set by Launcher, used in apply_frame).
     debug_mode: u32,
+    /// Feature toggle: SSAO enabled.
+    ssao_enabled: bool,
+    /// Feature toggle: shadow mapping enabled.
+    shadow_enabled: bool,
+    /// Feature toggle: IBL enabled.
+    ibl_enabled: bool,
 }
 
 impl Pass for LightingPass {
@@ -54,6 +62,7 @@ impl Pass for LightingPass {
             .read::<GAlbedo>("gbuffer_albedo")
             .read::<GMaterial>("gbuffer_material")
             .read::<ShadowDepth>("shadow_depth")
+            .read::<AOTexture>("ao")
     }
 
     fn init(device: &wgpu::Device) -> Self {
@@ -68,6 +77,7 @@ impl Pass for LightingPass {
         self.albedo_handle = Some(resources.handle::<GAlbedo>("gbuffer_albedo"));
         self.material_handle = Some(resources.handle::<GMaterial>("gbuffer_material"));
         self.shadow_depth_handle = Some(resources.handle::<ShadowDepth>("shadow_depth"));
+        self.ao_handle = Some(resources.handle::<AOTexture>("ao"));
 
         // Create samplers
         let gbuffer_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -103,6 +113,7 @@ impl Pass for LightingPass {
         let albedo_view = resources.get(self.albedo_handle.unwrap());
         let material_view = resources.get(self.material_handle.unwrap());
         let shadow_view = resources.get(self.shadow_depth_handle.unwrap());
+        let ao_view = resources.get(self.ao_handle.unwrap());
 
         self.texture_bind_group = Some(device.create_bind_group(
             &wgpu::BindGroupDescriptor {
@@ -129,6 +140,10 @@ impl Pass for LightingPass {
                         binding: 4,
                         resource: wgpu::BindingResource::Sampler(&gbuffer_sampler),
                     },
+                    wgpu::BindGroupEntry {
+                        binding: 5,
+                        resource: wgpu::BindingResource::TextureView(ao_view),
+                    },
                 ],
             },
         ));
@@ -153,6 +168,7 @@ impl Pass for LightingPass {
                 ],
             },
         ));
+
     }
 
     fn apply_frame(&mut self, frame: &RenderFrame) {
@@ -164,6 +180,9 @@ impl Pass for LightingPass {
         let mut uniforms = *frame.lighting;
         uniforms.camera_pos = frame.camera.position.into();
         uniforms.debug_mode = self.debug_mode;
+        uniforms.ssao_enabled = if self.ssao_enabled { 1 } else { 0 };
+        uniforms.shadow_enabled = if self.shadow_enabled { 1 } else { 0 };
+        uniforms.ibl_enabled = if self.ibl_enabled { 1 } else { 0 };
         uniforms.light_view_proj = light_view_proj.to_cols_array_2d();
         let proj = frame.camera.projection_matrix(frame.aspect);
         let view = frame.camera.view_matrix();
@@ -258,6 +277,10 @@ struct LightingUniforms {
     _pad3: f32,
     light_view_proj: mat4x4<f32>,
     inv_view_proj: mat4x4<f32>,
+    ssao_enabled: u32,
+    shadow_enabled: u32,
+    ibl_enabled: u32,
+    _pad4: u32,
 };
 
 @group(0) @binding(0) var gbuffer_position: texture_2d<f32>;
@@ -277,6 +300,8 @@ struct LightingUniforms {
 @group(3) @binding(2) var brdf_lut: texture_2d<f32>;
 @group(3) @binding(3) var ibl_sampler: sampler;
 @group(3) @binding(4) var env_map: texture_cube<f32>;
+
+@group(0) @binding(5) var ao_texture: texture_2d<f32>;
 
 // ── Cook-Torrance BRDF ──────────────────────────────────────────────
 
@@ -409,7 +434,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         }
         visibility = visibility / 9.0;
     }
-    let shadow_factor = mix(0.3, 1.0, visibility);
+    let shadow_factor = select(1.0, mix(0.3, 1.0, visibility), uniforms.shadow_enabled != 0u);
     let direct_light = lit_color * shadow_factor;
 
     // IBL (Image-Based Lighting) — uses same F (Fresnel) and kD as direct light
@@ -425,8 +450,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let env_brdf = textureSample(brdf_lut, ibl_sampler, vec2<f32>(NdotV, roughness)).rg;
     let specular_ibl = prefiltered_color * (F * env_brdf.r + env_brdf.g);
 
-    let ibl_light = diffuse_ibl + specular_ibl;
-    let final_color = direct_light + ibl_light;
+    let ibl_light = select(vec3<f32>(0.0), diffuse_ibl + specular_ibl, uniforms.ibl_enabled != 0u);
+
+    // Sample AO texture (R8Unorm → f32 in .r)
+    let ao_raw = textureSample(ao_texture, gbuffer_sampler, in.uv).r;
+    let ao = select(1.0, ao_raw, uniforms.ssao_enabled != 0u);
+    let final_color = direct_light + ibl_light * ao;
 
     if (uniforms.debug_mode == 1u) {
         output_color = ambient;
@@ -454,6 +483,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     } else if (uniforms.debug_mode == 10u) {
         // Show normal alpha for comparison
         output_color = vec3<f32>(normal_sample.a);
+    } else if (uniforms.debug_mode == 14u) {
+        // SSAO only visualization
+        output_color = vec3<f32>(ao);
     } else {
         output_color = final_color;
     }
@@ -461,11 +493,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }  // closes geometry else block
 
     // Tone mapping — shared between sky and geometry
-    // Skip for debug modes 6 (raw depth), 11-13 (view-ray/env/checker already returned)
+    // Skip for debug modes 6 (raw depth), 11-13, 14 (view-ray/env/checker/AO already returned)
     let mapped = select(
         output_color / (output_color + vec3<f32>(1.0)),
         output_color,
-        uniforms.debug_mode == 6u
+        uniforms.debug_mode == 6u || uniforms.debug_mode == 14u
     );
     return vec4<f32>(mapped, 1.0);
 }
@@ -524,6 +556,16 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                         binding: 4,
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 5,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
                         count: None,
                     },
                 ],
@@ -713,6 +755,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             albedo_handle: None,
             material_handle: None,
             shadow_depth_handle: None,
+            ao_handle: None,
             texture_bind_group: None,
             shadow_bind_group: None,
             uniform_bind_group,
@@ -746,6 +789,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                 ],
             }),
             debug_mode: 0,
+            ssao_enabled: true,
+            shadow_enabled: true,
+            ibl_enabled: true,
         }
     }
 
@@ -758,5 +804,20 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     /// Set debug visualization mode for the next frame.
     pub fn set_debug_mode(&mut self, mode: u32) {
         self.debug_mode = mode;
+    }
+
+    /// Toggle SSAO in the lighting shader.
+    pub fn set_ssao_enabled(&mut self, enabled: bool) {
+        self.ssao_enabled = enabled;
+    }
+
+    /// Toggle shadow mapping in the lighting shader.
+    pub fn set_shadow_enabled(&mut self, enabled: bool) {
+        self.shadow_enabled = enabled;
+    }
+
+    /// Toggle IBL in the lighting shader.
+    pub fn set_ibl_enabled(&mut self, enabled: bool) {
+        self.ibl_enabled = enabled;
     }
 }

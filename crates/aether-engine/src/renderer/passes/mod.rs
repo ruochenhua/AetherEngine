@@ -7,4 +7,5 @@ pub mod debug;
 pub mod gbuffer;
 pub mod lighting;
 pub mod shadow;
+pub mod ssao;
 pub mod template;
