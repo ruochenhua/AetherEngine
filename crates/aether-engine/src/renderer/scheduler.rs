@@ -147,7 +147,9 @@ impl PipelineBuilder {
                 }
                 seen.insert(key, true);
                 let format = write_slot.format.expect("Write slot must have a format");
-                let texture = Self::create_transient_texture(device, format, width, height);
+                let tex_width = write_slot.width.unwrap_or(width);
+                let tex_height = write_slot.height.unwrap_or(height);
+                let texture = Self::create_transient_texture(device, format, tex_width, tex_height);
                 let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
                 resource_table.allocate(write_slot.type_id, write_slot.name, view);
             }
@@ -184,7 +186,9 @@ impl PipelineBuilder {
                     seen.insert(key, true);
 
                     let format = write_slot.format.expect("Write slot must have format");
-                    let texture = Self::create_transient_texture(device, format, width, height);
+                    let tex_width = write_slot.width.unwrap_or(width);
+                    let tex_height = write_slot.height.unwrap_or(height);
+                    let texture = Self::create_transient_texture(device, format, tex_width, tex_height);
                     let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
                     resource_table.allocate(write_slot.type_id, write_slot.name, view);
                 }
@@ -343,7 +347,9 @@ impl Scheduler {
                 seen.insert(key, true);
 
                 let format = write_slot.format.expect("Write slot must have format");
-                let texture = PipelineBuilder::create_transient_texture(device, format, width, height);
+                let tex_width = write_slot.width.unwrap_or(width);
+                let tex_height = write_slot.height.unwrap_or(height);
+                let texture = PipelineBuilder::create_transient_texture(device, format, tex_width, tex_height);
                 let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
                 new_table.allocate(write_slot.type_id, write_slot.name, view);
             }

@@ -29,6 +29,9 @@ pub struct ShadowObjectUniform {
 unsafe impl bytemuck::Pod for ShadowObjectUniform {}
 unsafe impl bytemuck::Zeroable for ShadowObjectUniform {}
 
+/// Fixed resolution for the shadow depth map.
+pub const SHADOW_MAP_SIZE: u32 = 2048;
+
 /// Shadow map pass — renders depth from the directional light's perspective.
 pub struct ShadowPass {
     pipeline: wgpu::RenderPipeline,
@@ -44,7 +47,8 @@ pub struct ShadowPass {
 impl Pass for ShadowPass {
     fn name(&self) -> &str { "Shadow" }
     fn signature(&self) -> PassSignature {
-        PassSignature::new("Shadow").write::<ShadowDepth>("shadow_depth", wgpu::TextureFormat::Depth32Float)
+        PassSignature::new("Shadow")
+            .write_sized::<ShadowDepth>("shadow_depth", wgpu::TextureFormat::Depth32Float, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE)
     }
     fn init(device: &wgpu::Device) -> Self { Self::new(device) }
     fn resolve(&mut self, _device: &wgpu::Device, resources: &ResourceTable) {

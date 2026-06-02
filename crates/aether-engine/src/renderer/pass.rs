@@ -107,6 +107,8 @@ impl PassSignature {
             name,
             format: None, // Reads don't declare format
             kind: SlotKind::Read,
+            width: None,
+            height: None,
         });
         self
     }
@@ -118,6 +120,21 @@ impl PassSignature {
             name,
             format: Some(format),
             kind: SlotKind::Write,
+            width: None,
+            height: None,
+        });
+        self
+    }
+
+    /// Add a write dependency with a fixed texture size.
+    pub fn write_sized<T: ResourceTag>(mut self, name: &'static str, format: wgpu::TextureFormat, width: u32, height: u32) -> Self {
+        self.writes.push(ResSlot {
+            type_id: TypeId::of::<T>(),
+            name,
+            format: Some(format),
+            kind: SlotKind::Write,
+            width: Some(width),
+            height: Some(height),
         });
         self
     }
@@ -134,6 +151,10 @@ pub struct ResSlot {
     pub format: Option<wgpu::TextureFormat>,
     /// Read or write.
     pub kind: SlotKind,
+    /// Fixed width for this texture (overrides scheduler default). Only meaningful for writes.
+    pub width: Option<u32>,
+    /// Fixed height for this texture (overrides scheduler default). Only meaningful for writes.
+    pub height: Option<u32>,
 }
 
 impl ResSlot {
@@ -144,6 +165,8 @@ impl ResSlot {
             name,
             format: Some(format),
             kind: SlotKind::Write,
+            width: None,
+            height: None,
         }
     }
 
@@ -154,6 +177,8 @@ impl ResSlot {
             name,
             format: None,
             kind: SlotKind::Read,
+            width: None,
+            height: None,
         }
     }
 }

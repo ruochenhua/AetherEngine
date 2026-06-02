@@ -183,6 +183,7 @@ impl Pass for LightingPass {
         uniforms.ssao_enabled = if self.ssao_enabled { 1 } else { 0 };
         uniforms.shadow_enabled = if self.shadow_enabled { 1 } else { 0 };
         uniforms.ibl_enabled = if self.ibl_enabled { 1 } else { 0 };
+        uniforms.shadow_map_size = crate::renderer::passes::shadow::SHADOW_MAP_SIZE as f32;
         uniforms.light_view_proj = light_view_proj.to_cols_array_2d();
         let proj = frame.camera.projection_matrix(frame.aspect);
         let view = frame.camera.view_matrix();
@@ -274,7 +275,7 @@ struct LightingUniforms {
     ambient_intensity: f32,
     debug_mode: u32,
     shadow_normal_bias: f32,
-    _pad3: f32,
+    shadow_map_size: f32,
     light_view_proj: mat4x4<f32>,
     inv_view_proj: mat4x4<f32>,
     ssao_enabled: u32,
@@ -410,29 +411,43 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     //   bias = base * tan(acos(NdotL)) = base * sqrt(1-NdotL²) / NdotL
     // Grazing angles get more bias; front-facing gets less. Clamped to avoid
     // peter panning on flat surfaces.
-    let light_clip = uniforms.light_view_proj * vec4<f32>(world_pos, 1.0);
+    //
+    // We also apply a small world-space normal offset before projecting to
+    // light space. This shifts the sampling position slightly along the
+    // surface normal, which effectively moves receiver surfaces toward the
+    // occluder in light-space and eliminates the gap (peter-panning)
+    // without needing excessive depth bias.
+    let normal_offset = 0.03;
+    let shadow_sample_pos = world_pos + N * normal_offset;
+    let light_clip = uniforms.light_view_proj * vec4<f32>(shadow_sample_pos, 1.0);
     var visibility: f32 = 1.0;
     if (light_clip.w > 0.0) {
         let light_ndc = light_clip.xyz / light_clip.w;
         let uv = vec2<f32>(light_ndc.x * 0.5 + 0.5, 0.5 - light_ndc.y * 0.5);
-        // Slope-scale bias: tan(acos(NdotL)) = sin(theta)/cos(theta)
-        let cos_theta = saturate(NdotL);
-        let sin_theta = sqrt(1.0 - cos_theta * cos_theta);
-        let slope_bias = uniforms.shadow_normal_bias * sin_theta / max(cos_theta, 0.001);
-        let bias = min(slope_bias, uniforms.shadow_normal_bias * 10.0);
-        let ref_depth = light_ndc.z - bias;
-        // PCF 3x3
-        let texel_size = 1.0 / 1024.0;
-        visibility = 0.0;
-        for (var x: i32 = -1; x <= 1; x = x + 1) {
-            for (var y: i32 = -1; y <= 1; y = y + 1) {
-                let offset = vec2<f32>(f32(x) * texel_size, f32(y) * texel_size);
-                visibility = visibility + textureSampleCompare(
-                    shadow_depth, shadow_sampler, uv + offset, ref_depth
-                );
+        // Bounds check: only sample shadow map when NDC is inside [0,1] cube.
+        // Outside the frustum we assume fully lit (visibility = 1.0).
+        let in_bounds = all(uv >= vec2<f32>(0.0)) && all(uv <= vec2<f32>(1.0))
+                     && light_ndc.z >= 0.0 && light_ndc.z <= 1.0;
+        if (in_bounds) {
+            // Slope-scale bias: tan(acos(NdotL)) = sin(theta)/cos(theta)
+            let cos_theta = saturate(NdotL);
+            let sin_theta = sqrt(1.0 - cos_theta * cos_theta);
+            let slope_bias = uniforms.shadow_normal_bias * sin_theta / max(cos_theta, 0.001);
+            let bias = min(slope_bias, uniforms.shadow_normal_bias * 5.0);
+            let ref_depth = light_ndc.z - bias;
+            // PCF 3x3
+            let texel_size = 1.0 / uniforms.shadow_map_size;
+            visibility = 0.0;
+            for (var x: i32 = -1; x <= 1; x = x + 1) {
+                for (var y: i32 = -1; y <= 1; y = y + 1) {
+                    let offset = vec2<f32>(f32(x) * texel_size, f32(y) * texel_size);
+                    visibility = visibility + textureSampleCompare(
+                        shadow_depth, shadow_sampler, uv + offset, ref_depth
+                    );
+                }
             }
+            visibility = visibility / 9.0;
         }
-        visibility = visibility / 9.0;
     }
     let shadow_factor = select(1.0, mix(0.3, 1.0, visibility), uniforms.shadow_enabled != 0u);
     let direct_light = lit_color * shadow_factor;
