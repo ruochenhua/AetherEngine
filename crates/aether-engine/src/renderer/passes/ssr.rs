@@ -367,23 +367,25 @@ fn ray_march(world_pos: vec3<f32>, rd: vec3<f32>, uv: vec2<f32>) -> vec4<f32> {
         let px = vec2<i32>(current_screen.xy);
         let clamped_px = clamp(px, vec2<i32>(0), dims - vec2<i32>(1));
 
-        // Sample depth directly from GBuffer depth buffer
-        let scene_depth = textureLoad(gbuffer_depth, clamped_px, 0).r;
+        // Sample scene world position from GBuffer
+        let scene_pos = textureLoad(gbuffer_position, clamped_px, 0).xyz;
 
-        // Skip sky / background (depth cleared to 1.0)
-        if (scene_depth >= 0.9999) {
+        // Skip empty pixels (sky / background)
+        if (length(scene_pos) < 0.0001) {
             last_screen = current_screen;
             last_t = current_t;
             continue;
         }
 
+        // Reproject scene position to NDC for depth comparison
+        let scene_clip = settings.view_proj * vec4<f32>(scene_pos, 1.0);
+        let scene_ndc = scene_clip.xyz / scene_clip.w;
+
         let ray_ndc_z = mix(clipped_start_ndc.z, clipped_end_ndc.z, current_t);
         let last_ray_z = last_screen.z;
-        let scene_z = scene_depth;
+        let scene_z = scene_ndc.z;
 
         // Intersection: ray crosses the scene surface (last and current on opposite sides).
-        // Add a depth tolerance to reject self-intersections caused by start-point offset
-        // being too small compared to reprojection error.
         let z_tolerance = 0.002;
         if ((last_ray_z > scene_z + z_tolerance && ray_ndc_z <= scene_z + z_tolerance) ||
             (last_ray_z < scene_z - z_tolerance && ray_ndc_z >= scene_z - z_tolerance)) {
@@ -399,15 +401,17 @@ fn ray_march(world_pos: vec3<f32>, rd: vec3<f32>, uv: vec2<f32>) -> vec4<f32> {
                 let sm = start_screen + screen_diff * tm;
                 let spx = vec2<i32>(sm.xy);
                 let scl = clamp(spx, vec2<i32>(0), dims - vec2<i32>(1));
-                let smp_depth = textureLoad(gbuffer_depth, scl, 0).r;
+                let smp = textureLoad(gbuffer_position, scl, 0).xyz;
 
-                if (smp_depth >= 0.9999) {
+                if (length(smp) < 0.0001) {
                     t0 = tm;
                     s0 = sm;
                     continue;
                 }
 
-                let smn_z = smp_depth;
+                let smc = settings.view_proj * vec4<f32>(smp, 1.0);
+                let smn = smc.xyz / smc.w;
+                let smn_z = smn.z;
                 let rmz = mix(clipped_start_ndc.z, clipped_end_ndc.z, tm);
 
                 // Check if [t0, tm] intersects (with same tolerance)
