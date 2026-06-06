@@ -63,6 +63,7 @@ impl Pass for LightingPass {
             .read::<GMaterial>("gbuffer_material")
             .read::<ShadowDepth>("shadow_depth")
             .read::<AOTexture>("ao")
+            .write::<SceneColor>("scene_color", wgpu::TextureFormat::Rgba16Float)
     }
 
     fn init(device: &wgpu::Device) -> Self {
@@ -199,16 +200,17 @@ impl Pass for LightingPass {
     fn execute(
         &self,
         encoder: &mut wgpu::CommandEncoder,
-        _resources: &ResourceTable,
-        surface_view: &wgpu::TextureView,
+        resources: &ResourceTable,
+        _surface_view: &wgpu::TextureView,
     ) {
         let texture_bg = self.texture_bind_group.as_ref()
             .expect("LightingPass: resolve not called");
+        let scene_color_view = resources.get(resources.handle::<SceneColor>("scene_color"));
 
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Lighting Pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: surface_view,
+                view: scene_color_view,
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
@@ -246,7 +248,9 @@ impl LightingPass {
         Self::new_inner(device, surface_format, ibl)
     }
 
-    fn new_inner(device: &wgpu::Device, surface_format: wgpu::TextureFormat, ibl: &crate::renderer::ibl::IblResources) -> Self {
+    fn new_inner(device: &wgpu::Device, _surface_format: wgpu::TextureFormat, ibl: &crate::renderer::ibl::IblResources) -> Self {
+        // LightingPass outputs to SceneColor (Rgba16Float), not the swapchain
+        let output_format = wgpu::TextureFormat::Rgba16Float;
         let shader_source = r#"
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
@@ -709,7 +713,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                 module: &shader,
                 entry_point: "fs_main",
                 targets: &[Some(wgpu::ColorTargetState {
-                    format: surface_format,
+                    format: output_format,
                     blend: None,
                     write_mask: wgpu::ColorWrites::ALL,
                 })],

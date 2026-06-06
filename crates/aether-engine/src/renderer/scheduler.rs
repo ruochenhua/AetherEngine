@@ -289,6 +289,18 @@ impl Scheduler {
         }
     }
 
+    /// Set screen size on the SSRPass (for textureLoad pixel coords).
+    pub fn set_ssr_screen_size(&mut self, width: u32, height: u32) {
+        for pass in &mut self.passes {
+            if pass.name() == "SSR" {
+                if let Some(ssr) = pass.as_any_mut().downcast_mut::<crate::renderer::passes::ssr::SSRPass>() {
+                    ssr.set_screen_size(width, height);
+                }
+                break;
+            }
+        }
+    }
+
     /// Set the debug visualization mode on the LightingPass.
     pub fn set_debug_mode(&mut self, mode: u32) {
         for pass in &mut self.passes {
@@ -296,6 +308,30 @@ impl Scheduler {
                 // Downcast: we know LightingPass has set_debug_mode
                 if let Some(lp) = pass.as_any_mut().downcast_mut::<crate::renderer::passes::lighting::LightingPass>() {
                     lp.set_debug_mode(mode);
+                }
+                break;
+            }
+        }
+    }
+
+    /// Set the SSR debug visualization mode.
+    pub fn set_ssr_debug_mode(&mut self, mode: u32) {
+        for pass in &mut self.passes {
+            if pass.name() == "SSR" {
+                if let Some(ssr) = pass.as_any_mut().downcast_mut::<crate::renderer::passes::ssr::SSRPass>() {
+                    ssr.set_debug_mode(mode);
+                }
+                break;
+            }
+        }
+    }
+
+    /// Enable or disable SSR.
+    pub fn set_ssr_enabled(&mut self, enabled: bool) {
+        for pass in &mut self.passes {
+            if pass.name() == "SSR" {
+                if let Some(ssr) = pass.as_any_mut().downcast_mut::<crate::renderer::passes::ssr::SSRPass>() {
+                    ssr.set_enabled(enabled);
                 }
                 break;
             }
@@ -527,6 +563,7 @@ mod tests {
         ) -> Self {
             self.writes.push(ResSlot {
                 type_id: TypeId::of::<T>(), name, format: Some(format), kind: SlotKind::Write,
+                width: None, height: None,
             });
             self
         }
@@ -534,6 +571,7 @@ mod tests {
         fn with_read<T: ResourceTag>(mut self, name: &'static str) -> Self {
             self.reads.push(ResSlot {
                 type_id: TypeId::of::<T>(), name, format: None, kind: SlotKind::Read,
+                width: None, height: None,
             });
             self
         }

@@ -13,11 +13,13 @@ use aether_engine::{
         ibl::{IblResources},
         light::LightingUniforms,
         passes::{
+            composite::CompositePass,
             debug::DebugLinePass,
             gbuffer::GBufferPass,
             lighting::LightingPass,
             shadow::ShadowPass,
             ssao::SSAOPass,
+            ssr::SSRPass,
         },
         scheduler::PipelineBuilder,
     },
@@ -115,10 +117,13 @@ fn main() {
         .add(GBufferPass::new(&ctx.device))
         .add(SSAOPass::new(&ctx.device))
         .add(LightingPass::new_with_ibl(&ctx.device, surface_format, &ibl_resources))
+        .add(SSRPass::new(&ctx.device))
+        .add(CompositePass::new(&ctx.device, surface_format))
         .add(DebugLinePass::new(&ctx.device, surface_format, depth_format))
         .build(&ctx.device, ctx.config.width, ctx.config.height);
 
     scheduler.set_ssao_screen_size(ctx.config.width, ctx.config.height);
+    scheduler.set_ssr_screen_size(ctx.config.width, ctx.config.height);
 
     // Camera
     let mut camera = FlyCamera {
@@ -153,9 +158,11 @@ fn main() {
     let mut ssao_enabled = true;
     let mut shadow_enabled = true;
     let mut ibl_enabled = true;
+    let mut ssr_enabled = true;
     let mut ssao_radius = 0.15f32;
     let mut ssao_bias = 0.025f32;
     let mut ssao_intensity = 1.5f32;
+    let mut ssr_debug_mode: u32 = 0;
 
     event_loop.set_control_flow(ControlFlow::Poll);
 
@@ -176,6 +183,7 @@ fn main() {
                             ctx.resize(size.width, size.height);
                             scheduler.rebuild(&ctx.device, size.width, size.height);
                             scheduler.set_ssao_screen_size(size.width, size.height);
+                            scheduler.set_ssr_screen_size(size.width, size.height);
                         }
                         WindowEvent::RedrawRequested => {
                             let now = std::time::Instant::now();
@@ -206,6 +214,9 @@ fn main() {
                             if input.key_pressed(KeyCode::F3) { debug_mode = 12; }
                             if input.key_pressed(KeyCode::F4) { debug_mode = 13; }
                             if input.key_pressed(KeyCode::F5) { debug_mode = 14; }
+                            if input.key_pressed(KeyCode::F6) {
+                                ssr_debug_mode = (ssr_debug_mode + 1) % 10;
+                            }
 
                             if let Some(idx) = pending_load.take() {
                                 let entry = &scene_entries[idx];
@@ -345,12 +356,17 @@ fn main() {
                                                         "Debug: [{}] {}",
                                                         mode_idx, mode_names[mode_idx]
                                                     ));
+                                                    ui.label(format!(
+                                                        "SSR Debug: {} (F6)",
+                                                        ssr_debug_mode
+                                                    ));
                                                     ui.separator();
 
                                                     ui.heading("Features");
                                                     ui.checkbox(&mut ssao_enabled, "SSAO");
                                                     ui.checkbox(&mut shadow_enabled, "Shadow Map");
                                                     ui.checkbox(&mut ibl_enabled, "IBL");
+                                                    ui.checkbox(&mut ssr_enabled, "SSR");
                                                     ui.separator();
 
                                                     ui.heading("SSAO Settings");
@@ -458,6 +474,8 @@ fn main() {
                                     scheduler.set_feature_flags(ssao_enabled, shadow_enabled, ibl_enabled);
                                     scheduler.set_ssao_params(ssao_radius, ssao_bias, ssao_intensity);
                                     scheduler.set_debug_mode(debug_mode as u32);
+                                    scheduler.set_ssr_debug_mode(ssr_debug_mode);
+                                    scheduler.set_ssr_enabled(ssr_enabled);
                                     scheduler.apply_frame_all(&frame);
                                     scheduler.execute_all(&mut encoder, &target_view);
                                 }

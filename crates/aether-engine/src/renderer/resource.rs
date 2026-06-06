@@ -73,6 +73,10 @@ impl ResourceTag for BrdfLUT {}
 pub enum ReflectionTexture {}
 impl ResourceTag for ReflectionTexture {}
 
+/// Scene color texture after deferred lighting (Rgba16Float).
+pub enum SceneColor {}
+impl ResourceTag for SceneColor {}
+
 // ---------------------------------------------------------------------------
 // Shadow tags
 // ---------------------------------------------------------------------------
