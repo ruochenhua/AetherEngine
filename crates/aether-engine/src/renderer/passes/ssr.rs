@@ -269,29 +269,77 @@ fn ray_march(world_pos: vec3<f32>, rd: vec3<f32>, uv: vec2<f32>) -> vec4<f32> {
     var start_clip = settings.view_proj * vec4<f32>(start_pos, 1.0);
     var end_clip = settings.view_proj * vec4<f32>(end_pos, 1.0);
 
-    // Clamp end_pos to camera front plane if it falls behind camera
-    // (perspective divide with w <= 0 flips NDC and breaks screen-space march)
-    // Use 0.01 instead of 0.001 to avoid extreme NDC values for nearly parallel rays.
-    if (end_clip.w < 0.01) {
-        let t = (start_clip.w - 0.01) / (start_clip.w - end_clip.w);
-        let clamped_end = start_pos + (end_pos - start_pos) * t;
-        end_clip = settings.view_proj * vec4<f32>(clamped_end, 1.0);
+    // Clip ray to camera front plane in clip space.
+    // If both endpoints are behind the camera, the ray can't produce a valid reflection.
+    let epsilon = 0.01;
+    if (start_clip.w < epsilon && end_clip.w < epsilon) {
+        return vec4<f32>(0.0, 0.0, 0.0, 0.0);
+    }
+    if (start_clip.w < epsilon) {
+        let t = (epsilon - start_clip.w) / (end_clip.w - start_clip.w);
+        start_clip = mix(start_clip, end_clip, t);
+    }
+    if (end_clip.w < epsilon) {
+        let t = (epsilon - start_clip.w) / (end_clip.w - start_clip.w);
+        end_clip = mix(start_clip, end_clip, t);
     }
 
     let start_ndc = start_clip.xyz / start_clip.w;
     let end_ndc = end_clip.xyz / end_clip.w;
 
+    // Clip NDC line to view frustum [-1,1]×[-1,1]×[0,1]
+    let ndc_delta = end_ndc - start_ndc;
+    var t_min = 0.0;
+    var t_max = 1.0;
+
+    // X bounds [-1, 1]
+    if (abs(ndc_delta.x) > 1e-6) {
+        let tx1 = (-1.0 - start_ndc.x) / ndc_delta.x;
+        let tx2 = (1.0 - start_ndc.x) / ndc_delta.x;
+        t_min = max(t_min, min(tx1, tx2));
+        t_max = min(t_max, max(tx1, tx2));
+    } else if (start_ndc.x < -1.0 || start_ndc.x > 1.0) {
+        return vec4<f32>(0.0, 0.0, 0.0, 0.0);
+    }
+
+    // Y bounds [-1, 1]
+    if (abs(ndc_delta.y) > 1e-6) {
+        let ty1 = (-1.0 - start_ndc.y) / ndc_delta.y;
+        let ty2 = (1.0 - start_ndc.y) / ndc_delta.y;
+        t_min = max(t_min, min(ty1, ty2));
+        t_max = min(t_max, max(ty1, ty2));
+    } else if (start_ndc.y < -1.0 || start_ndc.y > 1.0) {
+        return vec4<f32>(0.0, 0.0, 0.0, 0.0);
+    }
+
+    // Z bounds [0, 1]
+    if (abs(ndc_delta.z) > 1e-6) {
+        let tz1 = (0.0 - start_ndc.z) / ndc_delta.z;
+        let tz2 = (1.0 - start_ndc.z) / ndc_delta.z;
+        t_min = max(t_min, min(tz1, tz2));
+        t_max = min(t_max, max(tz1, tz2));
+    } else if (start_ndc.z < 0.0 || start_ndc.z > 1.0) {
+        return vec4<f32>(0.0, 0.0, 0.0, 0.0);
+    }
+
+    if (t_min > t_max) {
+        return vec4<f32>(0.0, 0.0, 0.0, 0.0);
+    }
+
+    let clipped_start_ndc = start_ndc + ndc_delta * t_min;
+    let clipped_end_ndc = start_ndc + ndc_delta * t_max;
+
     // Convert NDC to screen space (pixel coordinates).
     // wgpu NDC: (-1,-1) = bottom-left. textureLoad (0,0) = top-left.
     let start_screen = vec3<f32>(
-        (start_ndc.x + 1.0) * 0.5 * settings.screen_size.x,
-        (1.0 - start_ndc.y) * 0.5 * settings.screen_size.y,
-        start_ndc.z
+        (clipped_start_ndc.x + 1.0) * 0.5 * settings.screen_size.x,
+        (1.0 - clipped_start_ndc.y) * 0.5 * settings.screen_size.y,
+        clipped_start_ndc.z
     );
     let end_screen = vec3<f32>(
-        (end_ndc.x + 1.0) * 0.5 * settings.screen_size.x,
-        (1.0 - end_ndc.y) * 0.5 * settings.screen_size.y,
-        end_ndc.z
+        (clipped_end_ndc.x + 1.0) * 0.5 * settings.screen_size.x,
+        (1.0 - clipped_end_ndc.y) * 0.5 * settings.screen_size.y,
+        clipped_end_ndc.z
     );
 
     let screen_diff = end_screen - start_screen;
@@ -333,7 +381,7 @@ fn ray_march(world_pos: vec3<f32>, rd: vec3<f32>, uv: vec2<f32>) -> vec4<f32> {
         let scene_clip = settings.view_proj * vec4<f32>(scene_pos, 1.0);
         let scene_ndc = scene_clip.xyz / scene_clip.w;
 
-        let ray_ndc_z = mix(start_ndc.z, end_ndc.z, current_t);
+        let ray_ndc_z = mix(clipped_start_ndc.z, clipped_end_ndc.z, current_t);
         let last_ray_z = last_screen.z;
         let scene_z = scene_ndc.z;
 
@@ -365,7 +413,7 @@ fn ray_march(world_pos: vec3<f32>, rd: vec3<f32>, uv: vec2<f32>) -> vec4<f32> {
 
                 let smc = settings.view_proj * vec4<f32>(smp, 1.0);
                 let smn = smc.xyz / smc.w;
-                let rmz = mix(start_ndc.z, end_ndc.z, tm);
+                let rmz = mix(clipped_start_ndc.z, clipped_end_ndc.z, tm);
 
                 // Check if [t0, tm] intersects (with same tolerance)
                 if ((s0.z > smn.z + z_tolerance && rmz <= smn.z + z_tolerance) ||
