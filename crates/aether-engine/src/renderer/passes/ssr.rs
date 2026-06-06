@@ -26,9 +26,14 @@ struct SSRSettings {
     linear_steps: f32,
     thickness: f32,
     step_exponent: f32,
+    jitter_amount: f32,
+    min_roughness: f32,
+    max_roughness: f32,
+    edge_fade_start: f32,
+    edge_fade_end: f32,
     ssr_debug_mode: u32,
     ssr_enabled: u32,
-    _pad2: [u32; 2],
+    _pad2: u32,
 }
 
 /// SSR pass state.
@@ -111,12 +116,17 @@ impl Pass for SSRPass {
             screen_size: self.screen_size,
             _pad1: [0.0; 2],
             max_distance: 20.0,
-            linear_steps: 40.0,
+            linear_steps: 12.0,
             thickness: 0.5,
             step_exponent: 1.0,
+            jitter_amount: 1.0,
+            min_roughness: 0.08,
+            max_roughness: 0.6,
+            edge_fade_start: 0.0,
+            edge_fade_end: 0.1,
             ssr_debug_mode: self.ssr_debug_mode,
             ssr_enabled: self.ssr_enabled,
-            _pad2: [0; 2],
+            _pad2: 0,
         };
         frame.queue.write_buffer(&self.settings_buffer, 0, bytemuck::cast_slice(&[settings]));
     }
@@ -172,10 +182,14 @@ struct SSRSettings {
     linear_steps: f32,
     thickness: f32,
     step_exponent: f32,
+    jitter_amount: f32,
+    min_roughness: f32,
+    max_roughness: f32,
+    edge_fade_start: f32,
+    edge_fade_end: f32,
     ssr_debug_mode: u32,
     ssr_enabled: u32,
-    _pad2_0: u32,
-    _pad2_1: u32,
+    _pad2: u32,
 };
 
 @group(0) @binding(0) var gbuffer_position: texture_2d<f32>;
@@ -247,7 +261,7 @@ fn sample_vndf_ggx(V: vec3<f32>, alpha: f32, u1: f32, u2: f32) -> vec3<f32> {
 
 // Screen-space ray march following the article approach.
 // Returns (hit, hit_uv.x, hit_uv.y, steps_taken_ratio).
-fn ray_march(world_pos: vec3<f32>, rd: vec3<f32>) -> vec4<f32> {
+fn ray_march(world_pos: vec3<f32>, rd: vec3<f32>, uv: vec2<f32>) -> vec4<f32> {
     // Offset start point to avoid self-intersection
     let start_pos = world_pos + rd * 0.5;
     let end_pos = world_pos + rd * settings.max_distance;
@@ -284,26 +298,23 @@ fn ray_march(world_pos: vec3<f32>, rd: vec3<f32>) -> vec4<f32> {
     let pixel_dist = max(abs(screen_diff.x), abs(screen_diff.y));
     // One sample per pixel for best quality (can reduce to *0.5 for performance)
     var sample_count = i32(pixel_dist);
-    sample_count = min(sample_count, 128);
+    sample_count = min(sample_count, 64);
     sample_count = max(sample_count, 2);
 
-    let delta_screen = screen_diff / f32(sample_count);
-    let delta_t = 1.0 / f32(sample_count);
-
     var last_screen = start_screen;
-    var current_screen = start_screen;
     var last_t = 0.0;
-    var current_t = 0.0;
     var hit = 0.0;
     var hit_uv = vec2<f32>(0.0);
     var steps_taken = 0.0;
 
     let dims = vec2<i32>(settings.screen_size);
+    let jitter_val = settings.jitter_amount * (rand2d(uv).x - 0.5);
 
-    for (var i = 0; i < sample_count; i++) {
-        current_screen += delta_screen;
-        current_t += delta_t;
-        steps_taken = f32(i);
+    for (var i = 1; i <= sample_count; i++) {
+        let raw_t = (f32(i) + jitter_val) / f32(sample_count);
+        let current_t = pow(clamp(raw_t, 0.0, 1.0), settings.step_exponent);
+        let current_screen = start_screen + screen_diff * current_t;
+        steps_taken = f32(i) - 1.0;
 
         let px = vec2<i32>(current_screen.xy);
         let clamped_px = clamp(px, vec2<i32>(0), dims - vec2<i32>(1));
@@ -391,7 +402,7 @@ fn hash22(p: vec2<f32>) -> vec2<f32> {
 // Screen-edge fade factor
 fn edge_fade(uv: vec2<f32>) -> f32 {
     let edge_dist = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
-    return smoothstep(0.0, 0.1, edge_dist);
+    return smoothstep(settings.edge_fade_start, settings.edge_fade_end, edge_dist);
 }
 
 @fragment
@@ -419,8 +430,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let view_dir = normalize(world_pos - settings.camera_pos);
 
     // Roughness fade: only process low-roughness surfaces
-    let max_roughness = 0.6;
-    let roughness_factor = 1.0 - smoothstep(0.08, max_roughness, roughness);
+    let roughness_factor = 1.0 - smoothstep(settings.min_roughness, settings.max_roughness, roughness);
 
     if (roughness_factor <= 0.0) {
         return vec4<f32>(0.0, 0.0, 0.0, 0.0);
@@ -446,7 +456,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
 
     // Screen-space ray march
-    let result = ray_march(world_pos, rd);
+    let result = ray_march(world_pos, rd, uv);
     var hit = result.x;
     let hit_uv = result.yz;
     let step_norm = result.w;
