@@ -1,10 +1,12 @@
 use winit::event::{ElementState, MouseButton, WindowEvent};
+use winit::keyboard::ModifiersState;
 
 /// Input state manager.
 ///
 /// Tracks keyboard and mouse input for the current frame.
 #[derive(Debug, Default)]
 pub struct InputManager {
+    modifiers: ModifiersState,
     keys_pressed: Vec<winit::keyboard::KeyCode>,
     keys_held: Vec<winit::keyboard::KeyCode>,
     keys_released: Vec<winit::keyboard::KeyCode>,
@@ -24,6 +26,9 @@ impl InputManager {
     /// Handle a window event and update input state.
     pub fn handle_window_event(&mut self, event: &WindowEvent) {
         match event {
+            WindowEvent::ModifiersChanged(modifiers) => {
+                self.modifiers = modifiers.state();
+            }
             WindowEvent::KeyboardInput {
                 event:
                     winit::event::KeyEvent {
@@ -107,20 +112,17 @@ impl InputManager {
 
     /// Check if Alt is being held.
     pub fn alt_held(&self) -> bool {
-        self.key_held(winit::keyboard::KeyCode::AltLeft)
-            || self.key_held(winit::keyboard::KeyCode::AltRight)
+        self.modifiers.alt_key()
     }
 
-    /// Check if Ctrl is being held.
+    /// Check if Ctrl (or Cmd on macOS) is being held.
     pub fn ctrl_held(&self) -> bool {
-        self.key_held(winit::keyboard::KeyCode::ControlLeft)
-            || self.key_held(winit::keyboard::KeyCode::ControlRight)
+        self.modifiers.control_key() || self.modifiers.super_key()
     }
 
     /// Check if Shift is being held.
     pub fn shift_held(&self) -> bool {
-        self.key_held(winit::keyboard::KeyCode::ShiftLeft)
-            || self.key_held(winit::keyboard::KeyCode::ShiftRight)
+        self.modifiers.shift_key()
     }
 
     /// Clear per-frame input state (pressed/released events).

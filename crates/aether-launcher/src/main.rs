@@ -505,13 +505,11 @@ impl ApplicationHandler for App {
     ) {
         // Handle undo/redo before any ctx borrow to avoid lifetime conflicts.
         if let WindowEvent::RedrawRequested = event {
-            if self.input.ctrl_held() {
-                if self.input.key_pressed(KeyCode::KeyZ) {
-                    self.apply_undo();
-                }
-                if self.input.key_pressed(KeyCode::KeyY) {
-                    self.apply_redo();
-                }
+            if self.input.ctrl_held() && self.input.key_pressed(KeyCode::KeyZ) {
+                self.apply_undo();
+            }
+            if self.input.ctrl_held() && self.input.key_pressed(KeyCode::KeyY) {
+                self.apply_redo();
             }
         }
 
