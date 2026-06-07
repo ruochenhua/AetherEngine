@@ -3,7 +3,9 @@
 //! Plain data structs implementing `hecs::Component`.
 
 use crate::asset::mesh::GpuMesh;
+use crate::renderer::light::LightType;
 use glam::{Quat, Vec3};
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 /// World-space transform (TRS decomposition).
@@ -94,5 +96,82 @@ impl Default for Camera {
             near: 0.1,
             far: 1000.0,
         }
+    }
+}
+
+/// Light component for ECS entities.
+///
+/// Stores light properties for directional, point, or spot lights.
+/// Paired with `Transform` on the same entity for position/direction.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Light {
+    /// Type of light.
+    pub light_type: LightType,
+    /// Light color [r, g, b].
+    pub color: [f32; 3],
+    /// Light intensity.
+    pub intensity: f32,
+}
+
+/// Name component for ECS entities.
+///
+/// Stores a human-readable instance name (e.g. "MyCube") for display
+/// in the hierarchy panel and serialization. Separate from `MeshHandle.name`,
+/// which stores the mesh reference (e.g. "cube").
+#[derive(Clone, Debug)]
+pub struct Name(pub String);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ecs::World;
+
+    #[test]
+    fn spawn_light_entity_and_query() {
+        let mut world = World::new();
+        let light = Light {
+            light_type: LightType::Directional,
+            color: [1.0, 0.8, 0.6],
+            intensity: 2.5,
+        };
+        world.spawn((Transform::default(), light.clone()));
+
+        let mut found = false;
+        for (transform, l) in world.query::<(&Transform, &Light)>().iter() {
+            found = true;
+            assert_eq!(l.light_type, LightType::Directional);
+            assert_eq!(l.color, [1.0, 0.8, 0.6]);
+            assert_eq!(l.intensity, 2.5);
+            assert_eq!(transform.translation, Vec3::ZERO);
+        }
+        assert!(found, "expected light entity in world");
+    }
+
+    #[test]
+    fn spawn_named_entity_and_query() {
+        let mut world = World::new();
+        world.spawn((Transform::default(), Name("MyCube".into())));
+
+        let mut found = false;
+        for (transform, name) in world.query::<(&Transform, &Name)>().iter() {
+            found = true;
+            assert_eq!(name.0, "MyCube");
+            assert_eq!(transform.translation, Vec3::ZERO);
+        }
+        assert!(found, "expected named entity in world");
+    }
+
+    #[test]
+    fn light_is_serializable() {
+        let light = Light {
+            light_type: LightType::Point,
+            color: [0.5, 0.5, 1.0],
+            intensity: 1.0,
+        };
+        let ron = ron::ser::to_string(&light).expect("should serialize");
+        assert!(ron.contains("Point"));
+        let deserialized: Light = ron::de::from_str(&ron).expect("should deserialize");
+        assert_eq!(deserialized.light_type, LightType::Point);
+        assert_eq!(deserialized.color, [0.5, 0.5, 1.0]);
     }
 }
