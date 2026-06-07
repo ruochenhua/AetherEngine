@@ -76,10 +76,10 @@ This spec intentionally does NOT add multi-light support to `LightingUniforms` o
 
 ## Acceptance Criteria
 
-- [ ] `Light` Component 可 spawn、可查询、可序列化
-- [ ] `Name` Component 可 spawn、可查询
-- [ ] `build_world` 为灯光 spawn `(Transform, Light)`
-- [ ] `build_world` 为物体附加 `Name`
-- [ ] `serialize_world` 能读取 `Name` 和 `Light`
-- [ ] `cargo test` 通过
-- [ ] `cargo clippy` 无警告
+- [x] `Light` Component 可 spawn、可查询、可序列化
+- [x] `Name` Component 可 spawn、可查询
+- [x] `build_world` 为灯光 spawn `(Transform, Light)`
+- [x] `build_world` 为物体附加 `Name`
+- [x] `serialize_world` 能读取 `Name` 和 `Light`
+- [x] `cargo test` 通过
+- [x] `cargo clippy` 无警告

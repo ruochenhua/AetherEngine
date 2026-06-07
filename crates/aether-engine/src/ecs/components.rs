@@ -103,7 +103,7 @@ impl Default for Camera {
 ///
 /// Stores light properties for directional, point, or spot lights.
 /// Paired with `Transform` on the same entity for position/direction.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Light {
     /// Type of light.
     pub light_type: LightType,
@@ -111,6 +111,51 @@ pub struct Light {
     pub color: [f32; 3],
     /// Light intensity.
     pub intensity: f32,
+    /// Whether this light casts shadows.
+    pub cast_shadow: bool,
+}
+
+impl Default for Light {
+    fn default() -> Self {
+        Self {
+            light_type: LightType::Directional,
+            color: [1.0, 1.0, 1.0],
+            intensity: 1.0,
+            cast_shadow: true,
+        }
+    }
+}
+
+impl Light {
+    /// Create a directional light.
+    pub fn directional(color: [f32; 3], intensity: f32) -> Self {
+        Self {
+            light_type: LightType::Directional,
+            color,
+            intensity,
+            cast_shadow: true,
+        }
+    }
+
+    /// Create a point light.
+    pub fn point(color: [f32; 3], intensity: f32) -> Self {
+        Self {
+            light_type: LightType::Point,
+            color,
+            intensity,
+            cast_shadow: false,
+        }
+    }
+
+    /// Create a spot light.
+    pub fn spot(color: [f32; 3], intensity: f32) -> Self {
+        Self {
+            light_type: LightType::Spot,
+            color,
+            intensity,
+            cast_shadow: true,
+        }
+    }
 }
 
 /// Name component for ECS entities.
@@ -118,8 +163,14 @@ pub struct Light {
 /// Stores a human-readable instance name (e.g. "MyCube") for display
 /// in the hierarchy panel and serialization. Separate from `MeshHandle.name`,
 /// which stores the mesh reference (e.g. "cube").
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Name(pub String);
+
+impl Default for Name {
+    fn default() -> Self {
+        Self(String::new())
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -133,6 +184,7 @@ mod tests {
             light_type: LightType::Directional,
             color: [1.0, 0.8, 0.6],
             intensity: 2.5,
+            cast_shadow: true,
         };
         world.spawn((Transform::default(), light.clone()));
 
@@ -167,11 +219,25 @@ mod tests {
             light_type: LightType::Point,
             color: [0.5, 0.5, 1.0],
             intensity: 1.0,
+            cast_shadow: false,
         };
         let ron = ron::ser::to_string(&light).expect("should serialize");
         assert!(ron.contains("Point"));
         let deserialized: Light = ron::de::from_str(&ron).expect("should deserialize");
-        assert_eq!(deserialized.light_type, LightType::Point);
-        assert_eq!(deserialized.color, [0.5, 0.5, 1.0]);
+        assert_eq!(deserialized, light);
+    }
+
+    #[test]
+    fn light_default_is_directional() {
+        let light = Light::default();
+        assert_eq!(light.light_type, LightType::Directional);
+        assert_eq!(light.color, [1.0, 1.0, 1.0]);
+        assert_eq!(light.intensity, 1.0);
+        assert!(light.cast_shadow);
+    }
+
+    #[test]
+    fn name_default_is_empty() {
+        assert_eq!(Name::default().0, "");
     }
 }
