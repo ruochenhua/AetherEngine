@@ -228,6 +228,7 @@ struct App {
     /// Cleared at the start of each RedrawRequested.
     egui_consumed_pointer: bool,
     pending_new_scene: bool,
+    pending_open_dialog: bool,
     pending_import_dialog: bool,
     pending_save_dialog: bool,
     pending_add_cube: bool,
@@ -301,6 +302,7 @@ impl App {
             gizmo_drag_axis: None,
             egui_consumed_pointer: false,
             pending_new_scene: false,
+            pending_open_dialog: false,
             pending_import_dialog: false,
             pending_save_dialog: false,
             pending_add_cube: false,
@@ -382,6 +384,69 @@ impl App {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Camera sync helpers
+// ---------------------------------------------------------------------------
+
+/// Read camera state from the first `(Transform, Camera)` entity.
+fn read_camera_from_world(
+    world: &aether_engine::ecs::World,
+) -> Option<(glam::Vec3, f32, f32, f32)> {
+    for (transform, cam) in world
+        .query::<(
+            &aether_engine::ecs::components::Transform,
+            &aether_engine::ecs::components::Camera,
+        )>()
+        .iter()
+    {
+        let (yaw, pitch, _roll) = transform.rotation.to_euler(glam::EulerRot::YXZ);
+        return Some((transform.translation, yaw, pitch, cam.fov));
+    }
+    None
+}
+
+/// Write camera state to the first `(Transform, Camera)` entity.
+fn write_camera_to_world(
+    camera: &aether_engine::renderer::camera::FlyCamera,
+    world: &mut aether_engine::ecs::World,
+) {
+    let mut target = None;
+    for (entity, _) in world
+        .query::<(
+            aether_engine::ecs::Entity,
+            (
+                &aether_engine::ecs::components::Transform,
+                &aether_engine::ecs::components::Camera,
+            ),
+        )>()
+        .iter()
+    {
+        target = Some(entity);
+        break;
+    }
+    if let Some(entity) = target {
+        let _ = world.insert(
+            entity,
+            (
+                aether_engine::ecs::components::Transform {
+                    translation: camera.position,
+                    rotation: glam::Quat::from_euler(
+                        glam::EulerRot::YXZ,
+                        camera.yaw,
+                        camera.pitch,
+                        0.0,
+                    ),
+                    scale: glam::Vec3::ONE,
+                },
+                aether_engine::ecs::components::Camera {
+                    fov: camera.fov,
+                    ..Default::default()
+                },
+            ),
+        );
+    }
+}
+
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
@@ -455,34 +520,25 @@ impl ApplicationHandler for App {
         self.state = LauncherState::Running { world, lighting };
         self.show_overlay = true;
 
-        // Auto-import scene if --scene is provided
+        // Auto-open scene if --scene is provided
         if let Some(scene_path) = &self.cli.scene {
             let path = std::path::PathBuf::from(scene_path);
-            match SceneLoader::from_file(&path) {
-                Ok(desc) => {
-                    self.camera.position = glam::Vec3::from_array(desc.camera.position);
-                    self.camera.yaw = desc.camera.yaw;
-                    self.camera.pitch = desc.camera.pitch;
-                    self.camera.speed = desc.camera.speed;
-                    self.camera.base_speed = desc.camera.speed;
-                    self.camera.fov = desc.camera.fov.to_radians();
-                    self.camera.active = false;
-
-                    if let LauncherState::Running { ref mut world, ref mut lighting } = self.state {
-                        match SceneLoader::build_world(&desc, &ctx.device, &self.mesh_registry, world) {
-                            Ok(new_lighting) => {
-                                *lighting = new_lighting;
-                            }
-                            Err(e) => {
-                                error!("Build scene error: {:?}", e);
-                                std::process::exit(1);
-                            }
+            if let LauncherState::Running { ref mut world, ref mut lighting } = self.state {
+                match SceneLoader::open_scene(&path, &ctx.device, &self.mesh_registry, world) {
+                    Ok(new_lighting) => {
+                        *lighting = new_lighting;
+                        if let Some((pos, yaw, pitch, fov)) = read_camera_from_world(world) {
+                            self.camera.position = pos;
+                            self.camera.yaw = yaw;
+                            self.camera.pitch = pitch;
+                            self.camera.fov = fov;
+                            self.camera.active = false;
                         }
                     }
-                }
-                Err(e) => {
-                    error!("Load scene error: {:?}", e);
-                    std::process::exit(1);
+                    Err(e) => {
+                        error!("Open scene error: {:?}", e);
+                        std::process::exit(1);
+                    }
                 }
             }
         }
@@ -582,32 +638,23 @@ impl ApplicationHandler for App {
 
                 if let Some(idx) = self.pending_load.take() {
                     let entry = &self.scene_entries[idx];
-                    match SceneLoader::from_file(&entry.path) {
-                        Ok(desc) => {
-                            self.camera.position =
-                                glam::Vec3::from_array(desc.camera.position);
-                            self.camera.yaw = desc.camera.yaw;
-                            self.camera.pitch = desc.camera.pitch;
-                            self.camera.speed = desc.camera.speed;
-                            self.camera.base_speed = desc.camera.speed;
-                            self.camera.fov = desc.camera.fov.to_radians();
-                            self.camera.active = false;
-
-                            if let LauncherState::Running { ref mut world, ref mut lighting } = self.state {
-                                match SceneLoader::build_world(
-                                    &desc, &ctx.device, &self.mesh_registry, world,
-                                ) {
-                                    Ok(new_lighting) => {
-                                        *lighting = new_lighting;
-                                        self.show_overlay = false;
-                                    }
-                                    Err(e) => {
-                                        error!("Build scene error: {:?}", e);
-                                    }
+                    if let LauncherState::Running { ref mut world, ref mut lighting } = self.state {
+                        match SceneLoader::open_scene(&entry.path, &ctx.device, &self.mesh_registry, world) {
+                            Ok(new_lighting) => {
+                                *lighting = new_lighting;
+                                if let Some((pos, yaw, pitch, fov)) = read_camera_from_world(world) {
+                                    self.camera.position = pos;
+                                    self.camera.yaw = yaw;
+                                    self.camera.pitch = pitch;
+                                    self.camera.fov = fov;
+                                    self.camera.active = false;
                                 }
+                                self.show_overlay = false;
+                            }
+                            Err(e) => {
+                                error!("Open scene error: {:?}", e);
                             }
                         }
-                        Err(e) => error!("Load scene error: {:?}", e),
                     }
                 }
 
@@ -822,6 +869,10 @@ impl ApplicationHandler for App {
                                                 ui.menu_button("File", |ui| {
                                                     if ui.button("New Scene").clicked() {
                                                         self.pending_new_scene = true;
+                                                        ui.close();
+                                                    }
+                                                    if ui.button("Open Scene...").clicked() {
+                                                        self.pending_open_dialog = true;
                                                         ui.close();
                                                     }
                                                     if ui.button("Import Scene...").clicked() {
@@ -1070,11 +1121,35 @@ impl ApplicationHandler for App {
                                         _pad: [0.0, 0.0],
                                     },
                                     aether_engine::ecs::components::Visibility::default(),
+                                    aether_engine::ecs::components::Name("DefaultCube".into()),
                                 ));
                                 let _ = world.insert(entity, (aether_engine::ecs::components::Selected,));
                             }
                             self.camera = FlyCamera::default();
                             info!("New scene created");
+                        }
+                    }
+                    if self.pending_open_dialog {
+                        self.pending_open_dialog = false;
+                        if let Some(path) = rfd::FileDialog::new().set_directory("./scenes").add_filter("RON", &["ron"]).pick_file() {
+                            if let LauncherState::Running { ref mut world, ref mut lighting } = self.state {
+                                match SceneLoader::open_scene(&path, &ctx.device, &self.mesh_registry, world) {
+                                    Ok(new_lighting) => {
+                                        *lighting = new_lighting;
+                                        if let Some((pos, yaw, pitch, fov)) = read_camera_from_world(world) {
+                                            self.camera.position = pos;
+                                            self.camera.yaw = yaw;
+                                            self.camera.pitch = pitch;
+                                            self.camera.fov = fov;
+                                            self.camera.active = false;
+                                        }
+                                        info!("Opened scene from {:?}", path);
+                                    }
+                                    Err(e) => {
+                                        error!("Open scene error: {:?}", e);
+                                    }
+                                }
+                            }
                         }
                     }
                     if self.pending_import_dialog {
@@ -1095,8 +1170,14 @@ impl ApplicationHandler for App {
                     }
                     if self.pending_save_dialog {
                         self.pending_save_dialog = false;
-                        if let LauncherState::Running { ref world, ref lighting } = self.state {
+                        if let LauncherState::Running { ref mut world, ref lighting } = self.state {
                             if let Some(path) = rfd::FileDialog::new().add_filter("RON", &["ron"]).save_file() {
+                                let path = if path.extension().is_none() {
+                                    path.with_extension("ron")
+                                } else {
+                                    path
+                                };
+                                write_camera_to_world(&self.camera, world);
                                 let desc = aether_engine::scene::serializer::serialize_world(world, lighting, "Untitled");
                                 match aether_engine::scene::serializer::to_ron_string(&desc) {
                                     Ok(ron) => {
@@ -1240,7 +1321,7 @@ impl ApplicationHandler for App {
                     },
                 );
 
-                match &self.state {
+                match &mut self.state {
                     LauncherState::Menu => {
                         encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                             label: Some("Menu"),
@@ -1268,10 +1349,18 @@ impl ApplicationHandler for App {
                     }
                     LauncherState::Running {
                                 ref world,
-                                ref lighting,
+                                ref mut lighting,
                             } => {
                         let aspect =
                             ctx.config.width as f32 / ctx.config.height as f32;
+
+                        // Update lighting from ECS (camera position + light data)
+                        lighting.camera_pos = self.camera.position.to_array();
+                        if let Some((transform, light)) = world.query::<(&aether_engine::ecs::components::Transform, &aether_engine::ecs::components::Light)>().iter().next() {
+                            lighting.light.direction = (transform.rotation * glam::Vec3::NEG_Y).normalize().to_array();
+                            lighting.light.color = light.color;
+                            lighting.light.intensity = light.intensity;
+                        }
 
                         // Extract phase: ECS World → GPU-ready batches
                         let batches = extract_render_batches(world);
