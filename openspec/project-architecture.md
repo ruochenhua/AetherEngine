@@ -145,9 +145,13 @@ Skybox Pass          → 天空盒 / IBL
     ↓
 SSR Pass             → 屏幕空间反射（可选）
     ↓
-Post-Process Pass    → Tone Mapping + FXAA + Bloom
+Composite Pass       → 场景 + SSR 混合
     ↓
-UI Pass              → egui
+DebugLine Pass       → Gizmo / Grid 线框覆盖
+    ↓
+Post-Process Pass    → Tone Mapping + FXAA + Bloom（预留）
+    ↓
+UI Pass              → egui（Editor 面板 + Inspector）
 ```
 
 ### 4.2 资源流转
@@ -163,20 +167,25 @@ Lighting Pass        输入: gbuffer_*, shadow_map, ssao_texture, lights
 Skybox Pass          输入: lit_scene_color, gbuffer_depth
                      输出: scene_color_with_sky
 SSR Pass             输入: scene_color_with_sky, gbuffer_*
-                     输出: scene_color_with_reflections
-Post-Process Pass    输入: scene_color_*
-                     输出: final_color
+                     输出: reflection_texture
+Composite Pass       输入: lit_scene_color, reflection_texture
+                     输出: composite_color
+DebugLine Pass       输入: composite_color
+                     输出: final_color (with debug lines overlaid)
+Post-Process Pass    输入: final_color
+                     输出: post_processed_color（预留）
 UI Pass              输入: final_color
                      输出: swapchain
 ```
 
 ## 5. 扩展点
 
-### 5.1 添加新 RenderPass
+### 5.1 添加新 Pass
 
 1. 在 `renderer/passes/` 创建新文件
-2. 实现 `RenderPass` trait
-3. 在 `Renderer::new()` 中注册到 RenderGraph
+2. 实现 `Pass` trait（`init` → `resolve` → `execute`）
+3. 在 `Launcher` 中创建并注册到 `PipelineBuilder`
+4. 声明 `PassSignature` 定义资源读写依赖
 
 ### 5.2 添加新 ECS System
 
@@ -253,10 +262,11 @@ cargo clippy
 
 | Crate | 当前版本 | 锁定原因 | 升级路径 |
 |-------|---------|---------|---------|
-| wgpu  | 0.19.x  | egui-wgpu 0.27 依赖 wgpu 0.19 | 等待 egui-wgpu 0.28 |
-| egui  | 0.27    | egui-wgpu/egui-winit 同步 | 跟随 egui 生态统一升级 |
-| hecs  | 0.10    | API 稳定 | 可独立升级 |
-| winit | 0.29    | egui-winit 0.27.2 依赖 | 跟随 egui 生态统一升级 |
+| wgpu  | 29.0    | egui-wgpu 0.34 同步 | 跟随 wgpu/egui 生态统一升级 |
+| egui  | 0.34    | egui-wgpu/egui-winit 同步 | 跟随 egui 生态统一升级 |
+| hecs  | 0.11    | API 稳定 | 可独立升级 |
+| winit | 0.30    | egui-winit 0.34 同步 | 跟随 egui 生态统一升级 |
+| glam  | 0.33    | bytemuck 特性用于 GPU 上传 | 可独立升级 |
 
 ## 9. 影响面分析工具箱
 
