@@ -107,13 +107,13 @@ mod tests {
     use crate::renderer::resource::*;
 
     fn headless_device() -> wgpu::Device {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
         let adapter = pollster::block_on(
             instance.request_adapter(&wgpu::RequestAdapterOptions::default()),
         )
         .expect("need adapter");
         let (device, _queue) = pollster::block_on(
-            adapter.request_device(&wgpu::DeviceDescriptor::default(), None),
+            adapter.request_device(&wgpu::DeviceDescriptor::default()),
         )
         .expect("need device");
         device

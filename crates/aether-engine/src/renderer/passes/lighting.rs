@@ -211,6 +211,7 @@ impl Pass for LightingPass {
             label: Some("Lighting Pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: scene_color_view,
+                depth_slice: None,
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
@@ -220,6 +221,7 @@ impl Pass for LightingPass {
             depth_stencil_attachment: None,
             timestamp_writes: None,
             occlusion_query_set: None,
+            multiview_mask: None,
         });
 
         pass.set_pipeline(&self.pipeline);
@@ -689,8 +691,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Lighting Pipeline Layout"),
-            bind_group_layouts: &[&texture_bind_group_layout, &uniform_bind_group_layout, &shadow_bind_group_layout, &ibl_bind_group_layout],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&texture_bind_group_layout), Some(&uniform_bind_group_layout), Some(&shadow_bind_group_layout), Some(&ibl_bind_group_layout)],
+            immediate_size: 0,
         });
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -698,7 +700,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: "vs_main",
+                entry_point: Some("vs_main"),
+                compilation_options: Default::default(),
                 buffers: &[wgpu::VertexBufferLayout {
                     array_stride: std::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
                     step_mode: wgpu::VertexStepMode::Vertex,
@@ -711,7 +714,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: "fs_main",
+                entry_point: Some("fs_main"),
+                compilation_options: Default::default(),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: output_format,
                     blend: None,
@@ -729,7 +733,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             },
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
-            multiview: None,
+            multiview_mask: None,
+            cache: None,
         });
 
         let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {

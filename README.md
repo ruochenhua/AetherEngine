@@ -15,6 +15,7 @@ A modern rendering engine built with **Rust** and **wgpu**, designed for learnin
 - **Skybox**: High-resolution environment cubemap rendering
 - **UE-style Fly Camera**: Left-click drag to look, WASD + QE movement, scroll speed
 - **Debug Tools**: World grid, RGB axis gizmo, per-component lighting + IBL debug
+- **Scene Editor**: Pick objects by click, transform gizmo (translate), hierarchy panel, inspector (position / rotation / scale / material), fullscreen viewport toggle
 - **AI-First**: Every module fits a single AI context window; adding a pass = one file + one registration line
 - **Test-Driven**: Red-green-refactor on every change; build-time catch for resource wiring errors
 
@@ -42,7 +43,9 @@ cargo run -p aether-launcher
 | `Scroll` | Adjust movement speed |
 | `0` – `9` | Lighting debug: Full / Ambient / Diffuse / Specular / Normals / NdotL / Shadow / Direct / IBL / Alpha |
 | `F1` – `F4` | IBL/Skybox debug: NormalAlpha / NDC / EnvFix / VDir |
-| `Esc` | Return to launcher menu |
+| `Alt + Left Drag` | Orbit camera (editor mode) |
+| `Left Click` | Pick object in viewport |
+| `⛶ Full Screen` | Toggle fullscreen viewport (hides side panels) |
 
 ## 🤖 AI-First Design
 
@@ -147,8 +150,11 @@ main.rs (thin orchestration, ~80 lines)
 PipelineBuilder
   ├── ShadowPass       → writes: ShadowDepth
   ├── GBufferPass      → writes: GPosition, GNormal, GAlbedo, GMaterial, GDepth
-  ├── LightingPass     → reads: GPosition, GNormal, GAlbedo, GMaterial, ShadowDepth
+  ├── SSAOPass         → reads: GPosition, GNormal  → writes: AOTexture
+  ├── LightingPass     → reads: GPosition, GNormal, GAlbedo, GMaterial, ShadowDepth, AOTexture
   │                        writes: Swapchain
+  ├── SSRPass          → reads: GPosition, GNormal, GAlbedo, GMaterial → writes: ReflectionTexture
+  ├── CompositePass    → composites Lighting + SSR → writes: Swapchain
   └── DebugLinePass    → reads: GDepth  → writes: Swapchain (LoadOp::Load)
 ```
 
@@ -173,8 +179,8 @@ Resource wiring is type-checked at build time. Execution order is topological.
 |-------|----------|--------|
 | **Phase 0** | Window, triangle, egui, launcher | ✅ Complete |
 | **Phase 1** | Deferred PBR, fly camera, debug tools, type-safe scheduler, shadow mapping, IBL + skybox | ✅ Complete |
-| **Phase 2** | Screen-space effects (SSAO, SSR) | 🔲 Planned |
-| **Phase 3** | ECS runtime, ray picking, transform gizmo, editor UI shell, scene save | 🔲 Planned |
+| **Phase 2** | Screen-space effects (SSAO, SSR) | ✅ Complete |
+| **Phase 3** | ECS runtime, ray picking, transform gizmo, editor UI shell, scene save | 🔄 In Progress |
 | **Phase 4** | Post-process chain, tone mapping | 🔲 Planned |
 | **Phase 5** | Terrain + Atmosphere + Water + Volumetric Clouds | 🔲 Planned |
 | **Phase 6** | Ray Tracing (Compute + Hybrid) | 🔲 Planned |

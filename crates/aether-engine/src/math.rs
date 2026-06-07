@@ -28,3 +28,29 @@ pub fn perspective_projection(fov_y_rad: f32, aspect: f32, near: f32, far: f32) 
 pub fn look_at(eye: Vec3, center: Vec3, up: Vec3) -> Mat4 {
     Mat4::look_at_rh(eye, center, up)
 }
+
+/// Axis-aligned bounding box.
+#[derive(Clone, Copy, Debug)]
+pub struct Aabb {
+    /// Minimum corner.
+    pub min: Vec3,
+    /// Maximum corner.
+    pub max: Vec3,
+}
+
+impl Aabb {
+    /// Create an AABB from min/max corners.
+    pub fn new(min: Vec3, max: Vec3) -> Self {
+        Self { min, max }
+    }
+
+    /// Compute the center of the AABB.
+    pub fn center(&self) -> Vec3 {
+        (self.min + self.max) * 0.5
+    }
+
+    /// Compute the half-extents (size / 2).
+    pub fn half_extents(&self) -> Vec3 {
+        (self.max - self.min) * 0.5
+    }
+}

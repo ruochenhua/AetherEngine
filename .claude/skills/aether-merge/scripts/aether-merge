@@ -1,0 +1,643 @@
+#!/usr/bin/env python3
+"""aether-merge — 基于 .aether-changes.yml 的结构化合并编排工具。
+
+Usage:
+  aether-merge plan     生成合并计划（冲突矩阵 + 执行轮次）
+  aether-merge execute [--round N | --branch BRANCH | --auto]
+                        执行合并
+  aether-merge status   列出所有 worktree 及其合并状态
+  aether-merge clean    清理已合并的 worktree（保留 branch）
+"""
+
+import os
+import re
+import sys
+import json
+import subprocess
+from pathlib import Path
+from datetime import datetime, timezone
+from collections import defaultdict
+
+
+# ── YAML 解析（不依赖 PyYAML，简单手动解析）──────────────────────────
+
+def parse_changes_yml(path: Path) -> dict | None:
+    """Parse a .aether-changes.yml file. Returns dict or None on failure."""
+    if not path.exists():
+        return None
+    try:
+        text = path.read_text()
+        return _parse_simple_yaml(text)
+    except Exception as e:
+        print(f"⚠️  解析失败 {path}: {e}", file=sys.stderr)
+        return None
+
+
+def _parse_simple_yaml(text: str) -> dict:
+    """Minimal YAML parser for our constrained schema.
+
+    Handles: scalars, lists of scalars, lists of dicts with scalars,
+    nested lists up to 2 levels deep. No anchors, no flow style, no tags.
+    """
+    lines = text.split("\n")
+    result = {}
+    _parse_block(lines, 0, result)
+    return result
+
+
+def _parse_block(lines: list[str], indent: int, target: dict | list):
+    """Parse lines at the given indent level into target (dict or list)."""
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+
+        # Skip empty lines and comments
+        if not stripped or stripped.startswith("#"):
+            i += 1
+            continue
+
+        # Count leading spaces
+        leading = len(line) - len(line.lstrip(" "))
+        if leading < indent:
+            return  # Back up to parent level
+
+        # Get current depth indicator
+        prefix = line[:leading]
+
+        if isinstance(target, list):
+            if stripped.startswith("- "):
+                value = stripped[2:].strip()
+                if value == "" or value == "[]":
+                    # Start a nested dict or list
+                    nested_result = None
+                    j = i + 1
+                    while j < len(lines):
+                        nl = lines[j]
+                        if nl.strip() and not nl.strip().startswith("#"):
+                            nl_indent = len(nl) - len(nl.lstrip(" "))
+                            if nl_indent <= leading + 1:
+                                break
+                            if nl.strip().startswith("- "):
+                                nested_result = []
+                                break
+                            else:
+                                nested_result = {}
+                                break
+                        j += 1
+
+                    if nested_result is not None:
+                        _parse_block(lines, leading + 1, nested_result)
+                        k = i + 1
+                        while k < len(lines):
+                            kl = lines[k]
+                            if kl.strip() and not kl.strip().startswith("#"):
+                                if len(kl) - len(kl.lstrip(" ")) <= leading:
+                                    break
+                            k += 1
+                        target.append(nested_result)
+                        i = k
+                        continue
+                    else:
+                        target.append(None if value in ("null", "~") else value)
+                else:
+                    target.append(None if value in ("null", "~") else value)
+            else:
+                # Continue the previous item's dict
+                pass
+            i += 1
+
+        elif isinstance(target, dict):
+            if ":" in stripped and not stripped.startswith("-"):
+                key, _, val = stripped.partition(":")
+                key = key.strip()
+                val = val.strip()
+
+                if val == "" or val == "[]":
+                    # Peek ahead to determine if this starts a nested structure
+                    nested = None
+                    j = i + 1
+                    while j < len(lines):
+                        nl = lines[j]
+                        if nl.strip() and not nl.strip().startswith("#"):
+                            nl_indent = len(nl) - len(nl.lstrip(" "))
+                            if nl_indent <= leading:
+                                # No nested content, treat as null or empty string
+                                break
+                            if nl.strip() == "[]":
+                                nested = []
+                                break
+                            if nl.strip().startswith("- "):
+                                nested = []
+                                break
+                            if ":" in nl.strip():
+                                nested = {}
+                                break
+                        j += 1
+
+                    if nested is not None:
+                        _parse_block(lines, leading + 2, nested)
+                        k = i + 1
+                        while k < len(lines):
+                            kl = lines[k]
+                            if kl.strip() and not kl.strip().startswith("#"):
+                                if len(kl) - len(kl.lstrip(" ")) <= leading:
+                                    break
+                            k += 1
+                        target[key] = nested
+                        i = k
+                        continue
+                    else:
+                        target[key] = None
+                elif val in ("null", "~"):
+                    target[key] = None
+                elif val in ("true", "True"):
+                    target[key] = True
+                elif val in ("false", "False"):
+                    target[key] = False
+                else:
+                    # Strip quotes
+                    if (val.startswith('"') and val.endswith('"')) or \
+                       (val.startswith("'") and val.endswith("'")):
+                        val = val[1:-1]
+                    target[key] = val
+            i += 1
+        else:
+            i += 1
+
+
+# ── Git 操作 ──────────────────────────────────────────────────────────
+
+def run_git(args: list[str], cwd: Path | None = None) -> str:
+    """Run a git command and return stdout."""
+    result = subprocess.run(
+        ["git"] + args,
+        capture_output=True, text=True, cwd=str(cwd) if cwd else None
+    )
+    return result.stdout.strip()
+
+
+def get_main_worktree() -> Path:
+    """Get the primary (bare) worktree path."""
+    # The first line of `git worktree list` is the primary
+    lines = run_git(["worktree", "list"]).split("\n")
+    if lines:
+        return Path(lines[0].split()[0])
+    return Path.cwd()
+
+
+def get_all_worktrees() -> list[dict]:
+    """Return list of {path, branch, hash} for all worktrees."""
+    result = []
+    for line in run_git(["worktree", "list"]).split("\n"):
+        if not line.strip():
+            continue
+        parts = line.split()
+        path = Path(parts[0])
+        hash_ = parts[1] if len(parts) > 1 else ""
+        branch = ""
+        if len(parts) > 2:
+            # Remove brackets: [main], [feat/xxx]
+            branch = parts[2].strip("[]")
+        result.append({"path": path, "hash": hash_, "branch": branch})
+    return result
+
+
+# ── 冲突检测 ──────────────────────────────────────────────────────────
+
+def build_conflict_matrix(worktrees: list[dict]) -> dict:
+    """
+    Build a conflict matrix from all worktrees' .aether-changes.yml.
+
+    Returns:
+      {
+        "worktrees": [ {path, branch, changes, status} ],
+        "conflicts": [ (wt_a_branch, wt_b_branch, level, detail) ],
+        "rounds": [ [wt_branch, ...] ]   # merge execution order
+      }
+    """
+    # Load changes for each worktree
+    entries = []
+    for wt in worktrees:
+        yml_path = wt["path"] / ".aether-changes.yml"
+        changes = parse_changes_yml(yml_path)
+        if changes:
+            entries.append({
+                "path": wt["path"],
+                "branch": wt["branch"],
+                "changes": changes,
+                "status": changes.get("status", "unknown"),
+            })
+
+    # Build conflict pairs
+    conflicts = []
+    for i in range(len(entries)):
+        for j in range(i + 1, len(entries)):
+            a = entries[i]
+            b = entries[j]
+
+            # Skip if either is merged
+            if a["status"] == "merged" or b["status"] == "merged":
+                continue
+
+            level, detail = _detect_conflict(a["changes"], b["changes"])
+            if level > 0:
+                conflicts.append({
+                    "a_branch": a["branch"],
+                    "b_branch": b["branch"],
+                    "level": level,
+                    "detail": detail,
+                })
+
+    # Sort entries into rounds (no conflicts within a round)
+    rounds = _topological_sort_rounds(entries, conflicts)
+
+    return {
+        "worktrees": entries,
+        "conflicts": conflicts,
+        "rounds": rounds,
+    }
+
+
+def _detect_conflict(a: dict, b: dict) -> tuple[int, str]:
+    """Detect conflict level between two changesets. Returns (level, detail_string)."""
+    entities_a = {e["path"] for e in (a.get("entities") or []) if isinstance(e, dict)}
+    entities_b = {e["path"] for e in (b.get("entities") or []) if isinstance(e, dict)}
+
+    components_a = a.get("components") or []
+    components_b = b.get("components") or []
+
+    # Build a map: file → set of symbol names
+    def build_symbol_map(components: list) -> dict[str, set[str]]:
+        smap = defaultdict(set)
+        for comp in (components or []):
+            if isinstance(comp, dict):
+                f = comp.get("file", "")
+                for sym in (comp.get("symbols") or []):
+                    if isinstance(sym, dict):
+                        smap[f].add(sym.get("name", ""))
+        return dict(smap)
+
+    sym_map_a = build_symbol_map(components_a)
+    sym_map_b = build_symbol_map(components_b)
+
+    # L0: No entity or component overlap
+    entity_overlap = entities_a & entities_b
+    all_files_a = set(sym_map_a.keys())
+    all_files_b = set(sym_map_b.keys())
+    file_overlap = all_files_a & all_files_b - entity_overlap
+
+    if not entity_overlap and not file_overlap:
+        return (0, "")
+
+    # Check for symbol-level overlap
+    symbol_overlaps = []
+    for f in set(list(sym_map_a.keys()) + list(sym_map_b.keys())):
+        syms_a = sym_map_a.get(f, set())
+        syms_b = sym_map_b.get(f, set())
+        overlap = syms_a & syms_b
+        if overlap:
+            # Check if signatures changed
+            for sym_name in overlap:
+                sig_a = _get_symbol_kind(components_a, f, sym_name)
+                sig_b = _get_symbol_kind(components_b, f, sym_name)
+                if sig_a == "modified" or sig_b == "modified":
+                    symbol_overlaps.append(f"{f}::{sym_name} (签名变更)")
+                else:
+                    symbol_overlaps.append(f"{f}::{sym_name}")
+
+    if symbol_overlaps:
+        return (3, f"同一符号冲突: {', '.join(symbol_overlaps)}")
+    elif file_overlap:
+        return (1, f"文件重叠(无符号冲突): {', '.join(sorted(file_overlap))}")
+    elif entity_overlap:
+        # Same module touched, check if any symbols modified in both
+        return (2, f"模块重叠: {', '.join(sorted(entity_overlap))}")
+
+    return (0, "")
+
+
+def _get_symbol_kind(components: list, file: str, name: str) -> str:
+    """Get the kind of a symbol modification."""
+    for comp in (components or []):
+        if isinstance(comp, dict) and comp.get("file") == file:
+            for sym in (comp.get("symbols") or []):
+                if isinstance(sym, dict) and sym.get("name") == name:
+                    return sym.get("kind", "")
+    return ""
+
+
+def _topological_sort_rounds(entries: list[dict], conflicts: list[dict]) -> list[list[str]]:
+    """Group branches into merge rounds. No conflicts within a round."""
+    # Simple greedy: try to pack as many non-conflicting branches as possible per round
+    remaining = [e for e in entries if e["status"] != "merged"]
+    rounds = []
+
+    # Build conflict set: branch → set of conflicting branches
+    conflict_graph = defaultdict(set)
+    for c in conflicts:
+        conflict_graph[c["a_branch"]].add(c["b_branch"])
+        conflict_graph[c["b_branch"]].add(c["a_branch"])
+
+    while remaining:
+        round_branches = []
+        still_remaining = []
+        for entry in remaining:
+            branch = entry["branch"]
+            conflicts_with_round = any(
+                b in conflict_graph.get(branch, set())
+                for b in round_branches
+            )
+            if not conflicts_with_round:
+                round_branches.append(branch)
+            else:
+                still_remaining.append(entry)
+        if not round_branches:
+            # Shouldn't happen, but break to avoid infinite loop
+            round_branches = [e["branch"] for e in still_remaining]
+            still_remaining = []
+        rounds.append(round_branches)
+        remaining = still_remaining
+
+    return rounds
+
+
+# ── 命令实现 ──────────────────────────────────────────────────────────
+
+def cmd_status():
+    """Show merge status of all worktrees."""
+    worktrees = get_all_worktrees()
+    matrix = build_conflict_matrix(worktrees)
+
+    print()
+    print("📋 Aether Merge Status")
+    print("=" * 60)
+
+    if not matrix["worktrees"]:
+        print("  (没有活跃的 worktree 或缺少 .aether-changes.yml)")
+        return
+
+    for wt in matrix["worktrees"]:
+        status = wt["status"]
+        emoji = {"in-progress": "🔄", "ready-to-merge": "✅", "merged": "🏁"}.get(status, "❓")
+        issue = wt["changes"].get("issue", "?")
+        title = wt["changes"].get("title", "")
+        print(f"  {emoji} [{status}] {wt['branch']}")
+        print(f"       Issue {issue}: {title}")
+
+    if matrix["conflicts"]:
+        print()
+        print("⚠️  冲突:")
+        for c in matrix["conflicts"]:
+            print(f"  L{c['level']}: {c['a_branch']} ↔ {c['b_branch']}")
+            print(f"       {c['detail']}")
+
+    if matrix["rounds"]:
+        print()
+        print("📦 建议合并顺序:")
+        for i, round_branches in enumerate(matrix["rounds"], 1):
+            print(f"  Round {i}: {', '.join(round_branches)}")
+
+    print()
+
+
+def cmd_plan():
+    """Generate and display a merge plan."""
+    worktrees = get_all_worktrees()
+    matrix = build_conflict_matrix(worktrees)
+
+    if not matrix["worktrees"]:
+        print("没有需要合并的 worktree。")
+        return
+
+    print()
+    print("══════════════════════════════════════════════")
+    print("📋 Merge Plan")
+    print("══════════════════════════════════════════════")
+
+    # Show each round
+    for i, round_branches in enumerate(matrix["rounds"], 1):
+        # Find conflicts within this round's branches (should be none)
+        print(f"\nRound {i} (可并行合并，无冲突):")
+        for branch in round_branches:
+            entry = next((e for e in matrix["worktrees"] if e["branch"] == branch), None)
+            if entry:
+                issue = entry["changes"].get("issue", "?")
+                title = entry["changes"].get("title", "")
+                deps = entry["changes"].get("depends_on", [])
+                dep_str = f" (依赖: {', '.join(deps)})" if deps else ""
+                print(f"  ✅ {branch} → main  [{issue}] {title}{dep_str}")
+
+    # Show conflicts between rounds
+    if matrix["conflicts"]:
+        print(f"\n⚡ 冲突摘要 (需要逐轮解决):")
+        by_level = defaultdict(list)
+        for c in matrix["conflicts"]:
+            by_level[c["level"]].append(c)
+        for level in sorted(by_level.keys()):
+            for c in by_level[level]:
+                print(f"  L{level}: {c['a_branch']} ↔ {c['b_branch']} — {c['detail']}")
+
+    print(f"\n共 {len(matrix['rounds'])} 轮，{len(matrix['worktrees'])} 个 worktree。")
+    print("执行: aether-merge execute --auto")
+    print()
+
+
+def cmd_execute(args: list[str]):
+    """Execute merge rounds."""
+    auto = "--auto" in args
+    round_num = None
+    branch_target = None
+
+    for i, arg in enumerate(args):
+        if arg == "--round" and i + 1 < len(args):
+            round_num = int(args[i + 1])
+        elif arg == "--branch" and i + 1 < len(args):
+            branch_target = args[i + 1]
+
+    worktrees = get_all_worktrees()
+    matrix = build_conflict_matrix(worktrees)
+
+    if not matrix["rounds"]:
+        print("没有需要合并的内容。")
+        return
+
+    main_path = get_main_worktree()
+    os.chdir(str(main_path))
+
+    # Ensure we're on main
+    current_branch = run_git(["branch", "--show-current"])
+    if current_branch != "main":
+        print(f"⚠️  当前在 {current_branch}，切换到 main...")
+        run_git(["checkout", "main"])
+
+    # Determine which branches to merge
+    branches_to_merge = []
+    if branch_target:
+        branches_to_merge = [branch_target]
+    elif round_num:
+        if 1 <= round_num <= len(matrix["rounds"]):
+            branches_to_merge = matrix["rounds"][round_num - 1]
+        else:
+            print(f"❌ Round {round_num} 不存在 (共 {len(matrix['rounds'])} 轮)")
+            return
+    elif auto:
+        # Merge all rounds sequentially
+        for round_idx, round_branches in enumerate(matrix["rounds"], 1):
+            print(f"\n{'='*50}")
+            print(f"▶  Round {round_idx}/{len(matrix['rounds'])}: {', '.join(round_branches)}")
+            print(f"{'='*50}")
+            _merge_branches(round_branches, matrix)
+    else:
+        print("请指定 --round N, --branch NAME, 或 --auto")
+        return
+
+    if branches_to_merge and not auto:
+        _merge_branches(branches_to_merge, matrix)
+
+
+def _merge_branches(branches: list[str], matrix: dict):
+    """Merge a list of branches into main."""
+    main_path = get_main_worktree()
+    os.chdir(str(main_path))
+
+    for branch in branches:
+        print(f"\n🔀 合并 {branch} → main ...")
+
+        # Check if branch exists
+        branches_list = run_git(["branch", "-a"])
+
+        # Pull latest main first
+        print("  ⬇️  更新 main ...")
+        result = subprocess.run(["git", "pull"], capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"  ⚠️  git pull 警告: {result.stderr.strip()}")
+
+        # Attempt merge
+        result = subprocess.run(
+            ["git", "merge", "--no-ff", branch],
+            capture_output=True, text=True
+        )
+
+        if result.returncode == 0:
+            print(f"  ✅ {branch} 合并成功")
+            if "Already up to date" in result.stdout:
+                print("  (已经是最新)")
+
+            # Build verification
+            print("  🔨 cargo build ...")
+            build_result = subprocess.run(
+                ["cargo", "build"],
+                capture_output=True, text=True
+            )
+            if build_result.returncode == 0:
+                print("  ✅ cargo build 通过")
+            else:
+                print(f"  ❌ cargo build 失败!")
+                print(f"  {build_result.stderr[-500:]}")
+                # Abort merge
+                subprocess.run(["git", "merge", "--abort"], capture_output=True)
+                print("  🔙 已回滚合并")
+                return
+
+            # Update manifest
+            wt_entry = next(
+                (e for e in matrix["worktrees"] if e["branch"] == branch), None
+            )
+            if wt_entry:
+                _update_manifest_status(wt_entry["path"] / ".aether-changes.yml")
+
+        else:
+            # Merge conflict
+            print(f"  ⚡ 合并冲突!")
+            conflict_files = run_git(["diff", "--name-only", "--diff-filter=U"])
+            print(f"  冲突文件: {conflict_files}")
+
+            # Try to get context from change manifests
+            _show_conflict_context(branch, conflict_files, matrix)
+
+            print(f"\n  💡 请手动解决冲突后:")
+            print(f"     git add . && git commit")
+            print(f"  或放弃合并:")
+            print(f"     git merge --abort")
+            return
+
+
+def _update_manifest_status(yml_path: Path):
+    """Update .aether-changes.yml status to 'merged'."""
+    if not yml_path.exists():
+        return
+    content = yml_path.read_text()
+    now = datetime.now(timezone.utc).isoformat()
+    content = re.sub(r"status:\s*.*", "status: merged", content)
+    # Add merge info if not present
+    if "merged:" not in content:
+        content += f"\nmerged:\n  at: \"{now}\"\n  by: agent\n  into: main\n"
+    else:
+        content = re.sub(r"at:\s*.*", f'at: "{now}"', content)
+    yml_path.write_text(content)
+
+
+def _show_conflict_context(branch: str, conflict_files: str, matrix: dict):
+    """Show context about conflicting changes."""
+    # Find the worktree entry for this branch
+    wt_entry = next(
+        (e for e in matrix["worktrees"] if e["branch"] == branch), None
+    )
+    if not wt_entry:
+        return
+
+    changes = wt_entry["changes"]
+    print(f"\n  📝 当前合并的变更 ({branch}):")
+    print(f"     Issue: {changes.get('issue', '?')}")
+    for comp in (changes.get("components") or []):
+        if isinstance(comp, dict):
+            # Check if this file is in conflict
+            for sym in (comp.get("symbols") or []):
+                if isinstance(sym, dict) and sym.get("kind") == "modified":
+                    print(f"     - {sym.get('name', '?')}: {sym.get('signature_after', '')}")
+
+
+def cmd_clean():
+    """Remove merged worktrees."""
+    worktrees = get_all_worktrees()
+    main_path = get_main_worktree()
+
+    print()
+    for wt in worktrees:
+        if wt["path"] == main_path:
+            continue
+        yml_path = wt["path"] / ".aether-changes.yml"
+        changes = parse_changes_yml(yml_path)
+        if changes and changes.get("status") == "merged":
+            print(f"🧹 清理 {wt['branch']} ({wt['path']}) ...")
+            subprocess.run(["git", "worktree", "remove", str(wt["path"])], capture_output=True)
+    print("✅ 完成")
+
+
+# ── Main ──────────────────────────────────────────────────────────────
+
+def main():
+    if len(sys.argv) < 2:
+        print(__doc__)
+        return
+
+    command = sys.argv[1]
+    args = sys.argv[2:]
+
+    commands = {
+        "plan": cmd_plan,
+        "execute": lambda: cmd_execute(args),
+        "status": cmd_status,
+        "clean": cmd_clean,
+    }
+
+    if command in commands:
+        commands[command]()
+    else:
+        print(f"未知命令: {command}")
+        print(f"可用: {', '.join(commands.keys())}")
+
+
+if __name__ == "__main__":
+    main()

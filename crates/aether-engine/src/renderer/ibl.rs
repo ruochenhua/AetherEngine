@@ -82,7 +82,7 @@ impl IblResources {
             address_mode_w: wgpu::AddressMode::ClampToEdge,
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::MipmapFilterMode::Linear,
             ..Default::default()
         });
 
@@ -216,14 +216,14 @@ fn load_hdr_texture(
     });
 
     queue.write_texture(
-        wgpu::ImageCopyTexture {
+        wgpu::TexelCopyTextureInfo {
             texture: &tex,
             mip_level: 0,
             origin: wgpu::Origin3d::ZERO,
             aspect: wgpu::TextureAspect::All,
         },
         &rgba,
-        wgpu::ImageDataLayout {
+        wgpu::TexelCopyBufferLayout {
             offset: 0,
             bytes_per_row: Some(8 * w),  // Rgba16Float = 8 bytes/pixel
             rows_per_image: Some(h),
@@ -439,6 +439,7 @@ impl CpuCubemap {
                     label: Some("Eq2Cube"),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                         view: &face_view,
+                        depth_slice: None,
                         resolve_target: None,
                         ops: wgpu::Operations {
                             load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
@@ -448,6 +449,7 @@ impl CpuCubemap {
                     depth_stencil_attachment: None,
                     timestamp_writes: None,
                     occlusion_query_set: None,
+                    multiview_mask: None,
                 });
                 rp.set_pipeline(&pipeline);
                 rp.set_bind_group(0, &vp_bg, &[]);
@@ -542,6 +544,7 @@ impl CpuCubemap {
                     label: Some("Irradiance"),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                         view: &face_view,
+                        depth_slice: None,
                         resolve_target: None,
                         ops: wgpu::Operations {
                             load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
@@ -551,6 +554,7 @@ impl CpuCubemap {
                     depth_stencil_attachment: None,
                     timestamp_writes: None,
                     occlusion_query_set: None,
+                    multiview_mask: None,
                 });
                 rp.set_pipeline(&pipeline);
                 rp.set_bind_group(0, &vp_bg, &[]);
@@ -600,8 +604,8 @@ impl CpuCubemap {
         });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: None,
-            bind_group_layouts: &[&bgl0, &bgl1, &bgl2],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&bgl0), Some(&bgl1), Some(&bgl2)],
+            immediate_size: 0,
         });
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Prefilter"),
@@ -612,17 +616,19 @@ impl CpuCubemap {
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: "vs_main",
+                entry_point: Some("vs_main"),
                 buffers: &[CubeMesh::vertex_layout()],
+                compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: "fs_main",
+                entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: wgpu::TextureFormat::Rgba16Float,
                     blend: None,
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
+                compilation_options: Default::default(),
             }),
             primitive: wgpu::PrimitiveState {
                 cull_mode: None,
@@ -630,7 +636,8 @@ impl CpuCubemap {
             },
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
-            multiview: None,
+            multiview_mask: None,
+            cache: None,
         });
 
         let env_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -710,6 +717,7 @@ impl CpuCubemap {
                         label: Some("Prefilter"),
                         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                             view: &face_view,
+                            depth_slice: None,
                             resolve_target: None,
                             ops: wgpu::Operations {
                                 load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
@@ -719,6 +727,7 @@ impl CpuCubemap {
                         depth_stencil_attachment: None,
                         timestamp_writes: None,
                         occlusion_query_set: None,
+                        multiview_mask: None,
                     });
                     rp.set_pipeline(&pipeline);
                     rp.set_bind_group(0, &vp_bg, &[]);
@@ -770,14 +779,16 @@ impl CpuCubemap {
         });
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: None,
-            bind_group_layouts: &[&bgl],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&bgl)],
+            immediate_size: 0,
         });
         let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             label: Some("BRDF LUT"),
             layout: Some(&layout),
             module: &shader,
-            entry_point: "main",
+            entry_point: Some("main"),
+            compilation_options: Default::default(),
+            cache: None,
         });
         let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
@@ -879,25 +890,27 @@ impl CpuCubemap {
         });
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: None,
-            bind_group_layouts: &[bgl0, bgl1],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(bgl0), Some(bgl1)],
+            immediate_size: 0,
         });
         device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some(label),
             layout: Some(&layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: "vs_main",
+                entry_point: Some("vs_main"),
                 buffers: &[CubeMesh::vertex_layout()],
+                compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: "fs_main",
+                entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: wgpu::TextureFormat::Rgba16Float,
                     blend: None,
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
+                compilation_options: Default::default(),
             }),
             primitive: wgpu::PrimitiveState {
                 cull_mode: None,
@@ -905,7 +918,8 @@ impl CpuCubemap {
             },
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
-            multiview: None,
+            multiview_mask: None,
+            cache: None,
         })
     }
 }
@@ -1177,12 +1191,12 @@ mod tests {
     use super::*;
 
     fn headless_device_and_queue() -> (wgpu::Device, wgpu::Queue) {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
         let adapter = pollster::block_on(
             instance.request_adapter(&wgpu::RequestAdapterOptions::default()),
         )
         .expect("need adapter");
-        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None))
+        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
             .expect("need device")
     }
 

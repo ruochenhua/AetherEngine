@@ -27,3 +27,10 @@ assets/meshes/*.glb
 
 # Logs
 *.log
+
+# Parallel work manifests (per-worktree, not versioned)
+.aether-changes.yml
+
+# Test artifacts
+tests/output/
+tests/reports/

@@ -100,6 +100,29 @@ impl InputManager {
         self.mouse_buttons_held.contains(&button)
     }
 
+    /// Check if a mouse button was released this frame.
+    pub fn mouse_released(&self, button: MouseButton) -> bool {
+        self.mouse_buttons_released.contains(&button)
+    }
+
+    /// Check if Alt is being held.
+    pub fn alt_held(&self) -> bool {
+        self.key_held(winit::keyboard::KeyCode::AltLeft)
+            || self.key_held(winit::keyboard::KeyCode::AltRight)
+    }
+
+    /// Check if Ctrl is being held.
+    pub fn ctrl_held(&self) -> bool {
+        self.key_held(winit::keyboard::KeyCode::ControlLeft)
+            || self.key_held(winit::keyboard::KeyCode::ControlRight)
+    }
+
+    /// Check if Shift is being held.
+    pub fn shift_held(&self) -> bool {
+        self.key_held(winit::keyboard::KeyCode::ShiftLeft)
+            || self.key_held(winit::keyboard::KeyCode::ShiftRight)
+    }
+
     /// Clear per-frame input state (pressed/released events).
     pub fn end_frame(&mut self) {
         self.keys_pressed.clear();

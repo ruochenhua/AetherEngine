@@ -8,6 +8,10 @@ Rust + wgpu deferred renderer. Inherited from KongEngine.
 
 ## Agent skills
 
+### Visual Regression Testing
+
+`.claude/skills/aether-visual-test/` — Automated scene capture, screenshot comparison, and structured test reports. Use when validating rendering milestones or checking for visual regressions.
+
 ### Issue tracker
 
 GitHub Issues (https://github.com/ruochenhua/AetherEngine). Uses `gh` CLI. See `docs/agents/issue-tracker.md`.
@@ -22,13 +26,16 @@ Single-context layout: `CONTEXT.md` at repo root + `docs/adr/` for architectural
 
 ## Development Conventions
 
-### TDD (Test-Driven Development)
+### TDD + Visual Verification (Test-Driven Development)
 
-- Write the failing test first (RED), then minimal code to pass (GREEN), then refactor.
+- Write the failing test first (RED), then minimal code to pass (GREEN), then **visual verify (VISUAL)**, then refactor.
 - Tests verify behavior through **public interfaces only**. Never test private functions.
 - Build-time errors preferred over runtime errors — use types to make invalid states unrepresentable.
+- **Visual verification is mandatory** for any change affecting `passes/`, `scheduler.rs`, `lighting.rs`, or scene output. No exception.
 
-See `docs/agents/tdd.md` for full workflow.
+**Workflow**: RED → GREEN → **VISUAL VERIFY** → REFACTOR
+
+See `docs/agents/visual-test-workflow.md` for the full verification protocol and `docs/agents/tdd.md` for unit-test workflow.
 
 ### Pass Architecture
 

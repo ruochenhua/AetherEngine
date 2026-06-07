@@ -10,15 +10,21 @@
 pub mod camera;
 /// wgpu context and device management.
 pub mod context;
+/// Extract phase (ECS → render batches).
+pub mod extract;
 /// Per-frame data context (RenderFrame).
 pub mod frame;
 /// Image-Based Lighting (IBL) loader and resources.
 pub mod ibl;
+/// Transform gizmo rendering and interaction.
+pub mod gizmo;
+/// CPU ray-casting picking.
+pub mod picking;
 /// Light component definitions.
 pub mod light;
 /// Pass trait and type-safe resource handles.
 pub mod pass;
-/// Shared renderable types (Renderable, MaterialUniform, ...).
+/// Shared GPU uniform types (MaterialUniform, ObjectUniform, ...).
 pub mod renderable;
 /// Render pass implementations.
 pub mod passes;

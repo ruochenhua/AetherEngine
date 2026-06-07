@@ -33,3 +33,5 @@ What are the trade-offs?
 - ADR-0005: Unified Cook-Torrance BRDF
 - ADR-0006: IBL + Skybox Implementation Pitfalls
 - ADR-0007: SSAO Implementation Pitfalls
+- ADR-0008: ECS World + Extract Phase for Rendering and Editing
+- ADR-0009: Git Worktree + Change Manifest + Merge Skill

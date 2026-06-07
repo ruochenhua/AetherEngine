@@ -5,12 +5,14 @@
 //! in-pass write synchronization issues.
 
 use crate::asset::mesh::Vertex;
+use crate::renderer::extract::RenderBatch;
 use crate::renderer::frame::RenderFrame;
 use crate::renderer::pass::{Pass, PassSignature, ResHandle};
 use crate::renderer::renderable::*;
 use crate::renderer::resource::*;
 use crate::renderer::resource_table::ResourceTable;
 use glam::Mat4;
+use tracing::warn;
 
 /// G-Buffer Pass — renders world-space position, normal, albedo, and material
 /// properties into a multi-render-target (MRT) framebuffer for deferred shading.
@@ -28,7 +30,7 @@ pub struct GBufferPass {
     material_handle: Option<ResHandle<GMaterial>>,
     depth_handle: Option<ResHandle<GDepth>>,
 
-    renderables: Vec<Renderable>,
+    batches: Vec<RenderBatch>,
     view: Mat4,
     proj: Mat4,
 }
@@ -56,7 +58,7 @@ impl Pass for GBufferPass {
     }
 
     fn apply_frame(&mut self, frame: &RenderFrame) {
-        self.renderables = frame.renderables.to_vec();
+        self.batches = frame.batches.to_vec();
         self.view = frame.camera.view_matrix();
         self.proj = frame.camera.projection_matrix(frame.aspect);
 
@@ -69,16 +71,28 @@ impl Pass for GBufferPass {
 
         // Upload all per-object data at once (before render pass)
         let obj_size = std::mem::size_of::<ObjectUniform>() as wgpu::BufferAddress;
-        let mut obj_data: Vec<u8> = Vec::with_capacity(self.renderables.len() * obj_size as usize);
-        for r in &self.renderables {
-            let obj = ObjectUniform {
-                model: r.transform.to_cols_array_2d(),
-                albedo: r.material.albedo,
-                roughness: r.material.roughness,
-                metallic: r.material.metallic,
-                _pad: [0u8; 168],
-            };
-            obj_data.extend_from_slice(bytemuck::cast_slice(&[obj]));
+        let total_instances: usize = self.batches.iter().map(|b| b.instances.len()).sum();
+        if total_instances > MAX_OBJECTS {
+            warn!(
+                "GBufferPass: {} instances exceed MAX_OBJECTS ({}); truncating",
+                total_instances, MAX_OBJECTS
+            );
+        }
+        let mut obj_data: Vec<u8> = Vec::with_capacity(total_instances.min(MAX_OBJECTS) * obj_size as usize);
+        for batch in &self.batches {
+            for instance in &batch.instances {
+                if obj_data.len() / obj_size as usize >= MAX_OBJECTS {
+                    break;
+                }
+                let obj = ObjectUniform {
+                    model: instance.model.to_cols_array_2d(),
+                    albedo: batch.material.albedo,
+                    roughness: batch.material.roughness,
+                    metallic: batch.material.metallic,
+                    _pad: [0u8; 168],
+                };
+                obj_data.extend_from_slice(bytemuck::cast_slice(&[obj]));
+            }
         }
         if !obj_data.is_empty() {
             frame.queue.write_buffer(&self.object_buffer, 0, &obj_data);
@@ -89,10 +103,10 @@ impl Pass for GBufferPass {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("GBuffer"),
             color_attachments: &[
-                Some(wgpu::RenderPassColorAttachment { view: resources.get(self.pos_handle.unwrap()), resolve_target: None, ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store } }),
-                Some(wgpu::RenderPassColorAttachment { view: resources.get(self.normal_handle.unwrap()), resolve_target: None, ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store } }),
-                Some(wgpu::RenderPassColorAttachment { view: resources.get(self.albedo_handle.unwrap()), resolve_target: None, ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store } }),
-                Some(wgpu::RenderPassColorAttachment { view: resources.get(self.material_handle.unwrap()), resolve_target: None, ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store } }),
+                Some(wgpu::RenderPassColorAttachment { view: resources.get(self.pos_handle.unwrap()), depth_slice: None, resolve_target: None, ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store } }),
+                Some(wgpu::RenderPassColorAttachment { view: resources.get(self.normal_handle.unwrap()), depth_slice: None, resolve_target: None, ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store } }),
+                Some(wgpu::RenderPassColorAttachment { view: resources.get(self.albedo_handle.unwrap()), depth_slice: None, resolve_target: None, ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store } }),
+                Some(wgpu::RenderPassColorAttachment { view: resources.get(self.material_handle.unwrap()), depth_slice: None, resolve_target: None, ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store } }),
             ],
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                 view: resources.get(self.depth_handle.unwrap()),
@@ -100,22 +114,30 @@ impl Pass for GBufferPass {
                 stencil_ops: None,
             }),
             timestamp_writes: None, occlusion_query_set: None,
+            multiview_mask: None,
         });
 
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &self.view_proj_bind_group, &[]);
 
-        for (i, renderable) in self.renderables.iter().enumerate() {
-            let obj_size = std::mem::size_of::<ObjectUniform>() as wgpu::BufferAddress;
-            let offset = i as wgpu::DynamicOffset * obj_size as wgpu::DynamicOffset;
-            pass.set_bind_group(1, &self.object_bind_group, &[offset as u32]);
+        let obj_size = std::mem::size_of::<ObjectUniform>() as wgpu::BufferAddress;
+        let mut object_index = 0usize;
+        for batch in &self.batches {
+            for _instance in &batch.instances {
+                if object_index >= MAX_OBJECTS {
+                    break;
+                }
+                let offset = object_index as u32 * obj_size as u32;
+                pass.set_bind_group(1, &self.object_bind_group, &[offset as u32]);
 
-            pass.set_vertex_buffer(0, renderable.mesh.vertex_buffer.slice(..));
-            if let Some(ref ib) = renderable.mesh.index_buffer {
-                pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
-                pass.draw_indexed(0..renderable.mesh.index_count, 0, 0..1);
-            } else {
-                pass.draw(0..renderable.mesh.vertex_count, 0..1);
+                pass.set_vertex_buffer(0, batch.mesh.vertex_buffer.slice(..));
+                if let Some(ref ib) = batch.mesh.index_buffer {
+                    pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
+                    pass.draw_indexed(0..batch.mesh.index_count, 0, 0..1);
+                } else {
+                    pass.draw(0..batch.mesh.vertex_count, 0..1);
+                }
+                object_index += 1;
             }
         }
     }
@@ -186,14 +208,14 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
         });
 
         let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("GBuffer PL"), bind_group_layouts: &[&vp_bgl, &obj_bgl], push_constant_ranges: &[],
+            label: Some("GBuffer PL"), bind_group_layouts: &[Some(&vp_bgl), Some(&obj_bgl)], immediate_size: 0,
         });
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("GBuffer Pipeline"), layout: Some(&pl),
-            vertex: wgpu::VertexState { module: &shader, entry_point: "vs_main", buffers: &[Vertex::desc()] },
+            vertex: wgpu::VertexState { module: &shader, entry_point: Some("vs_main"), compilation_options: Default::default(), buffers: &[Vertex::desc()] },
             fragment: Some(wgpu::FragmentState {
-                module: &shader, entry_point: "fs_main",
+                module: &shader, entry_point: Some("fs_main"), compilation_options: Default::default(),
                 targets: &[
                     Some(wgpu::ColorTargetState { format: wgpu::TextureFormat::Rgba16Float, blend: None, write_mask: wgpu::ColorWrites::ALL }),
                     Some(wgpu::ColorTargetState { format: wgpu::TextureFormat::Rgba16Float, blend: None, write_mask: wgpu::ColorWrites::ALL }),
@@ -202,8 +224,9 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
                 ],
             }),
             primitive: wgpu::PrimitiveState { topology: wgpu::PrimitiveTopology::TriangleList, strip_index_format: None, front_face: wgpu::FrontFace::Ccw, cull_mode: Some(wgpu::Face::Back), polygon_mode: wgpu::PolygonMode::Fill, unclipped_depth: false, conservative: false },
-            depth_stencil: Some(wgpu::DepthStencilState { format: wgpu::TextureFormat::Depth32Float, depth_write_enabled: true, depth_compare: wgpu::CompareFunction::Less, stencil: wgpu::StencilState::default(), bias: wgpu::DepthBiasState::default() }),
-            multisample: wgpu::MultisampleState::default(), multiview: None,
+            depth_stencil: Some(wgpu::DepthStencilState { format: wgpu::TextureFormat::Depth32Float, depth_write_enabled: Some(true), depth_compare: Some(wgpu::CompareFunction::Less), stencil: wgpu::StencilState::default(), bias: wgpu::DepthBiasState::default() }),
+            multisample: wgpu::MultisampleState::default(), multiview_mask: None,
+            cache: None,
         });
 
         let view_proj_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -228,7 +251,7 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
         Self {
             pipeline, view_proj_buffer, view_proj_bind_group, object_buffer, object_bind_group,
             pos_handle: None, normal_handle: None, albedo_handle: None, material_handle: None, depth_handle: None,
-            renderables: Vec::new(), view: Mat4::IDENTITY, proj: Mat4::IDENTITY,
+            batches: Vec::new(), view: Mat4::IDENTITY, proj: Mat4::IDENTITY,
         }
     }
 }
@@ -238,9 +261,9 @@ mod tests {
     use super::*;
 
     fn headless_device() -> wgpu::Device {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())).expect("need adapter");
-        let (device, _queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None)).expect("need device");
+        let (device, _queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).expect("need device");
         device
     }
 

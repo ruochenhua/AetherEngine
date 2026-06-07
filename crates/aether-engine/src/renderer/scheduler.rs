@@ -208,6 +208,12 @@ impl PipelineBuilder {
             );
         }
 
+        // Move DebugLine pass to the end so it renders after CompositePass
+        if let Some(idx) = ordered.iter().position(|p| p.name() == "DebugLine") {
+            let debug_pass = ordered.remove(idx);
+            ordered.push(debug_pass);
+        }
+
         // Resolve each pass with the resource table
         for pass in &mut ordered {
             pass.resolve(device, &resource_table);
@@ -283,6 +289,18 @@ impl Scheduler {
             if pass.name() == "SSAO" {
                 if let Some(ssao) = pass.as_any_mut().downcast_mut::<crate::renderer::passes::ssao::SSAOPass>() {
                     ssao.set_screen_size(width, height);
+                }
+                break;
+            }
+        }
+    }
+
+    /// Set dynamic debug lines on the DebugLinePass.
+    pub fn set_dynamic_lines(&mut self, lines: Vec<crate::renderer::passes::debug::DebugVertex>) {
+        for pass in &mut self.passes {
+            if pass.name() == "DebugLine" {
+                if let Some(debug) = pass.as_any_mut().downcast_mut::<crate::renderer::passes::debug::DebugLinePass>() {
+                    debug.set_dynamic_lines(lines);
                 }
                 break;
             }
@@ -740,13 +758,13 @@ mod tests {
     }
 
     fn headless_device() -> wgpu::Device {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
         let adapter = pollster::block_on(
             instance.request_adapter(&wgpu::RequestAdapterOptions::default()),
         )
         .expect("need adapter");
         let (device, _queue) = pollster::block_on(
-            adapter.request_device(&wgpu::DeviceDescriptor::default(), None),
+            adapter.request_device(&wgpu::DeviceDescriptor::default()),
         )
         .expect("need device");
         device

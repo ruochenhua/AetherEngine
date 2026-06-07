@@ -8,15 +8,15 @@
 //! Adding a pass that needs new data means adding a field here, but the number
 //! of distinct data categories in a deferred renderer is bounded (~4-6 fields).
 
-use crate::renderer::{camera::FlyCamera, light::LightingUniforms, renderable::Renderable};
+use crate::renderer::{camera::FlyCamera, extract::RenderBatch, light::LightingUniforms};
 
 /// Read-only per-frame data available to every pass.
 ///
 /// All fields are references — the Scheduler/Launcher owns the data.
 /// Passes that don't need a particular field simply ignore it.
 pub struct RenderFrame<'a> {
-    /// Renderable objects (mesh + transform + material); shared by GBufferPass, ShadowPass.
-    pub renderables: &'a [Renderable],
+    /// Render batches extracted from the ECS World; shared by GBufferPass, ShadowPass.
+    pub batches: &'a [RenderBatch],
     /// Camera state (position, view/proj matrices).
     pub camera: &'a FlyCamera,
     /// Lighting uniforms (directional light, ambient, debug mode).

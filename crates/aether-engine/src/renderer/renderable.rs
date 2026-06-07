@@ -1,13 +1,11 @@
-//! Renderable types shared across passes.
+//! GPU uniform types shared across passes.
 //!
-//! Extracted from `passes/gbuffer.rs` because `Renderable`, `MaterialUniform`,
+//! Extracted from `passes/gbuffer.rs` because `MaterialUniform`,
 //! `ObjectUniform`, and `ViewProjUniform` are consumed by multiple modules
 //! (GBufferPass, ShadowPass, SceneLoader, Scheduler). Living in a single
 //! pass module was a leakage.
 
-use crate::asset::mesh::GpuMesh;
-use glam::Mat4;
-use std::sync::Arc;
+
 
 /// Per-object uniform (model + material), 256-byte aligned for dynamic offset.
 #[repr(C, align(256))]
@@ -64,13 +62,4 @@ impl Default for MaterialUniform {
     }
 }
 
-/// A renderable object — mesh + transform + material.
-#[derive(Clone)]
-pub struct Renderable {
-    /// GPU mesh (shared ownership).
-    pub mesh: Arc<GpuMesh>,
-    /// Model matrix (world transform).
-    pub transform: Mat4,
-    /// PBR material parameters.
-    pub material: MaterialUniform,
-}
+

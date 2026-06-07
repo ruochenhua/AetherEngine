@@ -23,10 +23,7 @@ pub struct RenderContext {
 impl RenderContext {
     /// Create a new render context for the given window.
     pub async fn new(window: &Window) -> Self {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::all(),
-            ..Default::default()
-        });
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
 
         let surface = instance.create_surface(window)
             .expect("Failed to create surface");
@@ -55,8 +52,10 @@ impl RenderContext {
                     label: Some("Device"),
                     required_features: wgpu::Features::empty(),
                     required_limits: wgpu::Limits::default(),
+                    experimental_features: Default::default(),
+                    memory_hints: Default::default(),
+                    trace: Default::default(),
                 },
-                None,
             )
             .await
             .expect("Failed to create device");
@@ -71,12 +70,12 @@ impl RenderContext {
 
         let size = window.inner_size();
         let config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
             format: surface_format,
             width: size.width,
             height: size.height,
             present_mode: wgpu::PresentMode::Fifo,
-            alpha_mode: surface_caps.alpha_modes[0],
+            alpha_mode: *surface_caps.alpha_modes.first().unwrap_or(&wgpu::CompositeAlphaMode::Opaque),
             view_formats: vec![],
             desired_maximum_frame_latency: 2,
         };
@@ -109,7 +108,7 @@ impl RenderContext {
     }
 
     /// Get the current surface texture.
-    pub fn get_current_texture(&self) -> Result<wgpu::SurfaceTexture, wgpu::SurfaceError> {
+    pub fn get_current_texture(&self) -> wgpu::CurrentSurfaceTexture {
         self.surface.get_current_texture()
     }
 }

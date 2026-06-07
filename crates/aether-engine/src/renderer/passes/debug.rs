@@ -60,9 +60,15 @@ pub struct DebugLinePass {
     /// Grid vertex buffer.
     grid_vertex_buffer: wgpu::Buffer,
     grid_vertex_count: u32,
-    /// Gizmo vertex buffer.
+    /// World-axis gizmo vertex buffer (at origin).
     gizmo_vertex_buffer: wgpu::Buffer,
     gizmo_vertex_count: u32,
+    /// Dynamic lines buffer (updated per frame).
+    dynamic_vertex_buffer: wgpu::Buffer,
+    dynamic_vertex_count: u32,
+    max_dynamic_vertices: u32,
+    /// Pending dynamic vertices to upload next frame.
+    pending_dynamic_lines: Vec<DebugVertex>,
 
     /// Resource handles (populated by resolve).
     depth_handle: Option<ResHandle<GDepth>>,
@@ -96,6 +102,17 @@ impl Pass for DebugLinePass {
         frame
             .queue
             .write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniform]));
+
+        // Upload dynamic lines
+        let count = self.pending_dynamic_lines.len().min(self.max_dynamic_vertices as usize);
+        self.dynamic_vertex_count = count as u32;
+        if count > 0 {
+            frame.queue.write_buffer(
+                &self.dynamic_vertex_buffer,
+                0,
+                bytemuck::cast_slice(&self.pending_dynamic_lines[..count]),
+            );
+        }
     }
 
     fn execute(
@@ -110,6 +127,7 @@ impl Pass for DebugLinePass {
             label: Some("Debug Line Pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: surface_view,
+                depth_slice: None,
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Load,
@@ -126,18 +144,29 @@ impl Pass for DebugLinePass {
             }),
             timestamp_writes: None,
             occlusion_query_set: None,
+            multiview_mask: None,
         });
 
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &self.uniform_bind_group, &[]);
 
         // Draw grid
-        pass.set_vertex_buffer(0, self.grid_vertex_buffer.slice(..));
-        pass.draw(0..self.grid_vertex_count, 0..1);
+        if self.grid_vertex_count > 0 {
+            pass.set_vertex_buffer(0, self.grid_vertex_buffer.slice(..));
+            pass.draw(0..self.grid_vertex_count, 0..1);
+        }
 
-        // Draw gizmo
-        pass.set_vertex_buffer(0, self.gizmo_vertex_buffer.slice(..));
-        pass.draw(0..self.gizmo_vertex_count, 0..1);
+        // Draw world-axis gizmo at origin
+        if self.gizmo_vertex_count > 0 {
+            pass.set_vertex_buffer(0, self.gizmo_vertex_buffer.slice(..));
+            pass.draw(0..self.gizmo_vertex_count, 0..1);
+        }
+
+        // Draw dynamic lines (e.g. transform gizmo at selected entity)
+        if self.dynamic_vertex_count > 0 {
+            pass.set_vertex_buffer(0, self.dynamic_vertex_buffer.slice(..));
+            pass.draw(0..self.dynamic_vertex_count, 0..1);
+        }
     }
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
@@ -212,8 +241,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Debug Line Pipeline Layout"),
-            bind_group_layouts: &[&uniform_bind_group_layout],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&uniform_bind_group_layout)],
+            immediate_size: 0,
         });
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -221,12 +250,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: "vs_main",
+                entry_point: Some("vs_main"),
+                compilation_options: Default::default(),
                 buffers: &[DebugVertex::desc()],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: "fs_main",
+                entry_point: Some("fs_main"),
+                compilation_options: Default::default(),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: output_format,
                     blend: Some(wgpu::BlendState::ALPHA_BLENDING),
@@ -244,13 +275,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             },
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: depth_format,
-                depth_write_enabled: false,
-                depth_compare: wgpu::CompareFunction::LessEqual,
+                depth_write_enabled: Some(false),
+                depth_compare: Some(wgpu::CompareFunction::LessEqual),
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),
             }),
             multisample: wgpu::MultisampleState::default(),
-            multiview: None,
+            multiview_mask: None,
+            cache: None,
         });
 
         let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -270,18 +302,26 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         });
 
         // Build debug geometry vertex buffers
-        let (grid_verts, grid_count) = build_grid_lines(5.0, 1.0);
+        let (grid_verts, grid_count) = build_grid_lines(10.0, 1.0);
         let grid_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Debug Grid VB"),
             contents: bytemuck::cast_slice(&grid_verts),
             usage: wgpu::BufferUsages::VERTEX,
         });
 
-        let (gizmo_verts, gizmo_count) = build_gizmo_lines(0.15);
+        let (gizmo_verts, gizmo_count) = build_gizmo_lines(5.0);
         let gizmo_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Debug Gizmo VB"),
             contents: bytemuck::cast_slice(&gizmo_verts),
             usage: wgpu::BufferUsages::VERTEX,
+        });
+
+        const MAX_DYNAMIC_VERTICES: u32 = 1024;
+        let dynamic_vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Debug Dynamic VB"),
+            size: (MAX_DYNAMIC_VERTICES * std::mem::size_of::<DebugVertex>() as u32) as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
         });
 
         Self {
@@ -292,15 +332,24 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             grid_vertex_count: grid_count,
             gizmo_vertex_buffer,
             gizmo_vertex_count: gizmo_count,
+            dynamic_vertex_buffer,
+            dynamic_vertex_count: 0,
+            max_dynamic_vertices: MAX_DYNAMIC_VERTICES,
+            pending_dynamic_lines: Vec::new(),
             depth_handle: None,
         }
+    }
+
+    /// Set dynamic lines to render next frame.
+    pub fn set_dynamic_lines(&mut self, lines: Vec<DebugVertex>) {
+        self.pending_dynamic_lines = lines;
     }
 
 }
 
 /// Build a debug grid on the XZ plane.
 pub fn build_grid_lines(size: f32, spacing: f32) -> (Vec<DebugVertex>, u32) {
-    let color = [0.3, 0.3, 0.3, 0.6];
+    let color = [0.5, 0.5, 0.5, 1.0]; // light gray grid
     let mut vertices = Vec::new();
 
     let mut i = -size;

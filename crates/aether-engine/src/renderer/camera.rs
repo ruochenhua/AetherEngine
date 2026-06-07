@@ -90,7 +90,7 @@ impl FlyCamera {
     /// Update camera from input state.
     ///
     /// `dt` is frame delta time in seconds. `input` provides mouse/key state.
-    /// Hold left mouse + drag to rotate. WASD to move.
+    /// Hold Alt + left mouse + drag to rotate. WASD to move.
     pub fn update(&mut self, dt: f32, mouse_dx: f32, mouse_dy: f32, scroll: f32, input: &crate::input::InputManager) {
         // Speed adjustment via scroll wheel
         if scroll != 0.0 {
@@ -98,8 +98,8 @@ impl FlyCamera {
                 .clamp(self.min_speed, self.max_speed);
         }
 
-        // Mouse look only when left mouse is held
-        if input.mouse_held(winit::event::MouseButton::Left) {
+        // Mouse look only when Alt + left mouse is held
+        if input.alt_held() && input.mouse_held(winit::event::MouseButton::Left) {
             if mouse_dx.abs() > 0.0 || mouse_dy.abs() > 0.0 {
                 self.yaw -= mouse_dx * self.sensitivity;
                 self.pitch = (self.pitch + mouse_dy * self.sensitivity)

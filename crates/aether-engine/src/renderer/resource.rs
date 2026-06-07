@@ -104,10 +104,10 @@ mod tests {
         let depth: ResHandle<GDepth> = ResHandle::new(0);
         let swap: ResHandle<Swapchain> = ResHandle::new(0);
         let ao: ResHandle<AOTexture> = ResHandle::new(0);
-        let irradiance: ResHandle<IrradianceMap> = ResHandle::new(0);
-        let prefiltered: ResHandle<PrefilteredMap> = ResHandle::new(0);
-        let brdf_lut: ResHandle<BrdfLUT> = ResHandle::new(0);
-        let reflection: ResHandle<ReflectionTexture> = ResHandle::new(0);
+        let _irradiance: ResHandle<IrradianceMap> = ResHandle::new(0);
+        let _prefiltered: ResHandle<PrefilteredMap> = ResHandle::new(0);
+        let _brdf_lut: ResHandle<BrdfLUT> = ResHandle::new(0);
+        let _reflection: ResHandle<ReflectionTexture> = ResHandle::new(0);
 
         // All have the same index — that's fine, types differ.
         // The compiler enforces: pos cannot be passed where norm is expected.

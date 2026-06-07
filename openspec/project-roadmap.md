@@ -59,51 +59,72 @@
 - `ibl-skybox`：天空盒 + 环境光照
 - `post-process`：Tone mapping + Gamma
 
-### Phase 2: 扩展渲染特性
+### Phase 2: 屏幕空间效果
 
-**目标**：阴影质量、屏幕空间效果、后处理链
+**目标**：SSAO、SSR
 
 | 功能 | 状态 | 优先级 |
 |------|------|--------|
-| PCSS 软阴影 | 🔲 待实现 | P1 |
-| 点光源阴影 | 🔲 待实现 | P1 |
-| SSR | 🔲 待实现 | P1 |
-| SSAO | 🔲 待实现 | P1 |
-| Bloom / FXAA | 🔲 待实现 | P1 |
-| GPU Instancing | 🔲 待实现 | P1 |
-| 后处理链（可配置） | 🔲 待实现 | P1 |
+| SSAO | ✅ 已完成 | P1 |
+| SSR | ✅ 已实现（后续优化） | P1 |
 
-### Phase 3: 大场景渲染
+### Phase 3: 编辑器基础设施
+
+**目标**：ECS runtime、编辑器交互、场景持久化
+
+| 功能 | 状态 | 优先级 |
+|------|------|--------|
+| ECS runtime | ✅ 已完成 | P1 |
+| Ray picking（射线拾取） | ✅ 已完成 | P1 |
+| Transform gizmo（平移） | ✅ 已完成 | P1 |
+| Editor UI shell（编辑器外壳） | ✅ 已完成 | P1 |
+| Scene save/load（场景保存/序列化） | 🔄 基础可用 | P1 |
+| Gizmo 旋转 + 缩放 | 🔲 待实现 | P1 |
+| Undo / Redo | 🔲 待实现 | P2 |
+| 多选（Shift/Ctrl） | 🔲 待实现 | P2 |
+
+### Phase 4: 后处理链
+
+**目标**：可配置的后处理管线
+
+| 功能 | 状态 | 优先级 |
+|------|------|--------|
+| Post-process chain（可配置） | 🔲 待实现 | P2 |
+| Tone mapping | 🔲 待实现 | P2 |
+| Bloom / FXAA | 🔲 待实现 | P2 |
+| GPU Instancing | 🔲 待实现 | P2 |
+
+### Phase 5: 大场景渲染
 
 **目标**：地形、大气、水体、体积云
 
 | 功能 | 状态 | 优先级 |
 |------|------|--------|
-| 地形（高度图 + 曲面细分） | 🔲 待实现 | P2 |
-| 物理大气散射 | 🔲 待实现 | P2 |
-| 水体（Gerstner 波） | 🔲 待实现 | P2 |
-| 体积云（Ray marching） | 🔲 待实现 | P2 |
-| God Ray | 🔲 待实现 | P2 |
+| 地形（高度图 + 曲面细分） | 🔲 待实现 | P3 |
+| 物理大气散射 | 🔲 待实现 | P3 |
+| 水体（Gerstner 波） | 🔲 待实现 | P3 |
+| 体积云（Ray marching） | 🔲 待实现 | P3 |
+| God Ray | 🔲 待实现 | P3 |
 
-### Phase 4: 光线追踪
+### Phase 6: 光线追踪
 
 **目标**：从软件光追到硬件加速
 
 | 功能 | 状态 | 优先级 |
 |------|------|--------|
-| Compute Shader Path Tracer | 🔲 待实现 | P3 |
-| Hybrid Ray Tracing | 🔲 待实现 | P3 |
-| Denoising | 🔲 待实现 | P3 |
+| Compute Shader Path Tracer | 🔲 待实现 | P4 |
+| Hybrid Ray Tracing | 🔲 待实现 | P4 |
+| Denoising | 🔲 待实现 | P4 |
 
-### Phase 5: 物理与动画（远期）
+### Phase 7: 物理与动画（远期）
 
 **目标**：接入物理系统
 
 | 功能 | 状态 | 优先级 |
 |------|------|--------|
-| rapier3d 接入 | 🔲 待实现 | P4 |
-| 基础动画系统 | 🔲 待实现 | P4 |
-| 粒子系统 | 🔲 待实现 | P4 |
+| rapier3d 接入 | 🔲 待实现 | P5 |
+| 基础动画系统 | 🔲 待实现 | P5 |
+| 粒子系统 | 🔲 待实现 | P5 |
 
 ---
 
@@ -115,11 +136,14 @@
 | `02_deferred` | G-Buffer + Lighting | Phase 1 |
 | `03_shadows` | CSM + PCF | Phase 1 |
 | `04_ibl` | Skybox + 环境贴图 | Phase 1 |
-| `05_ssr` | SSR + SSAO | Phase 2 |
-| `06_terrain` | 地形 + 曲面细分 | Phase 3 |
-| `07_water` | 水体 | Phase 3 |
-| `08_volumetric` | 体积云 | Phase 3 |
-| `09_raytrace` | 光追 | Phase 4 |
+| `05_ssao` | SSAO | Phase 2 |
+| `06_ssr` | SSR | Phase 2 |
+| `07_editor` | Ray picking + Gizmo + Editor UI | Phase 3 |
+| `08_postprocess` | Bloom + Tone mapping | Phase 4 |
+| `09_terrain` | 地形 + 曲面细分 | Phase 5 |
+| `10_water` | 水体 | Phase 5 |
+| `11_volumetric` | 体积云 | Phase 5 |
+| `12_raytrace` | 光追 | Phase 6 |
 
 ---
 
@@ -154,18 +178,26 @@
 - Shadow Mapping
 - IBL
 
-### v0.3.0 - 扩展版
-- SSR / SSAO
-- Post-Process 链
-- Instancing
+### v0.3.0 - 编辑器版
+- ECS runtime
+- Ray picking
+- Transform gizmo
+- Editor UI shell
+- Scene save
 
-### v0.4.0 - 大场景版
+### v0.4.0 - 后处理版
+- Post-process chain
+- Tone mapping
+- Bloom / FXAA
+- GPU Instancing
+
+### v0.5.0 - 大场景版
 - Terrain
 - Atmosphere
 - Water
 - Clouds
 
-### v0.5.0 - 光追版
+### v0.6.0 - 光追版
 - Path Tracer
 - Hybrid RT
 

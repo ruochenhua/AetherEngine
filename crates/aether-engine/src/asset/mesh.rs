@@ -1,5 +1,7 @@
 use super::Asset;
+use crate::math::Aabb;
 use bytemuck::{Pod, Zeroable};
+use glam::Vec3;
 use std::path::Path;
 
 /// CPU-side mesh data.
@@ -18,6 +20,18 @@ pub struct CpuMesh {
 }
 
 impl CpuMesh {
+    /// Compute the axis-aligned bounding box from vertex positions.
+    pub fn compute_aabb(&self) -> Aabb {
+        let mut min = Vec3::splat(f32::INFINITY);
+        let mut max = Vec3::splat(f32::NEG_INFINITY);
+        for p in &self.positions {
+            let v = Vec3::from_array(*p);
+            min = min.min(v);
+            max = max.max(v);
+        }
+        Aabb::new(min, max)
+    }
+
     /// Create a cube mesh (1x1x1, centered at origin).
     pub fn cube() -> Self {
         // Cube vertices: 6 faces x 4 vertices = 24 vertices (no sharing for flat normals)
@@ -235,6 +249,8 @@ pub struct GpuMesh {
     pub index_count: u32,
     /// Number of vertices.
     pub vertex_count: u32,
+    /// Axis-aligned bounding box in model space.
+    pub aabb: Aabb,
 }
 
 impl GpuMesh {
@@ -264,11 +280,14 @@ impl GpuMesh {
             (Some(buffer), cpu.indices.len() as u32)
         };
 
+        let aabb = cpu.compute_aabb();
+
         Self {
             vertex_buffer,
             index_buffer,
             index_count,
             vertex_count: vertices.len() as u32,
+            aabb,
         }
     }
 }

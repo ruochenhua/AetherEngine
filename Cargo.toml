@@ -12,20 +12,20 @@ rust-version = "1.78"
 
 [workspace.dependencies]
 # Core
-wgpu = "0.19"
-winit = "0.29"
-hecs = "0.10"
-glam = { version = "0.25", features = ["bytemuck"] }
-bytemuck = { version = "1.14", features = ["derive"] }
+wgpu = "29.0"
+winit = "0.30"
+hecs = "0.11"
+glam = { version = "0.33", features = ["bytemuck"] }
+bytemuck = { version = "1.25", features = ["derive"] }
 half = "2"
 
 # Window / Surface
 raw-window-handle = "0.6"
 
 # UI
-egui = "0.27"
-egui-wgpu = "0.27"
-egui-winit = "0.27"
+egui = "0.34"
+egui-wgpu = "0.34"
+egui-winit = "0.34"
 
 # Asset
 gltf = { version = "1.4", features = ["names", "utils"] }
@@ -34,11 +34,11 @@ tobj = { version = "4.0", default-features = false }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
-ron = "0.8"
-yaml-rust2 = "0.8"
+ron = "0.12"
+yaml-rust2 = "0.11"
 
 # Async / Runtime
-pollster = "0.3"
+pollster = "0.4"
 
 # Logging
 tracing = "0.1"
@@ -46,7 +46,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Dev dependencies
 anyhow = "1.0"
-thiserror = "1.0"
+thiserror = "2.0"
 
 [profile.release]
 opt-level = 3

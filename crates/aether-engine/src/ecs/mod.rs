@@ -22,6 +22,7 @@
 
 pub use hecs::{Entity, Query, QueryBorrow, QueryMut, With, Without};
 
+pub mod components;
 mod system;
 mod world;
 

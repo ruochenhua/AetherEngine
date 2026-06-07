@@ -1,0 +1,5 @@
+# Shared target directory for all git worktrees.
+# All worktrees read/write the same build artifacts — no redundant compilation.
+# IMPORTANT: never run `cargo build` concurrently in two worktrees.
+[build]
+target-dir = "/Users/ruochenhua/.cargo/aether-target"

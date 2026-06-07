@@ -4,6 +4,7 @@
 //! as RON files and loaded by the Launcher.
 
 pub mod loader;
+pub mod serializer;
 
 use crate::renderer::light::LightType;
 use serde::{Deserialize, Serialize};

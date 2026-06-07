@@ -13,6 +13,7 @@
 - **延迟着色**：基于 G-Buffer 的 Blinn-Phong PBR，支持分通道调试
 - **UE 风格飞行相机**：右键漫游，WASD + QE 移动，滚轮调速
 - **调试工具**：世界网格、RGB 三轴指示器、光照分通道可视化
+- **场景编辑器**：鼠标点击拾取物体、变换 Gizmo（平移）、场景层级面板、属性检查器（位置 / 旋转 / 缩放 / 材质）、全屏视口切换
 - **AI 优先**：每个模块适配单次 AI 上下文窗口；添加 Pass = 一个文件 + 一行注册
 - **测试驱动**：每次改动都走 red-green-refactor；资源连接错误在构建期暴露
 
@@ -40,7 +41,9 @@ cargo run -p aether-launcher
 | `鼠标` | 旋转视角（飞行模式） |
 | `滚轮` | 调节移动速度 |
 | `0` – `5` | 光照调试：完整 / 环境光 / 漫反射 / 高光 / 法线 / NdotL |
-| `Esc` | 返回 Launcher 菜单 |
+| `Alt + 左键拖拽` | 环绕相机（编辑器模式） |
+| `左键点击` | 在视口中拾取物体 |
+| `⛶ 全屏` | 切换全屏视口（隐藏侧边面板） |
 
 ## 🤖 AI 优先设计
 
@@ -145,8 +148,11 @@ main.rs (薄编排层，~80 行)
 PipelineBuilder
   ├── ShadowPass       → writes: ShadowDepth
   ├── GBufferPass      → writes: GPosition, GNormal, GAlbedo, GMaterial, GDepth
-  ├── LightingPass     → reads: GPosition, GNormal, GAlbedo, GMaterial, ShadowDepth
+  ├── SSAOPass         → reads: GPosition, GNormal  → writes: AOTexture
+  ├── LightingPass     → reads: GPosition, GNormal, GAlbedo, GMaterial, ShadowDepth, AOTexture
   │                        writes: Swapchain
+  ├── SSRPass          → reads: GPosition, GNormal, GAlbedo, GMaterial → writes: ReflectionTexture
+  ├── CompositePass    → composites Lighting + SSR → writes: Swapchain
   └── DebugLinePass    → reads: GDepth  → writes: Swapchain (LoadOp::Load)
 ```
 
@@ -171,8 +177,8 @@ PipelineBuilder
 |------|------|------|
 | **Phase 0** | 窗口、三角形、egui、Launcher | ✅ 完成 |
 | **Phase 1** | Deferred PBR、飞行相机、调试工具、类型安全调度器、阴影映射 | ✅ 完成 |
-| **Phase 2** | IBL、屏幕空间效果（SSAO、SSR） | 🔲 计划中 |
-| **Phase 3** | ECS 运行时、射线拾取、变换 Gizmo、编辑器 UI、场景保存 | 🔲 计划中 |
+| **Phase 2** | IBL、屏幕空间效果（SSAO、SSR） | ✅ 完成 |
+| **Phase 3** | ECS 运行时、射线拾取、变换 Gizmo、编辑器 UI、场景保存 | 🔄 进行中 |
 | **Phase 4** | 后处理链、色调映射 | 🔲 计划中 |
 | **Phase 5** | 地形 + 大气 + 水体 + 体积云 | 🔲 计划中 |
 | **Phase 6** | 光线追踪（Compute + Hybrid） | 🔲 计划中 |

@@ -139,10 +139,12 @@ impl Pass for SSRPass {
             label: Some("SSR Pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: reflection_view,
+                depth_slice: None,
                 resolve_target: None,
                 ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store },
             })],
             depth_stencil_attachment: None,
+            multiview_mask: None,
             timestamp_writes: None,
             occlusion_query_set: None,
         });
@@ -262,8 +264,11 @@ fn sample_vndf_ggx(V: vec3<f32>, alpha: f32, u1: f32, u2: f32) -> vec3<f32> {
 // Screen-space ray march following the article approach.
 // Returns (hit, hit_uv.x, hit_uv.y, steps_taken_ratio).
 fn ray_march(world_pos: vec3<f32>, rd: vec3<f32>, uv: vec2<f32>) -> vec4<f32> {
-    // Offset start point to avoid self-intersection
-    let start_pos = world_pos + rd * 0.5;
+    // Offset start point to avoid self-intersection.
+    // Dynamic offset: larger for distant surfaces (grazing angle self-intersection).
+    let dist_to_camera = length(world_pos - settings.camera_pos);
+    let start_offset = max(0.5, dist_to_camera * 0.03);
+    let start_pos = world_pos + rd * start_offset;
     let end_pos = world_pos + rd * settings.max_distance;
 
     var start_clip = settings.view_proj * vec4<f32>(start_pos, 1.0);
@@ -428,8 +433,20 @@ fn ray_march(world_pos: vec3<f32>, rd: vec3<f32>, uv: vec2<f32>) -> vec4<f32> {
             let final_t = (t0 + t1) * 0.5;
             let final_screen = start_screen + screen_diff * final_t;
             hit_uv = final_screen.xy / settings.screen_size;
-            hit = 1.0;
-            break;
+
+            // Outlier rejection: verify the hit is consistent with the depth buffer.
+            // Large NDC-Z discrepancy means the hit was triggered by oversized tolerance
+            // on a distant virtual surface, not a real intersection.
+            let hit_px = vec2<i32>(hit_uv * settings.screen_size);
+            let hit_clamped_px = clamp(hit_px, vec2<i32>(0), dims - vec2<i32>(1));
+            let hit_depth = textureLoad(gbuffer_depth, hit_clamped_px, 0).r;
+            let expected_ndc_z = mix(clipped_start_ndc.z, clipped_end_ndc.z, final_t);
+            if (abs(hit_depth - expected_ndc_z) < 0.02) {
+                hit = 1.0;
+                break;
+            }
+            // Inconsistent: treat as miss and keep marching
+            hit = 0.0;
         }
 
         last_screen = current_screen;
@@ -508,14 +525,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let hit_uv = result.yz;
     let step_norm = result.w;
 
-    // Reject self-intersections: if the hit point is too close to the start point
-    // in world space, it's likely the same surface (or adjacent) and should be discarded.
+    // Reject self-intersections: if the hit point is too close in screen-space,
+    // it's likely the same surface (or adjacent pixel) and should be discarded.
+    // World-space threshold fails for distant surfaces (adjacent pixels can be >1.5m apart),
+    // so we use screen-space distance which is uniform regardless of depth.
     if (hit > 0.5) {
-        let dims = vec2<i32>(settings.screen_size);
-        let hit_px = vec2<i32>(hit_uv * settings.screen_size);
-        let hit_clamped = clamp(hit_px, vec2<i32>(0), dims - vec2<i32>(1));
-        let hit_world = textureLoad(gbuffer_position, hit_clamped, 0).xyz;
-        if (length(hit_world - world_pos) < 1.5) {
+        let screen_dist_px = length(hit_uv - uv) * min(settings.screen_size.x, settings.screen_size.y);
+        if (screen_dist_px < 12.0) {
             hit = 0.0;
         }
     }
@@ -586,8 +602,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("SSR Pipeline Layout"),
-            bind_group_layouts: &[&texture_bgl, &settings_bgl],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&texture_bgl), Some(&settings_bgl)],
+            immediate_size: 0,
         });
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -595,7 +611,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: "vs_main",
+                entry_point: Some("vs_main"),
+                compilation_options: Default::default(),
                 buffers: &[wgpu::VertexBufferLayout {
                     array_stride: std::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
                     step_mode: wgpu::VertexStepMode::Vertex,
@@ -604,13 +621,15 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: "fs_main",
+                entry_point: Some("fs_main"),
+                compilation_options: Default::default(),
                 targets: &[Some(wgpu::ColorTargetState { format: wgpu::TextureFormat::Rgba16Float, blend: None, write_mask: wgpu::ColorWrites::ALL })],
             }),
             primitive: wgpu::PrimitiveState { topology: wgpu::PrimitiveTopology::TriangleList, strip_index_format: None, front_face: wgpu::FrontFace::Ccw, cull_mode: None, polygon_mode: wgpu::PolygonMode::Fill, unclipped_depth: false, conservative: false },
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
-            multiview: None,
+            multiview_mask: None,
+            cache: None,
         });
 
         let settings_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -674,9 +693,9 @@ mod tests {
     use std::any::TypeId;
 
     fn headless_device() -> wgpu::Device {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())).expect("need adapter");
-        let (device, _) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None)).expect("need device");
+        let (device, _) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).expect("need device");
         device
     }
 

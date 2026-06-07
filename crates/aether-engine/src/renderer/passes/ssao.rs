@@ -126,10 +126,12 @@ impl Pass for SSAOPass {
             label: Some("SSAO Pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: ao_view,
+                depth_slice: None,
                 resolve_target: None,
                 ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::WHITE), store: wgpu::StoreOp::Store },
             })],
             depth_stencil_attachment: None,
+            multiview_mask: None,
             timestamp_writes: None,
             occlusion_query_set: None,
         });
@@ -536,8 +538,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("SSAO Pipeline Layout"),
-            bind_group_layouts: &[&texture_bgl, &params_bgl, &view_proj_bgl, &view_bgl],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&texture_bgl), Some(&params_bgl), Some(&view_proj_bgl), Some(&view_bgl)],
+            immediate_size: 0,
         });
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -545,7 +547,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: "vs_main",
+                entry_point: Some("vs_main"),
+                compilation_options: Default::default(),
                 buffers: &[wgpu::VertexBufferLayout {
                     array_stride: std::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
                     step_mode: wgpu::VertexStepMode::Vertex,
@@ -554,13 +557,15 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: "fs_main",
+                entry_point: Some("fs_main"),
+                compilation_options: Default::default(),
                 targets: &[Some(wgpu::ColorTargetState { format: wgpu::TextureFormat::R8Unorm, blend: None, write_mask: wgpu::ColorWrites::ALL })],
             }),
             primitive: wgpu::PrimitiveState { topology: wgpu::PrimitiveTopology::TriangleList, strip_index_format: None, front_face: wgpu::FrontFace::Ccw, cull_mode: None, polygon_mode: wgpu::PolygonMode::Fill, unclipped_depth: false, conservative: false },
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
-            multiview: None,
+            multiview_mask: None,
+            cache: None,
         });
 
         let params_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -633,9 +638,9 @@ mod tests {
     use std::any::TypeId;
 
     fn headless_device() -> wgpu::Device {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())).expect("need adapter");
-        let (device, _) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None)).expect("need device");
+        let (device, _) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).expect("need device");
         device
     }
 
