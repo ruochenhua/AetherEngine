@@ -14,7 +14,7 @@ use aether_engine::{
         context::RenderContext,
         extract::extract_render_batches,
         frame::RenderFrame,
-        gizmo::{apply_drag, build_transform_gizmo, detect_hover, selected_entity_transform, GizmoAxis},
+        gizmo::{apply_drag, build_transform_gizmo, detect_hover, selected_entity_transform, GizmoHandle},
         ibl::{IblResources},
         light::LightingUniforms,
         picking::{pick_entity, screen_ray},
@@ -41,6 +41,23 @@ use winit::{
     keyboard::KeyCode,
     window::{WindowAttributes, WindowId},
 };
+
+// ── Undo/Redo commands ──────────────────────────────────────────────
+
+/// A reversible editor action.
+#[derive(Clone)]
+enum EditorCommand {
+    /// Restore a Transform to a previous value.
+    Transform {
+        entity: Entity,
+        old_transform: Transform,
+    },
+    /// Restore a Material to a previous value.
+    Material {
+        entity: Entity,
+        old_material: aether_engine::renderer::renderable::MaterialUniform,
+    },
+}
 
 // ── CLI parsing ─────────────────────────────────────────────────────
 
@@ -206,7 +223,7 @@ struct App {
     ssao_bias: f32,
     ssao_intensity: f32,
     ssr_debug_mode: u32,
-    gizmo_drag_axis: Option<GizmoAxis>,
+    gizmo_drag_axis: Option<GizmoHandle>,
     /// Set to true when egui consumes a mouse-related window event.
     /// Cleared at the start of each RedrawRequested.
     egui_consumed_pointer: bool,
@@ -215,6 +232,10 @@ struct App {
     pending_save_dialog: bool,
     pending_add_cube: bool,
     pending_add_sphere: bool,
+    pending_despawn_entity: Option<Entity>,
+    undo_stack: Vec<EditorCommand>,
+    redo_stack: Vec<EditorCommand>,
+    gizmo_drag_start_transform: Option<Transform>,
     last_frame_time: std::time::Instant,
     scroll_input: f32,
     fps: f32,
@@ -284,6 +305,10 @@ impl App {
             pending_save_dialog: false,
             pending_add_cube: false,
             pending_add_sphere: false,
+            pending_despawn_entity: None,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
+            gizmo_drag_start_transform: None,
             last_frame_time: std::time::Instant::now(),
             scroll_input: 0.0,
             fps: 0.0,
@@ -295,6 +320,64 @@ impl App {
             cli,
             no_gui_overlay,
             exit_after_frames,
+        }
+    }
+
+    /// Pop the top command from the undo stack and revert it.
+    fn apply_undo(&mut self) {
+        let Some(cmd) = self.undo_stack.pop() else { return };
+        if let LauncherState::Running { ref mut world, .. } = self.state {
+            match cmd.clone() {
+                EditorCommand::Transform { entity, old_transform } => {
+                    if let Ok(current) = world.query_one_mut::<&mut Transform>(entity) {
+                        let current_copy = current.clone();
+                        *current = old_transform;
+                        self.redo_stack.push(EditorCommand::Transform {
+                            entity,
+                            old_transform: current_copy,
+                        });
+                    }
+                }
+                EditorCommand::Material { entity, old_material } => {
+                    if let Ok(current) = world.query_one_mut::<&mut aether_engine::renderer::renderable::MaterialUniform>(entity) {
+                        let current_copy = *current;
+                        *current = old_material;
+                        self.redo_stack.push(EditorCommand::Material {
+                            entity,
+                            old_material: current_copy,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    /// Pop the top command from the redo stack and re-apply it.
+    fn apply_redo(&mut self) {
+        let Some(cmd) = self.redo_stack.pop() else { return };
+        if let LauncherState::Running { ref mut world, .. } = self.state {
+            match cmd.clone() {
+                EditorCommand::Transform { entity, old_transform } => {
+                    if let Ok(current) = world.query_one_mut::<&mut Transform>(entity) {
+                        let current_copy = current.clone();
+                        *current = old_transform;
+                        self.undo_stack.push(EditorCommand::Transform {
+                            entity,
+                            old_transform: current_copy,
+                        });
+                    }
+                }
+                EditorCommand::Material { entity, old_material } => {
+                    if let Ok(current) = world.query_one_mut::<&mut aether_engine::renderer::renderable::MaterialUniform>(entity) {
+                        let current_copy = *current;
+                        *current = old_material;
+                        self.undo_stack.push(EditorCommand::Material {
+                            entity,
+                            old_material: current_copy,
+                        });
+                    }
+                }
+            }
         }
     }
 }
@@ -420,6 +503,18 @@ impl ApplicationHandler for App {
         _window_id: WindowId,
         event: WindowEvent,
     ) {
+        // Handle undo/redo before any ctx borrow to avoid lifetime conflicts.
+        if let WindowEvent::RedrawRequested = event {
+            if self.input.ctrl_held() {
+                if self.input.key_pressed(KeyCode::KeyZ) {
+                    self.apply_undo();
+                }
+                if self.input.key_pressed(KeyCode::KeyY) {
+                    self.apply_redo();
+                }
+            }
+        }
+
         let window = self.window.as_ref().unwrap();
         let ctx = self.ctx.as_mut().unwrap();
         let scheduler = self.scheduler.as_mut().unwrap();
@@ -525,6 +620,15 @@ impl ApplicationHandler for App {
                     self.scroll_input = 0.0;
                 }
 
+                // Delete selected entity on Delete key
+                if self.input.key_pressed(KeyCode::Delete) {
+                    if let LauncherState::Running { ref mut world, .. } = self.state {
+                        if let Some((entity, _)) = selected_entity_transform(world) {
+                            self.pending_despawn_entity = Some(entity);
+                        }
+                    }
+                }
+
                 // Picking + Gizmo interaction (only in Running state, and not over UI)
                 if !egui_consumed {
                     if let LauncherState::Running { ref mut world, .. } = self.state {
@@ -550,6 +654,20 @@ impl ApplicationHandler for App {
                                 }
                             }
                             if mouse_released {
+                                // Record undo command if transform changed during drag
+                                if let Some((entity, _)) = selected_entity_transform(world) {
+                                    if let Some(old_transform) = self.gizmo_drag_start_transform.take() {
+                                        if let Ok(transform) = world.query_one_mut::<&mut Transform>(entity) {
+                                            if *transform != old_transform {
+                                                self.undo_stack.push(EditorCommand::Transform {
+                                                    entity,
+                                                    old_transform,
+                                                });
+                                                self.redo_stack.clear();
+                                            }
+                                        }
+                                    }
+                                }
                                 self.gizmo_drag_axis = None;
                             }
                         } else if mouse_pressed {
@@ -557,6 +675,7 @@ impl ApplicationHandler for App {
                             if let Some((_, transform)) = selected_entity_transform(world) {
                                 if let Some(hovered) = detect_hover(&transform, view, proj, mx, my, width, height) {
                                     self.gizmo_drag_axis = Some(hovered);
+                                    self.gizmo_drag_start_transform = Some(transform.clone());
                                 } else {
                                     // Not hovering gizmo: perform picking
                                     let ray = screen_ray(mx, my, width, height, view, proj, self.camera.position);
@@ -744,17 +863,22 @@ impl ApplicationHandler for App {
                                                 ui.separator();
                                                 egui::ScrollArea::vertical().show(ui, |ui| {
                                                     for item in &hierarchy_items {
-                                                        let is_selected = selected_entity == Some(item.entity);
-                                                        let label = egui::Button::new(&item.name)
-                                                            .selected(is_selected)
-                                                            .fill(if is_selected {
-                                                                ui.visuals().selection.bg_fill
-                                                            } else {
-                                                                ui.visuals().widgets.inactive.weak_bg_fill
-                                                            });
-                                                        if ui.add(label).clicked() {
-                                                            *pending_select_entity = Some(item.entity);
-                                                        }
+                                                        ui.horizontal(|ui| {
+                                                            let is_selected = selected_entity == Some(item.entity);
+                                                            let label = egui::Button::new(&item.name)
+                                                                .selected(is_selected)
+                                                                .fill(if is_selected {
+                                                                    ui.visuals().selection.bg_fill
+                                                                } else {
+                                                                    ui.visuals().widgets.inactive.weak_bg_fill
+                                                                });
+                                                            if ui.add(label).clicked() {
+                                                                *pending_select_entity = Some(item.entity);
+                                                            }
+                                                            if ui.small_button("🗑").clicked() {
+                                                                self.pending_despawn_entity = Some(item.entity);
+                                                            }
+                                                        });
                                                     }
                                                 });
                                             });
@@ -895,6 +1019,7 @@ impl ApplicationHandler for App {
                     // Write back inspector changes
                     if let Some(ref data) = inspector_data {
                         if let LauncherState::Running { ref mut world, .. } = self.state {
+                            // Transform
                             if let Ok(t) = world.query_one_mut::<&mut Transform>(data.entity) {
                                 let mut tx = data.transform.clone();
                                 tx.rotation = glam::Quat::from_euler(
@@ -903,9 +1028,24 @@ impl ApplicationHandler for App {
                                     data.euler[1],
                                     data.euler[2],
                                 );
+                                if *t != tx {
+                                    self.undo_stack.push(EditorCommand::Transform {
+                                        entity: data.entity,
+                                        old_transform: t.clone(),
+                                    });
+                                    self.redo_stack.clear();
+                                }
                                 *t = tx;
                             }
+                            // Material
                             if let Ok(m) = world.query_one_mut::<&mut MaterialUniform>(data.entity) {
+                                if *m != data.material {
+                                    self.undo_stack.push(EditorCommand::Material {
+                                        entity: data.entity,
+                                        old_material: *m,
+                                    });
+                                    self.redo_stack.clear();
+                                }
                                 *m = data.material;
                             }
                         }
@@ -1044,6 +1184,13 @@ impl ApplicationHandler for App {
                             }
                             // Select chosen entity
                             let _ = world.insert(entity, (aether_engine::ecs::components::Selected,));
+                        }
+                    }
+
+                    // Handle despawn (delete entity)
+                    if let Some(entity) = self.pending_despawn_entity.take() {
+                        if let LauncherState::Running { ref mut world, .. } = self.state {
+                            let _ = world.despawn(entity);
                         }
                     }
 

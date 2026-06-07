@@ -10,7 +10,7 @@ use std::sync::Arc;
 ///
 /// Stored as translation + rotation + scale so that gizmo and inspector
 /// can edit individual components without Mat4 decomposition.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Transform {
     /// Translation vector.
     pub translation: Vec3,
