@@ -618,23 +618,27 @@ impl ApplicationHandler for App {
 
                 self.frame_count += 1;
 
-                if self.input.key_pressed(KeyCode::Digit0) { self.debug_mode = 0; }
-                if self.input.key_pressed(KeyCode::Digit1) { self.debug_mode = 1; }
-                if self.input.key_pressed(KeyCode::Digit2) { self.debug_mode = 2; }
-                if self.input.key_pressed(KeyCode::Digit3) { self.debug_mode = 3; }
-                if self.input.key_pressed(KeyCode::Digit4) { self.debug_mode = 4; }
-                if self.input.key_pressed(KeyCode::Digit5) { self.debug_mode = 5; }
-                if self.input.key_pressed(KeyCode::Digit6) { self.debug_mode = 6; }
-                if self.input.key_pressed(KeyCode::Digit7) { self.debug_mode = 7; }
-                if self.input.key_pressed(KeyCode::Digit8) { self.debug_mode = 8; }
-                if self.input.key_pressed(KeyCode::Digit9) { self.debug_mode = 9; }
-                if self.input.key_pressed(KeyCode::F1) { self.debug_mode = 10; }
-                if self.input.key_pressed(KeyCode::F2) { self.debug_mode = 11; }
-                if self.input.key_pressed(KeyCode::F3) { self.debug_mode = 12; }
-                if self.input.key_pressed(KeyCode::F4) { self.debug_mode = 13; }
-                if self.input.key_pressed(KeyCode::F5) { self.debug_mode = 14; }
-                if self.input.key_pressed(KeyCode::F6) {
-                    self.ssr_debug_mode = (self.ssr_debug_mode + 1) % 10;
+                // Only process debug hotkeys when egui is not capturing keyboard input
+                // (e.g. when typing in an Inspector text field).
+                if !self.egui_ctx.wants_keyboard_input() {
+                    if self.input.key_pressed(KeyCode::Digit0) { self.debug_mode = 0; }
+                    if self.input.key_pressed(KeyCode::Digit1) { self.debug_mode = 1; }
+                    if self.input.key_pressed(KeyCode::Digit2) { self.debug_mode = 2; }
+                    if self.input.key_pressed(KeyCode::Digit3) { self.debug_mode = 3; }
+                    if self.input.key_pressed(KeyCode::Digit4) { self.debug_mode = 4; }
+                    if self.input.key_pressed(KeyCode::Digit5) { self.debug_mode = 5; }
+                    if self.input.key_pressed(KeyCode::Digit6) { self.debug_mode = 6; }
+                    if self.input.key_pressed(KeyCode::Digit7) { self.debug_mode = 7; }
+                    if self.input.key_pressed(KeyCode::Digit8) { self.debug_mode = 8; }
+                    if self.input.key_pressed(KeyCode::Digit9) { self.debug_mode = 9; }
+                    if self.input.key_pressed(KeyCode::F1) { self.debug_mode = 10; }
+                    if self.input.key_pressed(KeyCode::F2) { self.debug_mode = 11; }
+                    if self.input.key_pressed(KeyCode::F3) { self.debug_mode = 12; }
+                    if self.input.key_pressed(KeyCode::F4) { self.debug_mode = 13; }
+                    if self.input.key_pressed(KeyCode::F5) { self.debug_mode = 14; }
+                    if self.input.key_pressed(KeyCode::F6) {
+                        self.ssr_debug_mode = (self.ssr_debug_mode + 1) % 10;
+                    }
                 }
 
                 if let Some(idx) = self.pending_load.take() {
