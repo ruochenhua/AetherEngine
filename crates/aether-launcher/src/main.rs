@@ -1184,6 +1184,7 @@ impl ApplicationHandler for App {
                                 };
                                 write_camera_to_world(&self.camera, world);
                                 let desc = aether_engine::scene::serializer::serialize_world(world, lighting, "Untitled");
+                                info!("Saving scene: {} objects, {} lights, camera at {:?}", desc.objects.len(), desc.lights.len(), desc.camera.position);
                                 match aether_engine::scene::serializer::to_ron_string(&desc) {
                                     Ok(ron) => {
                                         if let Err(e) = std::fs::write(&path, ron) {

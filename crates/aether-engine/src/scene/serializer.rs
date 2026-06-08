@@ -265,6 +265,23 @@ mod tests {
     }
 
     #[test]
+    fn extract_object_with_extra_component() {
+        use crate::ecs::components::Selected;
+        use crate::ecs::Entity;
+        let device = headless_device();
+        let registry = BuiltinMeshRegistry::new();
+        let mut world = World::new();
+        spawn_object_entity(&mut world, &device, &registry, "DefaultCube", "cube");
+        // Add Selected component to the entity (simulating New Scene behavior)
+        let entity = world.query::<(Entity, (&Transform, &MeshHandle))>().iter().next().unwrap().0;
+        let _ = world.insert(entity, (Selected,));
+
+        let objects = extract_objects(&world);
+        assert_eq!(objects.len(), 1, "object with extra Selected component should still be extracted");
+        assert_eq!(objects[0].name, "DefaultCube");
+    }
+
+    #[test]
     fn serialize_to_ron_roundtrips() {
         let desc = SceneDescription {
             name: "Roundtrip".into(),
