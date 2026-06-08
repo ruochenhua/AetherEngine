@@ -265,19 +265,24 @@ mod tests {
     }
 
     #[test]
-    fn extract_object_with_extra_component() {
+    fn extract_object_spawned_with_selected_directly() {
         use crate::ecs::components::Selected;
-        use crate::ecs::Entity;
         let device = headless_device();
         let registry = BuiltinMeshRegistry::new();
         let mut world = World::new();
-        spawn_object_entity(&mut world, &device, &registry, "DefaultCube", "cube");
-        // Add Selected component to the entity (simulating New Scene behavior)
-        let entity = world.query::<(Entity, (&Transform, &MeshHandle))>().iter().next().unwrap().0;
-        let _ = world.insert(entity, (Selected,));
+        let cpu_mesh = registry.get("cube").expect("known mesh");
+        let gpu_mesh = Arc::new(crate::asset::mesh::GpuMesh::from_cpu(&device, &cpu_mesh));
+        world.spawn((
+            Transform::default(),
+            crate::ecs::components::MeshHandle::new(gpu_mesh, "cube"),
+            MaterialUniform::default(),
+            Visibility::default(),
+            Name("DefaultCube".into()),
+            Selected,
+        ));
 
         let objects = extract_objects(&world);
-        assert_eq!(objects.len(), 1, "object with extra Selected component should still be extracted");
+        assert_eq!(objects.len(), 1, "object spawned with 6 components directly should be extracted");
         assert_eq!(objects[0].name, "DefaultCube");
     }
 

@@ -504,7 +504,7 @@ impl ApplicationHandler for App {
             let gpu_mesh = std::sync::Arc::new(aether_engine::asset::mesh::GpuMesh::from_cpu(
                 &ctx.device, &cpu_mesh,
             ));
-            let entity = world.spawn((
+            let _entity = world.spawn((
                 aether_engine::ecs::components::Transform::default(),
                 aether_engine::ecs::components::MeshHandle::new(gpu_mesh, "cube"),
                 aether_engine::renderer::renderable::MaterialUniform {
@@ -514,8 +514,9 @@ impl ApplicationHandler for App {
                     _pad: [0.0, 0.0],
                 },
                 aether_engine::ecs::components::Visibility::default(),
+                aether_engine::ecs::components::Name("DefaultCube".into()),
+                aether_engine::ecs::components::Selected,
             ));
-            let _ = world.insert(entity, (aether_engine::ecs::components::Selected,));
         }
         self.state = LauncherState::Running { world, lighting };
         self.show_overlay = true;
