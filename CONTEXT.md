@@ -58,7 +58,7 @@ Rust + wgpu 现代渲染引擎，KongEngine 的精神续作。目标：从 Defer
 Phase 0: Skeleton (window, triangle, egui)         ← ✅ 已完成
 Phase 1: Deferred PBR + Shadow + Pipeline + RON + IBL ← ✅ 已完成
 Phase 2: SSAO + SSR                                    ← ✅ 已完成
-Phase 3: Editor (ECS runtime, Picking, Gizmo, UI)  ← 🔄 进行中
+Phase 3: Editor (ECS runtime, Picking, Gizmo, UI, Save/Load)  ← ✅ 已完成
 Phase 4: Post-process chain + Tone mapping
 Phase 5: Terrain + Atmosphere + Water + Clouds
 Phase 6: Ray Tracing (Compute + Hybrid)
@@ -89,6 +89,10 @@ Phase 6: Ray Tracing (Compute + Hybrid)
 - **Hierarchy 名字映射稳定性**: hecs 查询迭代顺序可能因组件增删而漂移。如果按查询顺序分配重复名字后缀（如 "cube", "cube (1)"），顺序一变名字就会绑定到错误的 entity。修复：先收集全部 (entity, name)，按 entity ID 稳定排序后再分配后缀
 - **Gizmo drag 期间不触发 picking**: gizmo drag 时 `gizmo_drag_axis = Some(axis)`，picking 代码在 `else if` 分支中不会执行。drag 结束后释放鼠标，`mouse_released` 清除 `gizmo_drag_axis`。只要不再按下鼠标，picking 不会执行
 - **Picking 空白处不取消选中**: 修改 `pick_entity`，只在命中实体时切换选中；点击空白空间保持当前选中不变，防止误触失焦
+- **egui 输入框与 debug 热键冲突**: 在 Inspector 面板修改数值（如 scale）时，按 `0`–`9` 会触发 lighting debug 模式切换，导致渲染结果突变。修复：每帧检查 `egui_ctx.egui_wants_keyboard_input()`，为 true 时不处理 debug 热键
+- **Name Component 遗漏导致保存丢失物体**: `serialize_world` 通过 `(Transform, MeshHandle, MaterialUniform, Visibility, Name)` 查询提取物体。任何 spawn 时未附加 `Name` 的 entity 在保存时会被静默跳过。修复：所有 spawn 物体的代码路径统一附加 `Name`（包括 `new_empty` 的默认 cube）
+- **相机保存前未同步到 ECS**: `serialize_world` 从 ECS 查询提取相机参数。如果保存前未调用 `write_camera_to_world`，保存的 RON 会使用 ECS 中 stale 的相机数据。修复：保存对话框确认后、序列化前，先将 `FlyCamera` 的 position/rotation 写回 ECS `Camera` Component
+- **Hierarchy 重复名字绑定漂移**: hecs 查询迭代顺序可能因组件增删而漂移。如果按查询顺序分配重复名字后缀（如 "cube", "cube (1)"），顺序一变名字就会绑定到错误的 entity。修复：先收集全部 (entity, name)，按 entity ID 稳定排序后再分配后缀
 
 ## 关键文件
 

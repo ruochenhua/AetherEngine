@@ -62,7 +62,7 @@
 | SSR 性能调优 / 视锥裁剪 | ✅ 已完成 | P1 |
 | SSR 深度采样重构（#39，已回退） | ❌ 已放弃 | P1 |
 
-### Phase 3: 编辑器基础设施 🔄 当前阶段
+### Phase 3: 编辑器基础设施 ✅ 当前阶段
 
 **目标**：ECS runtime、编辑器交互、场景持久化
 
@@ -74,7 +74,7 @@
 | Editor UI shell（egui 面板） | ✅ 已完成 | P1 |
 | Scene hierarchy（场景层级） | ✅ 已完成 | P1 |
 | Inspector（属性编辑） | ✅ 已完成 | P1 |
-| Scene save/load（RON 序列化） | 🔄 基础可用 | P1 |
+| Scene save/load（RON 序列化，Open/Import 语义） | ✅ 已完成 | P1 |
 | Undo / Redo | ✅ 已完成 | P2 |
 | Delete 选中物体 | ✅ 已完成 | P2 |
 | 多选（Shift/Ctrl） | 🔲 待实现 | P2 |
@@ -157,9 +157,10 @@
 - [ ] 多线程 System 执行
 
 ### 低优先级
-- [ ] 场景编辑器保存（基础版已实现）
 - [ ] 性能分析面板
 - [ ] 远程调试支持
+- [ ] 多选（Shift/Ctrl）
+- [ ] Camera speed 持久化（当前 save/load 不保存 speed）
 
 ---
 
@@ -176,13 +177,13 @@
 - ✅ IBL + Skybox
 - ✅ SSAO + SSR
 
-### v0.3.0 - 编辑器版 🔄 当前
+### v0.3.0 - 编辑器版 ✅ 当前
 - ✅ ECS runtime
 - ✅ Ray picking
 - ✅ Transform gizmo（平移/旋转/缩放）
 - ✅ Editor UI shell
 - ✅ Undo / Redo / Delete
-- 🔄 Scene save/load
+- ✅ Scene save/load（Open/Import/Save，RON 格式）
 
 ### v0.4.0 - 后处理版
 - Post-process chain
