@@ -1217,6 +1217,7 @@ impl ApplicationHandler for App {
                                         _pad: [0.0, 0.0],
                                     },
                                     aether_engine::ecs::components::Visibility::default(),
+                                    aether_engine::ecs::components::Name("Cube".into()),
                                 ));
                                 added_entity = Some(entity);
                                 info!("Added cube entity {:?}", entity);
@@ -1238,6 +1239,7 @@ impl ApplicationHandler for App {
                                         _pad: [0.0, 0.0],
                                     },
                                     aether_engine::ecs::components::Visibility::default(),
+                                    aether_engine::ecs::components::Name("Sphere".into()),
                                 ));
                                 added_entity = Some(entity);
                                 info!("Added sphere entity {:?}", entity);

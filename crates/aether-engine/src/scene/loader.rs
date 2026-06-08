@@ -6,7 +6,7 @@ use crate::{
     asset::{mesh::GpuMesh, registry::BuiltinMeshRegistry},
     ecs::components::{Camera, Light, MeshHandle, Name, Transform, Visibility},
     ecs::World,
-    renderer::light::{DirectionalLight, LightingUniforms},
+    renderer::light::{DirectionalLight, LightType, LightingUniforms},
     renderer::renderable::MaterialUniform,
     scene::{MeshRef, SceneDescription},
 };
@@ -88,6 +88,19 @@ impl SceneLoader {
                 scale: Vec3::ONE,
             },
             Camera::default(),
+        ));
+        world.spawn((
+            Transform {
+                translation: Vec3::ZERO,
+                rotation: Quat::IDENTITY,
+                scale: Vec3::ONE,
+            },
+            Light {
+                light_type: LightType::Directional,
+                color: [1.0, 1.0, 1.0],
+                intensity: 1.0,
+                cast_shadow: true,
+            },
         ));
 
         LightingUniforms {
