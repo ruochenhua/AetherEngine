@@ -1171,8 +1171,13 @@ impl ApplicationHandler for App {
                     if self.pending_save_dialog {
                         self.pending_save_dialog = false;
                         if let LauncherState::Running { ref mut world, ref lighting } = self.state {
-                            if let Some(path) = rfd::FileDialog::new().add_filter("RON", &["ron"]).save_file() {
-                                let path = if path.extension().is_none() {
+                            if let Some(path) = rfd::FileDialog::new()
+                                .set_directory("./scenes")
+                                .set_file_name("scene.ron")
+                                .add_filter("RON scenes", &["ron"])
+                                .save_file()
+                            {
+                                let path = if path.extension().map_or(true, |ext| ext != "ron") {
                                     path.with_extension("ron")
                                 } else {
                                     path
