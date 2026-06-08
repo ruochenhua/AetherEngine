@@ -11,25 +11,23 @@ use glam::{Quat, Vec2, Vec3, Vec4};
 /// Which axis (X/Y/Z) the gizmo handle targets.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum GizmoAxis {
+    /// World-space X axis (red).
     X,
+    /// World-space Y axis (green).
     Y,
+    /// World-space Z axis (blue).
     Z,
 }
 
 /// What kind of gizmo handle and which axis.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum GizmoHandle {
+    /// Translation arrow along the given axis.
     Translate(GizmoAxis),
+    /// Rotation ring around the given axis.
     Rotate(GizmoAxis),
+    /// Scale box along the given axis.
     Scale(GizmoAxis),
-}
-
-impl GizmoHandle {
-    fn axis(&self) -> GizmoAxis {
-        match self {
-            GizmoHandle::Translate(a) | GizmoHandle::Rotate(a) | GizmoHandle::Scale(a) => *a,
-        }
-    }
 }
 
 // Lengths for different gizmo components

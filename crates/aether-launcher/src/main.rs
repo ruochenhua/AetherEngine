@@ -620,7 +620,7 @@ impl ApplicationHandler for App {
 
                 // Only process debug hotkeys when egui is not capturing keyboard input
                 // (e.g. when typing in an Inspector text field).
-                if !self.egui_ctx.wants_keyboard_input() {
+                if !self.egui_ctx.egui_wants_keyboard_input() {
                     if self.input.key_pressed(KeyCode::Digit0) { self.debug_mode = 0; }
                     if self.input.key_pressed(KeyCode::Digit1) { self.debug_mode = 1; }
                     if self.input.key_pressed(KeyCode::Digit2) { self.debug_mode = 2; }
