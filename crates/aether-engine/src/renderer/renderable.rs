@@ -7,20 +7,16 @@
 
 
 
-/// Per-object uniform (model + material), 256-byte aligned for dynamic offset.
+/// Per-object uniform (material only; model matrix now from instance buffer).
 #[repr(C, align(256))]
 #[derive(Clone, Copy, Debug)]
 pub struct ObjectUniform {
-    /// Model matrix (column-major).
-    pub model: [[f32; 4]; 4],
     /// Albedo color [r, g, b, a].
     pub albedo: [f32; 4],
     /// Surface roughness (0 = mirror, 1 = matte).
     pub roughness: f32,
     /// Metalness (0 = dielectric, 1 = metal).
     pub metallic: f32,
-    /// Padding to 256 bytes.
-    pub _pad: [u8; 168],
 }
 
 // Safety: ObjectUniform is #[repr(C, align(256))] with no invalid bit patterns

@@ -31,6 +31,7 @@ impl Pass for CompositePass {
         PassSignature::new("Composite")
             .read::<SceneColor>("scene_color")
             .read::<ReflectionTexture>("reflection")
+            .write::<PostProcessInput>("post_process_input", wgpu::TextureFormat::Rgba16Float)
     }
 
     fn init(device: &wgpu::Device) -> Self { Self::new(device, wgpu::TextureFormat::Bgra8UnormSrgb) }
@@ -55,13 +56,14 @@ impl Pass for CompositePass {
         ));
     }
 
-    fn execute(&self, encoder: &mut wgpu::CommandEncoder, _resources: &ResourceTable, surface_view: &wgpu::TextureView) {
+    fn execute(&self, encoder: &mut wgpu::CommandEncoder, resources: &ResourceTable, _surface_view: &wgpu::TextureView) {
         let texture_bg = self.texture_bind_group.as_ref().expect("Composite: resolve not called");
+        let post_process_view = resources.get(resources.handle::<PostProcessInput>("post_process_input"));
 
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Composite Pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: surface_view,
+                view: post_process_view,
                 depth_slice: None,
                 resolve_target: None,
                 ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store },
@@ -82,7 +84,7 @@ impl Pass for CompositePass {
 
 impl CompositePass {
     /// Create a new composite pass.
-    pub fn new(device: &wgpu::Device, surface_format: wgpu::TextureFormat) -> Self {
+    pub fn new(device: &wgpu::Device, _surface_format: wgpu::TextureFormat) -> Self {
         let shader_source = r#"
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
@@ -146,7 +148,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                 module: &shader,
                 entry_point: Some("fs_main"),
                 compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState { format: surface_format, blend: None, write_mask: wgpu::ColorWrites::ALL })],
+                targets: &[Some(wgpu::ColorTargetState { format: wgpu::TextureFormat::Rgba16Float, blend: None, write_mask: wgpu::ColorWrites::ALL })],
             }),
             primitive: wgpu::PrimitiveState { topology: wgpu::PrimitiveTopology::TriangleList, strip_index_format: None, front_face: wgpu::FrontFace::Ccw, cull_mode: None, polygon_mode: wgpu::PolygonMode::Fill, unclipped_depth: false, conservative: false },
             depth_stencil: None,
@@ -191,12 +193,12 @@ mod tests {
     }
 
     #[test]
-    fn signature_declares_reads() {
+    fn signature_declares_reads_and_write() {
         let device = headless_device();
         let sig = CompositePass::new(&device, wgpu::TextureFormat::Bgra8UnormSrgb).signature();
         assert_eq!(sig.name, "Composite");
         assert_eq!(sig.reads.len(), 2);
-        assert_eq!(sig.writes.len(), 0);
+        assert_eq!(sig.writes.len(), 1);
     }
 
     #[test]

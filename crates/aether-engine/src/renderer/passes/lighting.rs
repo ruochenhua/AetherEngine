@@ -1,7 +1,8 @@
 //! Lighting Pass
 //!
 //! Full-screen quad pass that reads G-Buffer textures and computes
-//! Blinn-Phong lighting. Outputs directly to the swapchain.
+//! PBR lighting (Cook-Torrance BRDF with IBL). Outputs linear HDR
+//! color to `SceneColor` (Rgba16Float) for downstream tone mapping.
 //!
 //! Implements the `Pass` trait for type-safe scheduling.
 
@@ -513,14 +514,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     }  // closes geometry else block
 
-    // Tone mapping — shared between sky and geometry
-    // Skip for debug modes 6 (raw depth), 11-13, 14 (view-ray/env/checker/AO already returned)
-    let mapped = select(
-        output_color / (output_color + vec3<f32>(1.0)),
-        output_color,
-        uniforms.debug_mode == 6u || uniforms.debug_mode == 14u
-    );
-    return vec4<f32>(mapped, 1.0);
+    // Return linear HDR — tone mapping is handled by ToneMappingPass
+    return vec4<f32>(output_color, 1.0);
 }
 "#;
 

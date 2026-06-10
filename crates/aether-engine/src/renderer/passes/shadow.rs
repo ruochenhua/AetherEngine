@@ -1,14 +1,13 @@
 //! Shadow Map Pass — depth-only pass from light perspective.
-//! Uses dynamic uniform offsets for per-object model matrices.
+//! Uses a vertex buffer for per-instance model matrices (GPU instancing).
 
-use crate::asset::mesh::Vertex;
+use crate::asset::mesh::{InstanceData, Vertex};
 use crate::renderer::extract::RenderBatch;
 use crate::renderer::frame::RenderFrame;
 use crate::renderer::pass::{Pass, PassSignature, ResHandle};
 use crate::renderer::resource::*;
 use crate::renderer::resource_table::ResourceTable;
 use glam::Mat4;
-use tracing::warn;
 
 /// Light-space uniform: view-projection matrix from the light's perspective.
 #[repr(C)]
@@ -18,28 +17,18 @@ pub struct LightSpaceUniform {
     pub light_view_proj: [[f32; 4]; 4],
 }
 
-/// Per-object model matrix for shadow rendering (256-byte aligned for dynamic offset).
-#[repr(C, align(256))]
-#[derive(Clone, Copy, Debug)]
-pub struct ShadowObjectUniform {
-    /// World-space model matrix.
-    pub model: [[f32; 4]; 4],
-    /// Padding to 256 bytes for dynamic uniform offset alignment.
-    pub _pad: [u8; 192], // fill to 256 bytes
-}
-unsafe impl bytemuck::Pod for ShadowObjectUniform {}
-unsafe impl bytemuck::Zeroable for ShadowObjectUniform {}
-
 /// Fixed resolution for the shadow depth map.
 pub const SHADOW_MAP_SIZE: u32 = 2048;
 
 /// Shadow map pass — renders depth from the directional light's perspective.
 pub struct ShadowPass {
+    device: wgpu::Device,
     pipeline: wgpu::RenderPipeline,
     light_vp_buffer: wgpu::Buffer,
     light_vp_bind_group: wgpu::BindGroup,
-    object_buffer: wgpu::Buffer,
-    object_bind_group: wgpu::BindGroup,
+    /// Per-instance transform vertex buffer.
+    instance_buffer: wgpu::Buffer,
+    instance_buffer_capacity: usize,
     shadow_depth_handle: Option<ResHandle<ShadowDepth>>,
     batches: Vec<RenderBatch>,
     light_view_proj: Mat4,
@@ -70,30 +59,24 @@ impl Pass for ShadowPass {
             .queue
             .write_buffer(&self.light_vp_buffer, 0, bytemuck::cast_slice(&[vp]));
 
-        // Upload all model matrices
-        let obj_size = std::mem::size_of::<ShadowObjectUniform>() as wgpu::BufferAddress;
+        // Upload instance data
         let total_instances: usize = self.batches.iter().map(|b| b.instances.len()).sum();
-        if total_instances > MAX_OBJECTS {
-            warn!(
-                "ShadowPass: {} instances exceed MAX_OBJECTS ({}); truncating",
-                total_instances, MAX_OBJECTS
-            );
+        if total_instances > self.instance_buffer_capacity {
+            let new_capacity = total_instances.max(256);
+            self.instance_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Shadow Instance Buf"),
+                size: (new_capacity * std::mem::size_of::<InstanceData>()) as u64,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            self.instance_buffer_capacity = new_capacity;
         }
-        let mut data: Vec<u8> =
-            Vec::with_capacity(total_instances.min(MAX_OBJECTS) * obj_size as usize);
+        let mut instance_data: Vec<u8> = Vec::with_capacity(total_instances * std::mem::size_of::<InstanceData>());
         for batch in &self.batches {
-            for instance in &batch.instances {
-                if data.len() / obj_size as usize >= MAX_OBJECTS {
-                    break;
-                }
-                data.extend_from_slice(bytemuck::cast_slice(&[ShadowObjectUniform {
-                    model: instance.model.to_cols_array_2d(),
-                    _pad: [0u8; 192],
-                }]));
-            }
+            instance_data.extend_from_slice(bytemuck::cast_slice(&batch.instances));
         }
-        if !data.is_empty() {
-            frame.queue.write_buffer(&self.object_buffer, 0, &data);
+        if !instance_data.is_empty() {
+            frame.queue.write_buffer(&self.instance_buffer, 0, &instance_data);
         }
     }
 
@@ -112,24 +95,20 @@ impl Pass for ShadowPass {
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &self.light_vp_bind_group, &[]);
 
-        let obj_size = std::mem::size_of::<ShadowObjectUniform>() as wgpu::BufferAddress;
-        let mut object_index = 0usize;
+        let mut instance_offset = 0usize;
         for batch in &self.batches {
-            for _instance in &batch.instances {
-                if object_index >= MAX_OBJECTS {
-                    break;
-                }
-                let offset = object_index as u32 * obj_size as u32;
-                pass.set_bind_group(1, &self.object_bind_group, &[offset]);
-                pass.set_vertex_buffer(0, batch.mesh.vertex_buffer.slice(..));
-                if let Some(ref ib) = batch.mesh.index_buffer {
-                    pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
-                    pass.draw_indexed(0..batch.mesh.index_count, 0, 0..1);
-                } else {
-                    pass.draw(0..batch.mesh.vertex_count, 0..1);
-                }
-                object_index += 1;
+            let instance_count = batch.instances.len() as u32;
+            pass.set_vertex_buffer(0, batch.mesh.vertex_buffer.slice(..));
+            let instance_byte_start = (instance_offset * std::mem::size_of::<InstanceData>()) as wgpu::BufferAddress;
+            let instance_byte_end = instance_byte_start + (batch.instances.len() * std::mem::size_of::<InstanceData>()) as wgpu::BufferAddress;
+            pass.set_vertex_buffer(1, self.instance_buffer.slice(instance_byte_start..instance_byte_end));
+            if let Some(ref ib) = batch.mesh.index_buffer {
+                pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
+                pass.draw_indexed(0..batch.mesh.index_count, 0, 0..instance_count);
+            } else {
+                pass.draw(0..batch.mesh.vertex_count, 0..instance_count);
             }
+            instance_offset += batch.instances.len();
         }
     }
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
@@ -137,22 +116,26 @@ impl Pass for ShadowPass {
     }
 }
 
-const MAX_OBJECTS: usize = 256;
-
 impl ShadowPass {
     /// Create a new shadow pass.
     pub fn new(device: &wgpu::Device) -> Self {
         let src = r#"
 struct VertexInput { @location(0) position: vec3<f32>, @location(1) normal: vec3<f32>, @location(2) uv: vec2<f32>, @location(3) tangent: vec4<f32>, };
+struct InstanceInput {
+    @location(4) model_matrix_0: vec4<f32>,
+    @location(5) model_matrix_1: vec4<f32>,
+    @location(6) model_matrix_2: vec4<f32>,
+    @location(7) model_matrix_3: vec4<f32>,
+    @location(8) entity_id: u32,
+};
 struct VertexOutput { @builtin(position) clip_position: vec4<f32>, };
 struct LightVP { light_view_proj: mat4x4<f32>, };
 @group(0) @binding(0) var<uniform> lvp: LightVP;
-struct Obj { model: mat4x4<f32>, };
-@group(1) @binding(0) var<uniform> obj: Obj;
 @vertex
-fn vs_main(in: VertexInput) -> VertexOutput {
+fn vs_main(in: VertexInput, instance: InstanceInput) -> VertexOutput {
     var out: VertexOutput;
-    out.clip_position = lvp.light_view_proj * obj.model * vec4<f32>(in.position, 1.0);
+    let model = mat4x4<f32>(instance.model_matrix_0, instance.model_matrix_1, instance.model_matrix_2, instance.model_matrix_3);
+    out.clip_position = lvp.light_view_proj * model * vec4<f32>(in.position, 1.0);
     return out;
 }
 "#;
@@ -167,22 +150,15 @@ fn vs_main(in: VertexInput) -> VertexOutput {
                 count: None,
             }],
         });
-        let obj_size = std::mem::size_of::<ShadowObjectUniform>() as u64;
-        let obj_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("S Obj BGL"), entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0, visibility: wgpu::ShaderStages::VERTEX,
-                ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: true, min_binding_size: Some(std::num::NonZeroU64::new(obj_size).unwrap()) },
-                count: None,
-            }],
-        });
+
         let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Shadow PL"), bind_group_layouts: &[Some(&vp_bgl), Some(&obj_bgl)],
+            label: Some("Shadow PL"), bind_group_layouts: &[Some(&vp_bgl)],
             immediate_size: 0,
         });
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Shadow Pipeline"), layout: Some(&pl),
-            vertex: wgpu::VertexState { module: &shader, entry_point: Some("vs_main"), compilation_options: Default::default(), buffers: &[Vertex::desc()] },
+            vertex: wgpu::VertexState { module: &shader, entry_point: Some("vs_main"), compilation_options: Default::default(), buffers: &[Vertex::desc(), InstanceData::instance_desc()] },
             fragment: None,
             primitive: wgpu::PrimitiveState { topology: wgpu::PrimitiveTopology::TriangleList, strip_index_format: None, front_face: wgpu::FrontFace::Ccw, cull_mode: Some(wgpu::Face::Back), polygon_mode: wgpu::PolygonMode::Fill, unclipped_depth: false, conservative: false },
             depth_stencil: Some(wgpu::DepthStencilState { format: wgpu::TextureFormat::Depth32Float, depth_write_enabled: Some(true), depth_compare: Some(wgpu::CompareFunction::Less), stencil: wgpu::StencilState::default(), bias: wgpu::DepthBiasState { constant: 0, slope_scale: 0.0, clamp: 0.0 } }),
@@ -199,16 +175,21 @@ fn vs_main(in: VertexInput) -> VertexOutput {
             entries: &[wgpu::BindGroupEntry { binding: 0, resource: vp_buf.as_entire_binding() }],
         });
 
-        let obj_buf = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("S Obj"), size: MAX_OBJECTS as u64 * obj_size,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false,
-        });
-        let obj_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("S Obj BG"), layout: &obj_bgl,
-            entries: &[wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding { buffer: &obj_buf, offset: 0, size: Some(std::num::NonZeroU64::new(obj_size).unwrap()) }) }],
+        let initial_instance_capacity = 256;
+        let instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Shadow Instance Buf"),
+            size: (initial_instance_capacity * std::mem::size_of::<InstanceData>()) as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
         });
 
-        Self { pipeline, light_vp_buffer: vp_buf, light_vp_bind_group: vp_bg, object_buffer: obj_buf, object_bind_group: obj_bg, shadow_depth_handle: None, batches: Vec::new(), light_view_proj: Mat4::IDENTITY }
+        Self { 
+            device: device.clone(),
+            pipeline, light_vp_buffer: vp_buf, light_vp_bind_group: vp_bg,
+            instance_buffer,
+            instance_buffer_capacity: initial_instance_capacity,
+            shadow_depth_handle: None, batches: Vec::new(), light_view_proj: Mat4::IDENTITY 
+        }
     }
 }
 

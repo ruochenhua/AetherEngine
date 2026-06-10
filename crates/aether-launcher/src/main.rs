@@ -19,13 +19,16 @@ use aether_engine::{
         light::LightingUniforms,
         picking::{pick_entity, screen_ray},
         passes::{
+            bloom::BloomPass,
             composite::CompositePass,
             debug::DebugLinePass,
+            fxaa::{FXAAPass, FxaaQuality},
             gbuffer::GBufferPass,
             lighting::LightingPass,
             shadow::ShadowPass,
             ssao::SSAOPass,
             ssr::SSRPass,
+            tone_mapping::{ToneMappingPass, ToneMappingMode},
         },
         scheduler::{PipelineBuilder, Scheduler},
     },
@@ -219,6 +222,12 @@ struct App {
     shadow_enabled: bool,
     ibl_enabled: bool,
     ssr_enabled: bool,
+    tone_mapping_mode: ToneMappingMode,
+    bloom_enabled: bool,
+    bloom_threshold: f32,
+    bloom_intensity: f32,
+    fxaa_enabled: bool,
+    fxaa_quality: FxaaQuality,
     ssao_radius: f32,
     ssao_bias: f32,
     ssao_intensity: f32,
@@ -295,6 +304,12 @@ impl App {
             shadow_enabled: true,
             ibl_enabled: true,
             ssr_enabled: false,
+            tone_mapping_mode: ToneMappingMode::ACES,
+            bloom_enabled: true,
+            bloom_threshold: 1.0,
+            bloom_intensity: 0.5,
+            fxaa_enabled: true,
+            fxaa_quality: FxaaQuality::High,
             ssao_radius: 0.15f32,
             ssao_bias: 0.025f32,
             ssao_intensity: 1.5f32,
@@ -490,6 +505,9 @@ impl ApplicationHandler for App {
             .add(LightingPass::new_with_ibl(&ctx.device, surface_format, &ibl_resources))
             .add(SSRPass::new(&ctx.device))
             .add(CompositePass::new(&ctx.device, surface_format))
+            .add(BloomPass::new(&ctx.device, ctx.config.width, ctx.config.height))
+            .add(ToneMappingPass::new(&ctx.device, surface_format))
+            .add(FXAAPass::new(&ctx.device, surface_format))
             .add(DebugLinePass::new(&ctx.device, surface_format, depth_format))
             .build(&ctx.device, ctx.config.width, ctx.config.height);
 
@@ -600,6 +618,7 @@ impl ApplicationHandler for App {
                 if size.width > 0 && size.height > 0 =>
             {
                 ctx.resize(size.width, size.height);
+                scheduler.set_bloom_screen_size(size.width, size.height);
                 scheduler.rebuild(&ctx.device, size.width, size.height);
                 scheduler.set_ssao_screen_size(size.width, size.height);
                 scheduler.set_ssr_screen_size(size.width, size.height);
@@ -608,6 +627,11 @@ impl ApplicationHandler for App {
                 // Reset per-frame egui pointer consumption flag.
                 let egui_consumed = self.egui_consumed_pointer;
                 self.egui_consumed_pointer = false;
+                // Discard scroll accumulated during egui interaction
+                // to avoid leaking into camera speed adjustment.
+                if egui_consumed {
+                    self.scroll_input = 0.0;
+                }
 
                 let now = std::time::Instant::now();
                 let dt = now.duration_since(self.last_frame_time).as_secs_f32();
@@ -766,6 +790,12 @@ impl ApplicationHandler for App {
                     let shadow_enabled = &mut self.shadow_enabled;
                     let ibl_enabled = &mut self.ibl_enabled;
                     let ssr_enabled = &mut self.ssr_enabled;
+                    let tone_mapping_mode = &mut self.tone_mapping_mode;
+                    let bloom_enabled = &mut self.bloom_enabled;
+                    let bloom_threshold = &mut self.bloom_threshold;
+                    let bloom_intensity = &mut self.bloom_intensity;
+                    let fxaa_enabled = &mut self.fxaa_enabled;
+                    let fxaa_quality = &mut self.fxaa_quality;
                     let ssr_debug_mode = self.ssr_debug_mode;
                     let show_overlay = &mut self.show_overlay;
                     let fullscreen_3d = &mut self.fullscreen_3d;
@@ -1050,6 +1080,28 @@ impl ApplicationHandler for App {
                                                     ui.checkbox(shadow_enabled, "Shadow Map");
                                                     ui.checkbox(ibl_enabled, "IBL");
                                                     ui.checkbox(ssr_enabled, "SSR");
+                                                    egui::ComboBox::from_label("Tone Mapping")
+                                                        .selected_text(format!("{:?}", *tone_mapping_mode))
+                                                        .show_ui(ui, |ui| {
+                                                            ui.selectable_value(tone_mapping_mode, ToneMappingMode::Off, "Off");
+                                                            ui.selectable_value(tone_mapping_mode, ToneMappingMode::Reinhard, "Reinhard");
+                                                            ui.selectable_value(tone_mapping_mode, ToneMappingMode::ACES, "ACES");
+                                                        });
+                                                    ui.checkbox(bloom_enabled, "Bloom");
+                                                    if *bloom_enabled {
+                                                        ui.add(egui::Slider::new(bloom_threshold, 0.0..=3.0).text("Bloom Threshold"));
+                                                        ui.add(egui::Slider::new(bloom_intensity, 0.0..=2.0).text("Bloom Intensity"));
+                                                    }
+                                                    ui.checkbox(fxaa_enabled, "FXAA");
+                                                    if *fxaa_enabled {
+                                                        egui::ComboBox::from_label("FXAA Quality")
+                                                            .selected_text(format!("{:?}", *fxaa_quality))
+                                                            .show_ui(ui, |ui| {
+                                                                ui.selectable_value(fxaa_quality, FxaaQuality::Low, "Low");
+                                                                ui.selectable_value(fxaa_quality, FxaaQuality::Medium, "Medium");
+                                                                ui.selectable_value(fxaa_quality, FxaaQuality::High, "High");
+                                                            });
+                                                    }
                                                     ui.separator();
 
                                                     ui.heading("Input Debug");
@@ -1401,6 +1453,9 @@ impl ApplicationHandler for App {
                         scheduler.set_debug_mode(self.debug_mode as u32);
                         scheduler.set_ssr_debug_mode(self.ssr_debug_mode);
                         scheduler.set_ssr_enabled(self.ssr_enabled);
+                        scheduler.set_tone_mapping_mode(self.tone_mapping_mode, &ctx.queue);
+                        scheduler.set_bloom_params(self.bloom_enabled, self.bloom_threshold, 1.0, self.bloom_intensity, &ctx.queue);
+                        scheduler.set_fxaa_params(self.fxaa_enabled, self.fxaa_quality, &ctx.queue);
                         scheduler.apply_frame_all(&frame);
                         scheduler.execute_all(&mut encoder, &target_view);
                     }

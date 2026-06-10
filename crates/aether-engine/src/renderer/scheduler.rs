@@ -384,6 +384,61 @@ impl Scheduler {
         }
     }
 
+    /// Set tone mapping mode on the ToneMappingPass.
+    pub fn set_tone_mapping_mode(&mut self, mode: crate::renderer::passes::tone_mapping::ToneMappingMode, queue: &wgpu::Queue) {
+        for pass in &mut self.passes {
+            if pass.name() == "ToneMapping" {
+                if let Some(tmp) = pass.as_any_mut().downcast_mut::<crate::renderer::passes::tone_mapping::ToneMappingPass>() {
+                    tmp.set_mode(mode);
+                    tmp.update_uniforms(queue);
+                }
+                break;
+            }
+        }
+    }
+
+    /// Set bloom parameters.
+    pub fn set_bloom_params(&mut self, enabled: bool, threshold: f32, intensity: f32, bloom_intensity: f32, queue: &wgpu::Queue) {
+        for pass in &mut self.passes {
+            if pass.name() == "Bloom" {
+                if let Some(bloom) = pass.as_any_mut().downcast_mut::<crate::renderer::passes::bloom::BloomPass>() {
+                    bloom.set_enabled(enabled);
+                    bloom.set_threshold(threshold);
+                    bloom.set_intensity(intensity);
+                    bloom.set_bloom_intensity(bloom_intensity);
+                    bloom.update_uniforms(queue);
+                }
+                break;
+            }
+        }
+    }
+
+    /// Set bloom screen size (call before rebuild).
+    pub fn set_bloom_screen_size(&mut self, width: u32, height: u32) {
+        for pass in &mut self.passes {
+            if pass.name() == "Bloom" {
+                if let Some(bloom) = pass.as_any_mut().downcast_mut::<crate::renderer::passes::bloom::BloomPass>() {
+                    bloom.set_screen_size(width, height);
+                }
+                break;
+            }
+        }
+    }
+
+    /// Set FXAA parameters.
+    pub fn set_fxaa_params(&mut self, enabled: bool, quality: crate::renderer::passes::fxaa::FxaaQuality, queue: &wgpu::Queue) {
+        for pass in &mut self.passes {
+            if pass.name() == "FXAA" {
+                if let Some(fxaa) = pass.as_any_mut().downcast_mut::<crate::renderer::passes::fxaa::FXAAPass>() {
+                    fxaa.set_enabled(enabled);
+                    fxaa.set_quality(quality);
+                    fxaa.update_uniforms_with_queue(queue);
+                }
+                break;
+            }
+        }
+    }
+
     /// Rebuild resolution-dependent resources after a resize.
     pub fn rebuild(&mut self, device: &wgpu::Device, width: u32, height: u32) {
         // Re-allocate all textures and re-resolve all passes

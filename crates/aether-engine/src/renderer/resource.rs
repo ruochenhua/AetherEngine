@@ -77,6 +77,38 @@ impl ResourceTag for ReflectionTexture {}
 pub enum SceneColor {}
 impl ResourceTag for SceneColor {}
 
+/// Post-process input texture — HDR linear output from composite (Rgba16Float).
+pub enum PostProcessInput {}
+impl ResourceTag for PostProcessInput {}
+
+/// Bright regions extracted for bloom (Rgba16Float).
+pub enum BrightTexture {}
+impl ResourceTag for BrightTexture {}
+
+/// Bloom mip level 0 — half resolution (Rgba16Float).
+pub enum BloomMip0 {}
+impl ResourceTag for BloomMip0 {}
+
+/// Bloom mip level 1 — quarter resolution (Rgba16Float).
+pub enum BloomMip1 {}
+impl ResourceTag for BloomMip1 {}
+
+/// Bloom mip level 2 — eighth resolution (Rgba16Float).
+pub enum BloomMip2 {}
+impl ResourceTag for BloomMip2 {}
+
+/// Final blurred bloom texture — full resolution (Rgba16Float).
+pub enum BloomTexture {}
+impl ResourceTag for BloomTexture {}
+
+/// Bloom composited with HDR scene (Rgba16Float).
+pub enum BloomResult {}
+impl ResourceTag for BloomResult {}
+
+/// Tone-mapped LDR output for FXAA input (Bgra8UnormSrgb).
+pub enum FxaaInput {}
+impl ResourceTag for FxaaInput {}
+
 // ---------------------------------------------------------------------------
 // Shadow tags
 // ---------------------------------------------------------------------------

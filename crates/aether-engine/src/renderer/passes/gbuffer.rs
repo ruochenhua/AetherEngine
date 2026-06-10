@@ -1,10 +1,10 @@
 //! G-Buffer Pass
 //!
-//! Uses dynamic uniform offsets for per-object data. All transforms + materials
-//! are uploaded to a single buffer before the render pass, avoiding
-//! in-pass write synchronization issues.
+//! Uses dynamic uniform offsets for per-batch material data. Instance transforms
+//! are passed via a vertex buffer for GPU instancing, reducing draw call overhead
+//! when multiple objects share the same mesh and material.
 
-use crate::asset::mesh::Vertex;
+use crate::asset::mesh::{InstanceData, Vertex};
 use crate::renderer::extract::RenderBatch;
 use crate::renderer::frame::RenderFrame;
 use crate::renderer::pass::{Pass, PassSignature, ResHandle};
@@ -17,12 +17,16 @@ use tracing::warn;
 /// G-Buffer Pass — renders world-space position, normal, albedo, and material
 /// properties into a multi-render-target (MRT) framebuffer for deferred shading.
 pub struct GBufferPass {
+    device: wgpu::Device,
     pipeline: wgpu::RenderPipeline,
     view_proj_buffer: wgpu::Buffer,
     view_proj_bind_group: wgpu::BindGroup,
-    /// Per-object uniform buffer (dynamic).
+    /// Per-batch material uniform buffer (dynamic).
     object_buffer: wgpu::Buffer,
     object_bind_group: wgpu::BindGroup,
+    /// Per-instance transform + entity_id vertex buffer.
+    instance_buffer: wgpu::Buffer,
+    instance_buffer_capacity: usize,
 
     pos_handle: Option<ResHandle<GPosition>>,
     normal_handle: Option<ResHandle<GNormal>>,
@@ -69,33 +73,49 @@ impl Pass for GBufferPass {
         };
         frame.queue.write_buffer(&self.view_proj_buffer, 0, bytemuck::cast_slice(&[vp]));
 
-        // Upload all per-object data at once (before render pass)
+        // Upload per-batch material data (one ObjectUniform per batch)
         let obj_size = std::mem::size_of::<ObjectUniform>() as wgpu::BufferAddress;
-        let total_instances: usize = self.batches.iter().map(|b| b.instances.len()).sum();
-        if total_instances > MAX_OBJECTS {
+        let batch_count = self.batches.len();
+        if batch_count > MAX_BATCHES {
             warn!(
-                "GBufferPass: {} instances exceed MAX_OBJECTS ({}); truncating",
-                total_instances, MAX_OBJECTS
+                "GBufferPass: {} batches exceed MAX_BATCHES ({}); truncating",
+                batch_count, MAX_BATCHES
             );
         }
-        let mut obj_data: Vec<u8> = Vec::with_capacity(total_instances.min(MAX_OBJECTS) * obj_size as usize);
+        let mut obj_data: Vec<u8> = Vec::with_capacity(batch_count.min(MAX_BATCHES) * obj_size as usize);
         for batch in &self.batches {
-            for instance in &batch.instances {
-                if obj_data.len() / obj_size as usize >= MAX_OBJECTS {
-                    break;
-                }
-                let obj = ObjectUniform {
-                    model: instance.model.to_cols_array_2d(),
-                    albedo: batch.material.albedo,
-                    roughness: batch.material.roughness,
-                    metallic: batch.material.metallic,
-                    _pad: [0u8; 168],
-                };
-                obj_data.extend_from_slice(bytemuck::cast_slice(&[obj]));
+            if obj_data.len() / obj_size as usize >= MAX_BATCHES {
+                break;
             }
+            let obj = ObjectUniform {
+                albedo: batch.material.albedo,
+                roughness: batch.material.roughness,
+                metallic: batch.material.metallic,
+            };
+            obj_data.extend_from_slice(bytemuck::cast_slice(&[obj]));
         }
         if !obj_data.is_empty() {
             frame.queue.write_buffer(&self.object_buffer, 0, &obj_data);
+        }
+
+        // Upload instance data
+        let total_instances: usize = self.batches.iter().map(|b| b.instances.len()).sum();
+        if total_instances > self.instance_buffer_capacity {
+            let new_capacity = total_instances.max(256);
+            self.instance_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("GBuffer Instance Buf"),
+                size: (new_capacity * std::mem::size_of::<InstanceData>()) as u64,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            self.instance_buffer_capacity = new_capacity;
+        }
+        let mut instance_data: Vec<u8> = Vec::with_capacity(total_instances * std::mem::size_of::<InstanceData>());
+        for batch in &self.batches {
+            instance_data.extend_from_slice(bytemuck::cast_slice(&batch.instances));
+        }
+        if !instance_data.is_empty() {
+            frame.queue.write_buffer(&self.instance_buffer, 0, &instance_data);
         }
     }
 
@@ -121,24 +141,28 @@ impl Pass for GBufferPass {
         pass.set_bind_group(0, &self.view_proj_bind_group, &[]);
 
         let obj_size = std::mem::size_of::<ObjectUniform>() as wgpu::BufferAddress;
-        let mut object_index = 0usize;
+        let mut batch_index = 0usize;
+        let mut instance_offset = 0usize;
         for batch in &self.batches {
-            for _instance in &batch.instances {
-                if object_index >= MAX_OBJECTS {
-                    break;
-                }
-                let offset = object_index as u32 * obj_size as u32;
-                pass.set_bind_group(1, &self.object_bind_group, &[offset as u32]);
-
-                pass.set_vertex_buffer(0, batch.mesh.vertex_buffer.slice(..));
-                if let Some(ref ib) = batch.mesh.index_buffer {
-                    pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
-                    pass.draw_indexed(0..batch.mesh.index_count, 0, 0..1);
-                } else {
-                    pass.draw(0..batch.mesh.vertex_count, 0..1);
-                }
-                object_index += 1;
+            if batch_index >= MAX_BATCHES {
+                break;
             }
+            let instance_count = batch.instances.len() as u32;
+            let offset = batch_index as u32 * obj_size as u32;
+            pass.set_bind_group(1, &self.object_bind_group, &[offset]);
+
+            pass.set_vertex_buffer(0, batch.mesh.vertex_buffer.slice(..));
+            let instance_byte_start = (instance_offset * std::mem::size_of::<InstanceData>()) as wgpu::BufferAddress;
+            let instance_byte_end = instance_byte_start + (batch.instances.len() * std::mem::size_of::<InstanceData>()) as wgpu::BufferAddress;
+            pass.set_vertex_buffer(1, self.instance_buffer.slice(instance_byte_start..instance_byte_end));
+            if let Some(ref ib) = batch.mesh.index_buffer {
+                pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
+                pass.draw_indexed(0..batch.mesh.index_count, 0, 0..instance_count);
+            } else {
+                pass.draw(0..batch.mesh.vertex_count, 0..instance_count);
+            }
+            batch_index += 1;
+            instance_offset += batch.instances.len();
         }
     }
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
@@ -146,27 +170,35 @@ impl Pass for GBufferPass {
     }
 }
 
-const MAX_OBJECTS: usize = 256;
+const MAX_BATCHES: usize = 256;
 
 impl GBufferPass {
     /// Create a new G-Buffer pass.
     pub fn new(device: &wgpu::Device) -> Self {
         let shader_source = r#"
 struct VertexInput { @location(0) position: vec3<f32>, @location(1) normal: vec3<f32>, @location(2) uv: vec2<f32>, @location(3) tangent: vec4<f32>, };
+struct InstanceInput {
+    @location(4) model_matrix_0: vec4<f32>,
+    @location(5) model_matrix_1: vec4<f32>,
+    @location(6) model_matrix_2: vec4<f32>,
+    @location(7) model_matrix_3: vec4<f32>,
+    @location(8) entity_id: u32,
+};
 struct VertexOutput { @builtin(position) clip_position: vec4<f32>, @location(0) world_pos: vec3<f32>, @location(1) world_normal: vec3<f32>, @location(2) uv: vec2<f32>, };
 struct ViewProjUniform { view: mat4x4<f32>, proj: mat4x4<f32>, };
 @group(0) @binding(0) var<uniform> vp: ViewProjUniform;
 
-struct ObjectData { model: mat4x4<f32>, albedo: vec4<f32>, roughness: f32, metallic: f32, };
+struct ObjectData { albedo: vec4<f32>, roughness: f32, metallic: f32, };
 @group(1) @binding(0) var<uniform> obj: ObjectData;
 
 @vertex
-fn vs_main(in: VertexInput) -> VertexOutput {
+fn vs_main(in: VertexInput, instance: InstanceInput) -> VertexOutput {
     var out: VertexOutput;
-    let world_pos = obj.model * vec4<f32>(in.position, 1.0);
+    let model = mat4x4<f32>(instance.model_matrix_0, instance.model_matrix_1, instance.model_matrix_2, instance.model_matrix_3);
+    let world_pos = model * vec4<f32>(in.position, 1.0);
     out.clip_position = vp.proj * vp.view * world_pos;
     out.world_pos = world_pos.xyz;
-    let nm = mat3x3<f32>(obj.model[0].xyz, obj.model[1].xyz, obj.model[2].xyz);
+    let nm = mat3x3<f32>(model[0].xyz, model[1].xyz, model[2].xyz);
     out.world_normal = normalize(nm * in.normal);
     out.uv = in.uv;
     return out;
@@ -213,7 +245,7 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("GBuffer Pipeline"), layout: Some(&pl),
-            vertex: wgpu::VertexState { module: &shader, entry_point: Some("vs_main"), compilation_options: Default::default(), buffers: &[Vertex::desc()] },
+            vertex: wgpu::VertexState { module: &shader, entry_point: Some("vs_main"), compilation_options: Default::default(), buffers: &[Vertex::desc(), InstanceData::instance_desc()] },
             fragment: Some(wgpu::FragmentState {
                 module: &shader, entry_point: Some("fs_main"), compilation_options: Default::default(),
                 targets: &[
@@ -238,7 +270,7 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
             entries: &[wgpu::BindGroupEntry { binding: 0, resource: view_proj_buffer.as_entire_binding() }],
         });
 
-        let obj_buf_size = (MAX_OBJECTS as u64) * obj_size;
+        let obj_buf_size = (MAX_BATCHES as u64) * obj_size;
         let object_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("GBuffer Obj Buf"), size: obj_buf_size,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false,
@@ -248,8 +280,19 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
             entries: &[wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding { buffer: &object_buffer, offset: 0, size: Some(std::num::NonZeroU64::new(obj_size).unwrap()) }) }],
         });
 
+        let initial_instance_capacity = 256;
+        let instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("GBuffer Instance Buf"),
+            size: (initial_instance_capacity * std::mem::size_of::<InstanceData>()) as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
         Self {
+            device: device.clone(),
             pipeline, view_proj_buffer, view_proj_bind_group, object_buffer, object_bind_group,
+            instance_buffer,
+            instance_buffer_capacity: initial_instance_capacity,
             pos_handle: None, normal_handle: None, albedo_handle: None, material_handle: None, depth_handle: None,
             batches: Vec::new(), view: Mat4::IDENTITY, proj: Mat4::IDENTITY,
         }
