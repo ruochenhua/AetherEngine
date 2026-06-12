@@ -1,8 +1,7 @@
 //! CPU ray-casting picking system.
 //!
 //! Casts a ray from the camera through the mouse position and tests against
-//! entity AABBs in the ECS World. The closest hit entity gets the `Selected`
-/// component.
+//! entity AABBs in the ECS World. The closest hit entity gets the `Selected` component.
 
 use crate::ecs::components::{MeshHandle, Selected, Transform};
 use crate::ecs::World;

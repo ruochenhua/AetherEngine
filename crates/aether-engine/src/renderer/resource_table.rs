@@ -73,6 +73,11 @@ impl ResourceTable {
         self.views.len()
     }
 
+    /// Returns true if the table contains no entries.
+    pub fn is_empty(&self) -> bool {
+        self.views.is_empty()
+    }
+
     /// Update a texture view for a resource (used for per-frame swapchain).
     pub fn set_view(&mut self, type_id: TypeId, name: &str, view: wgpu::TextureView) {
         for (i, &(tid, n)) in self.mapping.iter().enumerate() {

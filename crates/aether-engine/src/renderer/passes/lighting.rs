@@ -40,7 +40,7 @@ pub struct LightingPass {
     /// IBL bind group (created in constructor, always present).
     ibl_bind_group: wgpu::BindGroup,
     /// AO texture handle (populated by resolve).
-    ao_handle: Option<ResHandle<AOTexture>>,
+    ao_handle: Option<ResHandle<AOTextureBlurred>>,
     /// Debug visualization mode (set by Launcher, used in apply_frame).
     debug_mode: u32,
     /// Feature toggle: SSAO enabled.
@@ -63,7 +63,7 @@ impl Pass for LightingPass {
             .read::<GAlbedo>("gbuffer_albedo")
             .read::<GMaterial>("gbuffer_material")
             .read::<ShadowDepth>("shadow_depth")
-            .read::<AOTexture>("ao")
+            .read::<AOTextureBlurred>("ao_blurred")
             .write::<SceneColor>("scene_color", wgpu::TextureFormat::Rgba16Float)
     }
 
@@ -79,7 +79,7 @@ impl Pass for LightingPass {
         self.albedo_handle = Some(resources.handle::<GAlbedo>("gbuffer_albedo"));
         self.material_handle = Some(resources.handle::<GMaterial>("gbuffer_material"));
         self.shadow_depth_handle = Some(resources.handle::<ShadowDepth>("shadow_depth"));
-        self.ao_handle = Some(resources.handle::<AOTexture>("ao"));
+        self.ao_handle = Some(resources.handle::<AOTextureBlurred>("ao_blurred"));
 
         // Create samplers
         let gbuffer_sampler = device.create_sampler(&wgpu::SamplerDescriptor {

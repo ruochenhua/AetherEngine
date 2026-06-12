@@ -57,6 +57,10 @@ impl ResourceTag for Swapchain {}
 pub enum AOTexture {}
 impl ResourceTag for AOTexture {}
 
+/// Blurred ambient occlusion texture (R8Unorm).
+pub enum AOTextureBlurred {}
+impl ResourceTag for AOTextureBlurred {}
+
 /// Irradiance cubemap (Rgba16Float, 32×32 per face).
 pub enum IrradianceMap {}
 impl ResourceTag for IrradianceMap {}

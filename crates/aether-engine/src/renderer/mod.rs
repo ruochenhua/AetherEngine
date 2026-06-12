@@ -32,5 +32,7 @@ pub mod passes;
 pub mod resource;
 /// Transient resource table.
 pub mod resource_table;
-/// Pipeline builder and scheduler.
+/// Pipeline builder (topological sort, texture allocation).
+pub mod pipeline_builder;
+/// Pass scheduler and execution.
 pub mod scheduler;

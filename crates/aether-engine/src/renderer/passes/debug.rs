@@ -368,31 +368,31 @@ pub fn build_grid_lines(size: f32, spacing: f32) -> (Vec<DebugVertex>, u32) {
 /// Build an RGB axis gizmo at the origin.
 pub fn build_gizmo_lines(length: f32) -> (Vec<DebugVertex>, u32) {
     let arrow_size = length * 0.3;
-    let mut vertices = Vec::new();
+    let vertices = vec![
+        // X axis (red)
+        DebugVertex { position: [0.0, 0.0, 0.0], color: [1.0, 0.0, 0.0, 1.0] },
+        DebugVertex { position: [length, 0.0, 0.0], color: [1.0, 0.0, 0.0, 1.0] },
+        DebugVertex { position: [length, 0.0, 0.0], color: [1.0, 0.0, 0.0, 1.0] },
+        DebugVertex { position: [length - arrow_size, arrow_size * 0.5, 0.0], color: [1.0, 0.0, 0.0, 1.0] },
+        DebugVertex { position: [length, 0.0, 0.0], color: [1.0, 0.0, 0.0, 1.0] },
+        DebugVertex { position: [length - arrow_size, -arrow_size * 0.5, 0.0], color: [1.0, 0.0, 0.0, 1.0] },
 
-    // X axis (red)
-    vertices.push(DebugVertex { position: [0.0, 0.0, 0.0], color: [1.0, 0.0, 0.0, 1.0] });
-    vertices.push(DebugVertex { position: [length, 0.0, 0.0], color: [1.0, 0.0, 0.0, 1.0] });
-    vertices.push(DebugVertex { position: [length, 0.0, 0.0], color: [1.0, 0.0, 0.0, 1.0] });
-    vertices.push(DebugVertex { position: [length - arrow_size, arrow_size * 0.5, 0.0], color: [1.0, 0.0, 0.0, 1.0] });
-    vertices.push(DebugVertex { position: [length, 0.0, 0.0], color: [1.0, 0.0, 0.0, 1.0] });
-    vertices.push(DebugVertex { position: [length - arrow_size, -arrow_size * 0.5, 0.0], color: [1.0, 0.0, 0.0, 1.0] });
+        // Y axis (green)
+        DebugVertex { position: [0.0, 0.0, 0.0], color: [0.0, 1.0, 0.0, 1.0] },
+        DebugVertex { position: [0.0, length, 0.0], color: [0.0, 1.0, 0.0, 1.0] },
+        DebugVertex { position: [0.0, length, 0.0], color: [0.0, 1.0, 0.0, 1.0] },
+        DebugVertex { position: [arrow_size * 0.5, length - arrow_size, 0.0], color: [0.0, 1.0, 0.0, 1.0] },
+        DebugVertex { position: [0.0, length, 0.0], color: [0.0, 1.0, 0.0, 1.0] },
+        DebugVertex { position: [-arrow_size * 0.5, length - arrow_size, 0.0], color: [0.0, 1.0, 0.0, 1.0] },
 
-    // Y axis (green)
-    vertices.push(DebugVertex { position: [0.0, 0.0, 0.0], color: [0.0, 1.0, 0.0, 1.0] });
-    vertices.push(DebugVertex { position: [0.0, length, 0.0], color: [0.0, 1.0, 0.0, 1.0] });
-    vertices.push(DebugVertex { position: [0.0, length, 0.0], color: [0.0, 1.0, 0.0, 1.0] });
-    vertices.push(DebugVertex { position: [arrow_size * 0.5, length - arrow_size, 0.0], color: [0.0, 1.0, 0.0, 1.0] });
-    vertices.push(DebugVertex { position: [0.0, length, 0.0], color: [0.0, 1.0, 0.0, 1.0] });
-    vertices.push(DebugVertex { position: [-arrow_size * 0.5, length - arrow_size, 0.0], color: [0.0, 1.0, 0.0, 1.0] });
-
-    // Z axis (blue)
-    vertices.push(DebugVertex { position: [0.0, 0.0, 0.0], color: [0.0, 0.0, 1.0, 1.0] });
-    vertices.push(DebugVertex { position: [0.0, 0.0, length], color: [0.0, 0.0, 1.0, 1.0] });
-    vertices.push(DebugVertex { position: [0.0, 0.0, length], color: [0.0, 0.0, 1.0, 1.0] });
-    vertices.push(DebugVertex { position: [0.0, arrow_size * 0.5, length - arrow_size], color: [0.0, 0.0, 1.0, 1.0] });
-    vertices.push(DebugVertex { position: [0.0, 0.0, length], color: [0.0, 0.0, 1.0, 1.0] });
-    vertices.push(DebugVertex { position: [0.0, -arrow_size * 0.5, length - arrow_size], color: [0.0, 0.0, 1.0, 1.0] });
+        // Z axis (blue)
+        DebugVertex { position: [0.0, 0.0, 0.0], color: [0.0, 0.0, 1.0, 1.0] },
+        DebugVertex { position: [0.0, 0.0, length], color: [0.0, 0.0, 1.0, 1.0] },
+        DebugVertex { position: [0.0, 0.0, length], color: [0.0, 0.0, 1.0, 1.0] },
+        DebugVertex { position: [0.0, arrow_size * 0.5, length - arrow_size], color: [0.0, 0.0, 1.0, 1.0] },
+        DebugVertex { position: [0.0, 0.0, length], color: [0.0, 0.0, 1.0, 1.0] },
+        DebugVertex { position: [0.0, -arrow_size * 0.5, length - arrow_size], color: [0.0, 0.0, 1.0, 1.0] },
+    ];
 
     let count = vertices.len() as u32;
     (vertices, count)

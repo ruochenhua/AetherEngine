@@ -13,20 +13,15 @@ use std::borrow::Cow;
 use wgpu::util::DeviceExt;
 
 /// FXAA quality preset.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum FxaaQuality {
     /// Low quality — faster, less smoothing.
     Low,
     /// Medium quality — balanced.
     Medium,
     /// High quality — more edge detection passes.
+    #[default]
     High,
-}
-
-impl Default for FxaaQuality {
-    fn default() -> Self {
-        FxaaQuality::High
-    }
 }
 
 /// Uniforms for FXAA shader.

@@ -207,10 +207,7 @@ pub struct ResHandle<T: ResourceTag> {
 
 impl<T: ResourceTag> Clone for ResHandle<T> {
     fn clone(&self) -> Self {
-        Self {
-            index: self.index,
-            _phantom: PhantomData,
-        }
+        *self
     }
 }
 

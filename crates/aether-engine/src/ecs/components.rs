@@ -163,14 +163,8 @@ impl Light {
 /// Stores a human-readable instance name (e.g. "MyCube") for display
 /// in the hierarchy panel and serialization. Separate from `MeshHandle.name`,
 /// which stores the mesh reference (e.g. "cube").
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Name(pub String);
-
-impl Default for Name {
-    fn default() -> Self {
-        Self(String::new())
-    }
-}
 
 #[cfg(test)]
 mod tests {

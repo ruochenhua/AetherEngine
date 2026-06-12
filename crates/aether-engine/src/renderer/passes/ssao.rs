@@ -1,11 +1,13 @@
 //! SSAO Pass — Screen-Space Ambient Occlusion
 //!
 //! Full-screen quad pass. Follows the LearnOpenGL SSAO approach:
-//! - View-space Z depth comparison
-//! - Hemisphere samples in tangent space, transformed via TBN
-//! - 16-sample kernel (unrolled, no dynamic array indexing)
+//! - All math in VIEW space (world pos → view pos via view_mat)
+//! - Hemisphere samples in tangent space → view-space offsets via view-space TBN
+//! - View-space Z depth comparison with bias
+//! - Range falloff in view-space units (params.radius is view-space radius)
+//! - 16-sample kernel (const array + for loop)
 //! - Hash-based per-pixel rotation
-//! - Inline bilateral blur removed (needs separate pass)
+//! - No blur pass (planned as separate AOBlurPass)
 //!
 //! Pipeline: GBufferPass → SSAOPass (→AOTexture) → LightingPass
 
@@ -17,6 +19,7 @@ use std::borrow::Cow;
 use wgpu::util::DeviceExt;
 
 /// SSAO parameters (matches WGSL std140 layout).
+/// `radius` is in view-space units.
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct SSAOParams {
@@ -28,32 +31,36 @@ struct SSAOParams {
     _pad1: [f32; 2],
 }
 
+/// Per-frame uniform data (SSAO params + projection + view), matches WGSL std140.
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct SSAOFrameUniforms {
+    params: SSAOParams,     // offset 0,   32 bytes
+    proj: [[f32; 4]; 4],    // offset 32,  64 bytes (mat4x4 = 4 × vec4)
+    view: [[f32; 4]; 4],    // offset 96,  64 bytes
+}
+// Total: 160 bytes, aligned to 16
+
 /// SSAO pass state.
 pub struct SSAOPass {
     pipeline: wgpu::RenderPipeline,
     quad_vertex_buffer: wgpu::Buffer,
     quad_vertex_count: u32,
-    params_buffer: wgpu::Buffer,
-    view_proj_buffer: wgpu::Buffer,
-    view_buffer: wgpu::Buffer,
-    params_bind_group: wgpu::BindGroup,
-    view_proj_bind_group: wgpu::BindGroup,
-    view_bind_group: wgpu::BindGroup,
+    frame_buffer: wgpu::Buffer,
+    frame_bind_group: wgpu::BindGroup,
     pos_handle: Option<ResHandle<GPosition>>,
     normal_handle: Option<ResHandle<GNormal>>,
     texture_bind_group: Option<wgpu::BindGroup>,
     #[allow(dead_code)]
     texture_bind_group_layout: wgpu::BindGroupLayout,
     #[allow(dead_code)]
-    params_bind_group_layout: wgpu::BindGroupLayout,
-    #[allow(dead_code)]
-    view_proj_bind_group_layout: wgpu::BindGroupLayout,
-    #[allow(dead_code)]
-    view_bind_group_layout: wgpu::BindGroupLayout,
+    frame_bind_group_layout: wgpu::BindGroupLayout,
     // Per-frame
-    view_proj: glam::Mat4,
+    proj: glam::Mat4,
     view: glam::Mat4,
     screen_size: [f32; 2],
+    half_width: u32,
+    half_height: u32,
     // SSAO parameters (mutable via UI)
     radius: f32,
     bias: f32,
@@ -67,7 +74,7 @@ impl Pass for SSAOPass {
         PassSignature::new("SSAO")
             .read::<GPosition>("gbuffer_position")
             .read::<GNormal>("gbuffer_normal")
-            .write::<AOTexture>("ao", wgpu::TextureFormat::R8Unorm)
+            .write_sized::<AOTexture>("ao", wgpu::TextureFormat::R8Unorm, self.half_width.max(1), self.half_height.max(1))
     }
 
     fn init(device: &wgpu::Device) -> Self { Self::new(device) }
@@ -103,19 +110,21 @@ impl Pass for SSAOPass {
         let proj = frame.camera.projection_matrix(frame.aspect);
         let view = frame.camera.view_matrix();
         self.view = view;
-        self.view_proj = proj * view;
+        self.proj = proj;
 
-        let p = SSAOParams {
-            radius: self.radius,
-            bias: self.bias,
-            intensity: self.intensity,
-            _pad0: 0.0,
-            screen_size: self.screen_size,
-            _pad1: [0.0; 2],
+        let uniforms = SSAOFrameUniforms {
+            params: SSAOParams {
+                radius: self.radius,
+                bias: self.bias,
+                intensity: self.intensity,
+                _pad0: 0.0,
+                screen_size: self.screen_size,
+                _pad1: [0.0; 2],
+            },
+            proj: proj.to_cols_array_2d(),
+            view: view.to_cols_array_2d(),
         };
-        frame.queue.write_buffer(&self.params_buffer, 0, bytemuck::cast_slice(&[p]));
-        frame.queue.write_buffer(&self.view_proj_buffer, 0, bytemuck::cast_slice(self.view_proj.as_ref()));
-        frame.queue.write_buffer(&self.view_buffer, 0, bytemuck::cast_slice(self.view.as_ref()));
+        frame.queue.write_buffer(&self.frame_buffer, 0, bytemuck::cast_slice(&[uniforms]));
     }
 
     fn execute(&self, encoder: &mut wgpu::CommandEncoder, resources: &ResourceTable, _sv: &wgpu::TextureView) {
@@ -137,9 +146,7 @@ impl Pass for SSAOPass {
         });
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, texture_bg, &[]);
-        pass.set_bind_group(1, &self.params_bind_group, &[]);
-        pass.set_bind_group(2, &self.view_proj_bind_group, &[]);
-        pass.set_bind_group(3, &self.view_bind_group, &[]);
+        pass.set_bind_group(1, &self.frame_bind_group, &[]);
         pass.set_vertex_buffer(0, self.quad_vertex_buffer.slice(..));
         pass.draw(0..self.quad_vertex_count, 0..1);
     }
@@ -151,6 +158,8 @@ impl SSAOPass {
     /// Update screen dimensions (called on init and resize).
     pub fn set_screen_size(&mut self, width: u32, height: u32) {
         self.screen_size = [width as f32, height as f32];
+        self.half_width = width / 2;
+        self.half_height = height / 2;
     }
 
     /// Create a new SSAO pass with all GPU resources.
@@ -181,9 +190,13 @@ struct SSAOParams {
 @group(0) @binding(1) var gbuffer_normal: texture_2d<f32>;
 @group(0) @binding(2) var gbuffer_sampler: sampler;
 
-@group(1) @binding(0) var<uniform> params: SSAOParams;
-@group(2) @binding(0) var<uniform> view_proj: mat4x4<f32>;
-@group(3) @binding(0) var<uniform> view_mat: mat4x4<f32>;
+struct FrameUniforms {
+    params: SSAOParams,
+    proj_mat: mat4x4<f32>,
+    view_mat: mat4x4<f32>,
+};
+
+@group(1) @binding(0) var<uniform> frame: FrameUniforms;
 
 fn hash2(p: vec2<f32>) -> vec2<f32> {
     let h = fract(sin(vec2<f32>(dot(p, vec2<f32>(127.1, 311.7)), dot(p, vec2<f32>(269.5, 183.3)))) * 43758.5453);
@@ -204,292 +217,54 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let world_pos = pos_sample.xyz;
     let world_N = normalize(norm_sample.xyz * 2.0 - 1.0);
 
-    // View-space Z (for depth comparison, per LearnOpenGL)
-    let view_pos4 = view_mat * vec4<f32>(world_pos, 1.0);
-    let frag_view_z = view_pos4.z;
-    let view_N4 = view_mat * vec4<f32>(world_N, 0.0);
+    // Transform to VIEW space (per LearnOpenGL: all SSAO math in view space)
+    let view_pos4 = frame.view_mat * vec4<f32>(world_pos, 1.0);
+    let view_pos = view_pos4.xyz;
+    let frag_view_z = view_pos.z;
+    let view_N4 = frame.view_mat * vec4<f32>(world_N, 0.0);
     let view_N = normalize(view_N4.xyz);
 
     // Random rotation (hash-based)
     let rot = hash2(uv * 1024.0);
     let rvec = vec3<f32>(rot.x, rot.y, 0.0);
 
-    // TBN in WORLD space for sample direction
-    let tangent = normalize(rvec - world_N * dot(rvec, world_N));
-    let bitangent = cross(world_N, tangent);
+    // TBN in VIEW space
+    let tangent = normalize(rvec - view_N * dot(rvec, view_N));
+    let bitangent = cross(view_N, tangent);
 
     var occlusion: f32 = 0.0;
 
-    // ── 16-sample hemisphere kernel (unrolled) ───
+    // ── 16-sample hemisphere kernel ───
+    const KERNEL: array<vec3<f32>, 16> = array<vec3<f32>, 16>(
+        vec3<f32>( 0.5381,  0.1856,  0.4319),
+        vec3<f32>( 0.1379,  0.1967,  0.8544),
+        vec3<f32>(-0.3476,  0.4789,  0.5346),
+        vec3<f32>(-0.4791,  0.3456,  0.4765),
+        vec3<f32>( 0.3883, -0.2607,  0.5915),
+        vec3<f32>(-0.4340, -0.4412,  0.5311),
+        vec3<f32>( 0.2380, -0.3947,  0.6678),
+        vec3<f32>(-0.2238, -0.5672,  0.4478),
+        vec3<f32>( 0.3065,  0.0922,  0.1805),
+        vec3<f32>( 0.1244,  0.6114,  0.2616),
+        vec3<f32>( 0.4086,  0.4489,  0.2630),
+        vec3<f32>(-0.4856,  0.3076,  0.1789),
+        vec3<f32>(-0.3801, -0.3943,  0.1389),
+        vec3<f32>(-0.1088, -0.6461,  0.0838),
+        vec3<f32>( 0.2919, -0.4453,  0.3042),
+        vec3<f32>( 0.3513, -0.1539,  0.0345),
+    );
 
-    // Sample 0
-    {
-        let ks = vec3<f32>( 0.5381,  0.1856,  0.4319);
-        let sd = tangent * ks.x + bitangent * ks.y + world_N * ks.z;
-        let sw = world_pos + sd * params.radius;
-        let sc = view_proj * vec4<f32>(sw, 1.0);
+    for (var i: u32 = 0u; i < 16u; i = i + 1u) {
+        let ks = KERNEL[i];
+        let sd = tangent * ks.x + bitangent * ks.y + view_N * ks.z;
+        let sv = view_pos + sd * frame.params.radius;
+        let sc = frame.proj_mat * vec4<f32>(sv, 1.0);
         let suv = vec2<f32>(sc.x / sc.w * 0.5 + 0.5, -sc.y / sc.w * 0.5 + 0.5);
         if (suv.x >= 0.0 && suv.x <= 1.0 && suv.y >= 0.0 && suv.y <= 1.0) {
             let occ_world = textureSample(gbuffer_position, gbuffer_sampler, suv);
-            let occ_view_z = (view_mat * vec4<f32>(occ_world.xyz, 1.0)).z;
-            let sv_view_z = (view_mat * vec4<f32>(sw, 1.0)).z;
-            if (occ_view_z >= sv_view_z + params.bias) {
-                let r = smoothstep(0.0, 1.0, params.radius / max(abs(frag_view_z - occ_view_z), 0.001));
-                occlusion += r;
-            }
-        }
-    }
-    // Sample 1
-    {
-        let ks = vec3<f32>( 0.1379,  0.1967,  0.8544);
-        let sd = tangent * ks.x + bitangent * ks.y + world_N * ks.z;
-        let sw = world_pos.xyz + sd * params.radius;
-        let sc = view_proj * vec4<f32>(sw, 1.0);
-        let suv = vec2<f32>(sc.x / sc.w * 0.5 + 0.5, -sc.y / sc.w * 0.5 + 0.5);
-        if (suv.x >= 0.0 && suv.x <= 1.0 && suv.y >= 0.0 && suv.y <= 1.0) {
-            let occ_world = textureSample(gbuffer_position, gbuffer_sampler, suv);
-            let occ_view_z = (view_mat * vec4<f32>(occ_world.xyz, 1.0)).z;
-            let sv_view_z = (view_mat * vec4<f32>(sw, 1.0)).z;
-            if (occ_view_z >= sv_view_z + params.bias) {
-                let r = smoothstep(0.0, 1.0, params.radius / max(abs(frag_view_z - occ_view_z), 0.001));
-                occlusion += r;
-            }
-        }
-    }
-    // Sample 2
-    {
-        let ks = vec3<f32>(-0.3476,  0.4789,  0.5346);
-        let sd = tangent * ks.x + bitangent * ks.y + world_N * ks.z;
-        let sw = world_pos.xyz + sd * params.radius;
-        let sc = view_proj * vec4<f32>(sw, 1.0);
-        let suv = vec2<f32>(sc.x / sc.w * 0.5 + 0.5, -sc.y / sc.w * 0.5 + 0.5);
-        if (suv.x >= 0.0 && suv.x <= 1.0 && suv.y >= 0.0 && suv.y <= 1.0) {
-            let occ_world = textureSample(gbuffer_position, gbuffer_sampler, suv);
-            let occ_view_z = (view_mat * vec4<f32>(occ_world.xyz, 1.0)).z;
-            let sv_view_z = (view_mat * vec4<f32>(sw, 1.0)).z;
-            if (occ_view_z >= sv_view_z + params.bias) {
-                let r = smoothstep(0.0, 1.0, params.radius / max(abs(frag_view_z - occ_view_z), 0.001));
-                occlusion += r;
-            }
-        }
-    }
-    // Sample 3
-    {
-        let ks = vec3<f32>(-0.4791,  0.3456,  0.4765);
-        let sd = tangent * ks.x + bitangent * ks.y + world_N * ks.z;
-        let sw = world_pos.xyz + sd * params.radius;
-        let sc = view_proj * vec4<f32>(sw, 1.0);
-        let suv = vec2<f32>(sc.x / sc.w * 0.5 + 0.5, -sc.y / sc.w * 0.5 + 0.5);
-        if (suv.x >= 0.0 && suv.x <= 1.0 && suv.y >= 0.0 && suv.y <= 1.0) {
-            let occ_world = textureSample(gbuffer_position, gbuffer_sampler, suv);
-            let occ_view_z = (view_mat * vec4<f32>(occ_world.xyz, 1.0)).z;
-            let sv_view_z = (view_mat * vec4<f32>(sw, 1.0)).z;
-            if (occ_view_z >= sv_view_z + params.bias) {
-                let r = smoothstep(0.0, 1.0, params.radius / max(abs(frag_view_z - occ_view_z), 0.001));
-                occlusion += r;
-            }
-        }
-    }
-    // Sample 4
-    {
-        let ks = vec3<f32>( 0.3883, -0.2607,  0.5915);
-        let sd = tangent * ks.x + bitangent * ks.y + world_N * ks.z;
-        let sw = world_pos.xyz + sd * params.radius;
-        let sc = view_proj * vec4<f32>(sw, 1.0);
-        let suv = vec2<f32>(sc.x / sc.w * 0.5 + 0.5, -sc.y / sc.w * 0.5 + 0.5);
-        if (suv.x >= 0.0 && suv.x <= 1.0 && suv.y >= 0.0 && suv.y <= 1.0) {
-            let occ_world = textureSample(gbuffer_position, gbuffer_sampler, suv);
-            let occ_view_z = (view_mat * vec4<f32>(occ_world.xyz, 1.0)).z;
-            let sv_view_z = (view_mat * vec4<f32>(sw, 1.0)).z;
-            if (occ_view_z >= sv_view_z + params.bias) {
-                let r = smoothstep(0.0, 1.0, params.radius / max(abs(frag_view_z - occ_view_z), 0.001));
-                occlusion += r;
-            }
-        }
-    }
-    // Sample 5
-    {
-        let ks = vec3<f32>(-0.4340, -0.4412,  0.5311);
-        let sd = tangent * ks.x + bitangent * ks.y + world_N * ks.z;
-        let sw = world_pos.xyz + sd * params.radius;
-        let sc = view_proj * vec4<f32>(sw, 1.0);
-        let suv = vec2<f32>(sc.x / sc.w * 0.5 + 0.5, -sc.y / sc.w * 0.5 + 0.5);
-        if (suv.x >= 0.0 && suv.x <= 1.0 && suv.y >= 0.0 && suv.y <= 1.0) {
-            let occ_world = textureSample(gbuffer_position, gbuffer_sampler, suv);
-            let occ_view_z = (view_mat * vec4<f32>(occ_world.xyz, 1.0)).z;
-            let sv_view_z = (view_mat * vec4<f32>(sw, 1.0)).z;
-            if (occ_view_z >= sv_view_z + params.bias) {
-                let r = smoothstep(0.0, 1.0, params.radius / max(abs(frag_view_z - occ_view_z), 0.001));
-                occlusion += r;
-            }
-        }
-    }
-    // Sample 6
-    {
-        let ks = vec3<f32>( 0.2380, -0.3947,  0.6678);
-        let sd = tangent * ks.x + bitangent * ks.y + world_N * ks.z;
-        let sw = world_pos.xyz + sd * params.radius;
-        let sc = view_proj * vec4<f32>(sw, 1.0);
-        let suv = vec2<f32>(sc.x / sc.w * 0.5 + 0.5, -sc.y / sc.w * 0.5 + 0.5);
-        if (suv.x >= 0.0 && suv.x <= 1.0 && suv.y >= 0.0 && suv.y <= 1.0) {
-            let occ_world = textureSample(gbuffer_position, gbuffer_sampler, suv);
-            let occ_view_z = (view_mat * vec4<f32>(occ_world.xyz, 1.0)).z;
-            let sv_view_z = (view_mat * vec4<f32>(sw, 1.0)).z;
-            if (occ_view_z >= sv_view_z + params.bias) {
-                let r = smoothstep(0.0, 1.0, params.radius / max(abs(frag_view_z - occ_view_z), 0.001));
-                occlusion += r;
-            }
-        }
-    }
-    // Sample 7
-    {
-        let ks = vec3<f32>(-0.2238, -0.5672,  0.4478);
-        let sd = tangent * ks.x + bitangent * ks.y + world_N * ks.z;
-        let sw = world_pos.xyz + sd * params.radius;
-        let sc = view_proj * vec4<f32>(sw, 1.0);
-        let suv = vec2<f32>(sc.x / sc.w * 0.5 + 0.5, -sc.y / sc.w * 0.5 + 0.5);
-        if (suv.x >= 0.0 && suv.x <= 1.0 && suv.y >= 0.0 && suv.y <= 1.0) {
-            let occ_world = textureSample(gbuffer_position, gbuffer_sampler, suv);
-            let occ_view_z = (view_mat * vec4<f32>(occ_world.xyz, 1.0)).z;
-            let sv_view_z = (view_mat * vec4<f32>(sw, 1.0)).z;
-            if (occ_view_z >= sv_view_z + params.bias) {
-                let r = smoothstep(0.0, 1.0, params.radius / max(abs(frag_view_z - occ_view_z), 0.001));
-                occlusion += r;
-            }
-        }
-    }
-    // Sample 8
-    {
-        let ks = vec3<f32>( 0.3065,  0.0922,  0.1805);
-        let sd = tangent * ks.x + bitangent * ks.y + world_N * ks.z;
-        let sw = world_pos.xyz + sd * params.radius;
-        let sc = view_proj * vec4<f32>(sw, 1.0);
-        let suv = vec2<f32>(sc.x / sc.w * 0.5 + 0.5, -sc.y / sc.w * 0.5 + 0.5);
-        if (suv.x >= 0.0 && suv.x <= 1.0 && suv.y >= 0.0 && suv.y <= 1.0) {
-            let occ_world = textureSample(gbuffer_position, gbuffer_sampler, suv);
-            let occ_view_z = (view_mat * vec4<f32>(occ_world.xyz, 1.0)).z;
-            let sv_view_z = (view_mat * vec4<f32>(sw, 1.0)).z;
-            if (occ_view_z >= sv_view_z + params.bias) {
-                let r = smoothstep(0.0, 1.0, params.radius / max(abs(frag_view_z - occ_view_z), 0.001));
-                occlusion += r;
-            }
-        }
-    }
-    // Sample 9
-    {
-        let ks = vec3<f32>( 0.1244,  0.6114,  0.2616);
-        let sd = tangent * ks.x + bitangent * ks.y + world_N * ks.z;
-        let sw = world_pos.xyz + sd * params.radius;
-        let sc = view_proj * vec4<f32>(sw, 1.0);
-        let suv = vec2<f32>(sc.x / sc.w * 0.5 + 0.5, -sc.y / sc.w * 0.5 + 0.5);
-        if (suv.x >= 0.0 && suv.x <= 1.0 && suv.y >= 0.0 && suv.y <= 1.0) {
-            let occ_world = textureSample(gbuffer_position, gbuffer_sampler, suv);
-            let occ_view_z = (view_mat * vec4<f32>(occ_world.xyz, 1.0)).z;
-            let sv_view_z = (view_mat * vec4<f32>(sw, 1.0)).z;
-            if (occ_view_z >= sv_view_z + params.bias) {
-                let r = smoothstep(0.0, 1.0, params.radius / max(abs(frag_view_z - occ_view_z), 0.001));
-                occlusion += r;
-            }
-        }
-    }
-    // Sample 10
-    {
-        let ks = vec3<f32>( 0.4086,  0.4489,  0.2630);
-        let sd = tangent * ks.x + bitangent * ks.y + world_N * ks.z;
-        let sw = world_pos.xyz + sd * params.radius;
-        let sc = view_proj * vec4<f32>(sw, 1.0);
-        let suv = vec2<f32>(sc.x / sc.w * 0.5 + 0.5, -sc.y / sc.w * 0.5 + 0.5);
-        if (suv.x >= 0.0 && suv.x <= 1.0 && suv.y >= 0.0 && suv.y <= 1.0) {
-            let occ_world = textureSample(gbuffer_position, gbuffer_sampler, suv);
-            let occ_view_z = (view_mat * vec4<f32>(occ_world.xyz, 1.0)).z;
-            let sv_view_z = (view_mat * vec4<f32>(sw, 1.0)).z;
-            if (occ_view_z >= sv_view_z + params.bias) {
-                let r = smoothstep(0.0, 1.0, params.radius / max(abs(frag_view_z - occ_view_z), 0.001));
-                occlusion += r;
-            }
-        }
-    }
-    // Sample 11
-    {
-        let ks = vec3<f32>(-0.4856,  0.3076,  0.1789);
-        let sd = tangent * ks.x + bitangent * ks.y + world_N * ks.z;
-        let sw = world_pos.xyz + sd * params.radius;
-        let sc = view_proj * vec4<f32>(sw, 1.0);
-        let suv = vec2<f32>(sc.x / sc.w * 0.5 + 0.5, -sc.y / sc.w * 0.5 + 0.5);
-        if (suv.x >= 0.0 && suv.x <= 1.0 && suv.y >= 0.0 && suv.y <= 1.0) {
-            let occ_world = textureSample(gbuffer_position, gbuffer_sampler, suv);
-            let occ_view_z = (view_mat * vec4<f32>(occ_world.xyz, 1.0)).z;
-            let sv_view_z = (view_mat * vec4<f32>(sw, 1.0)).z;
-            if (occ_view_z >= sv_view_z + params.bias) {
-                let r = smoothstep(0.0, 1.0, params.radius / max(abs(frag_view_z - occ_view_z), 0.001));
-                occlusion += r;
-            }
-        }
-    }
-    // Sample 12
-    {
-        let ks = vec3<f32>(-0.3801, -0.3943,  0.1389);
-        let sd = tangent * ks.x + bitangent * ks.y + world_N * ks.z;
-        let sw = world_pos.xyz + sd * params.radius;
-        let sc = view_proj * vec4<f32>(sw, 1.0);
-        let suv = vec2<f32>(sc.x / sc.w * 0.5 + 0.5, -sc.y / sc.w * 0.5 + 0.5);
-        if (suv.x >= 0.0 && suv.x <= 1.0 && suv.y >= 0.0 && suv.y <= 1.0) {
-            let occ_world = textureSample(gbuffer_position, gbuffer_sampler, suv);
-            let occ_view_z = (view_mat * vec4<f32>(occ_world.xyz, 1.0)).z;
-            let sv_view_z = (view_mat * vec4<f32>(sw, 1.0)).z;
-            if (occ_view_z >= sv_view_z + params.bias) {
-                let r = smoothstep(0.0, 1.0, params.radius / max(abs(frag_view_z - occ_view_z), 0.001));
-                occlusion += r;
-            }
-        }
-    }
-    // Sample 13
-    {
-        let ks = vec3<f32>(-0.1088, -0.6461,  0.0838);
-        let sd = tangent * ks.x + bitangent * ks.y + world_N * ks.z;
-        let sw = world_pos.xyz + sd * params.radius;
-        let sc = view_proj * vec4<f32>(sw, 1.0);
-        let suv = vec2<f32>(sc.x / sc.w * 0.5 + 0.5, -sc.y / sc.w * 0.5 + 0.5);
-        if (suv.x >= 0.0 && suv.x <= 1.0 && suv.y >= 0.0 && suv.y <= 1.0) {
-            let occ_world = textureSample(gbuffer_position, gbuffer_sampler, suv);
-            let occ_view_z = (view_mat * vec4<f32>(occ_world.xyz, 1.0)).z;
-            let sv_view_z = (view_mat * vec4<f32>(sw, 1.0)).z;
-            if (occ_view_z >= sv_view_z + params.bias) {
-                let r = smoothstep(0.0, 1.0, params.radius / max(abs(frag_view_z - occ_view_z), 0.001));
-                occlusion += r;
-            }
-        }
-    }
-    // Sample 14
-    {
-        let ks = vec3<f32>( 0.2919, -0.4453,  0.3042);
-        let sd = tangent * ks.x + bitangent * ks.y + world_N * ks.z;
-        let sw = world_pos.xyz + sd * params.radius;
-        let sc = view_proj * vec4<f32>(sw, 1.0);
-        let suv = vec2<f32>(sc.x / sc.w * 0.5 + 0.5, -sc.y / sc.w * 0.5 + 0.5);
-        if (suv.x >= 0.0 && suv.x <= 1.0 && suv.y >= 0.0 && suv.y <= 1.0) {
-            let occ_world = textureSample(gbuffer_position, gbuffer_sampler, suv);
-            let occ_view_z = (view_mat * vec4<f32>(occ_world.xyz, 1.0)).z;
-            let sv_view_z = (view_mat * vec4<f32>(sw, 1.0)).z;
-            if (occ_view_z >= sv_view_z + params.bias) {
-                let r = smoothstep(0.0, 1.0, params.radius / max(abs(frag_view_z - occ_view_z), 0.001));
-                occlusion += r;
-            }
-        }
-    }
-    // Sample 15
-    {
-        let ks = vec3<f32>( 0.3513, -0.1539,  0.0345);
-        let sd = tangent * ks.x + bitangent * ks.y + world_N * ks.z;
-        let sw = world_pos.xyz + sd * params.radius;
-        let sc = view_proj * vec4<f32>(sw, 1.0);
-        let suv = vec2<f32>(sc.x / sc.w * 0.5 + 0.5, -sc.y / sc.w * 0.5 + 0.5);
-        if (suv.x >= 0.0 && suv.x <= 1.0 && suv.y >= 0.0 && suv.y <= 1.0) {
-            let occ_world = textureSample(gbuffer_position, gbuffer_sampler, suv);
-            let occ_view_z = (view_mat * vec4<f32>(occ_world.xyz, 1.0)).z;
-            let sv_view_z = (view_mat * vec4<f32>(sw, 1.0)).z;
-            if (occ_view_z >= sv_view_z + params.bias) {
-                let r = smoothstep(0.0, 1.0, params.radius / max(abs(frag_view_z - occ_view_z), 0.001));
+            let occ_view_z = (frame.view_mat * vec4<f32>(occ_world.xyz, 1.0)).z;
+            if (occ_view_z >= sv.z + frame.params.bias) {
+                let r = smoothstep(0.0, 1.0, frame.params.radius / max(abs(frag_view_z - occ_view_z), 0.001));
                 occlusion += r;
             }
         }
@@ -497,7 +272,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     // Final AO value (per LearnOpenGL: invert, power)
     occlusion = 1.0 - occlusion / 16.0;
-    occlusion = pow(occlusion, params.intensity);
+    occlusion = pow(occlusion, frame.params.intensity);
 
     // TODO: Add a separate AO blur pass. Inline bilateral blur was removed
     // because a fragment shader cannot sample its own output texture.
@@ -521,24 +296,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             ],
         });
 
-        let params_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("SSAO Params BGL"),
-            entries: &[wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None }, count: None }],
-        });
-
-        let view_proj_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("SSAO ViewProj BGL"),
-            entries: &[wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None }, count: None }],
-        });
-
-        let view_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("SSAO View BGL"),
+        let frame_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("SSAO Frame BGL"),
             entries: &[wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None }, count: None }],
         });
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("SSAO Pipeline Layout"),
-            bind_group_layouts: &[Some(&texture_bgl), Some(&params_bgl), Some(&view_proj_bgl), Some(&view_bgl)],
+            bind_group_layouts: &[Some(&texture_bgl), Some(&frame_bgl)],
             immediate_size: 0,
         });
 
@@ -568,30 +333,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             cache: None,
         });
 
-        let params_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("SSAO Params"), size: std::mem::size_of::<SSAOParams>() as wgpu::BufferAddress,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false,
-        });
-        let view_proj_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("SSAO ViewProj"), size: 64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false,
-        });
-        let view_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("SSAO View"), size: 64,
+        let frame_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("SSAO Frame"), size: std::mem::size_of::<SSAOFrameUniforms>() as wgpu::BufferAddress,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false,
         });
 
-        let params_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("SSAO Params BG"), layout: &params_bgl,
-            entries: &[wgpu::BindGroupEntry { binding: 0, resource: params_buffer.as_entire_binding() }],
-        });
-        let view_proj_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("SSAO ViewProj BG"), layout: &view_proj_bgl,
-            entries: &[wgpu::BindGroupEntry { binding: 0, resource: view_proj_buffer.as_entire_binding() }],
-        });
-        let view_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("SSAO View BG"), layout: &view_bgl,
-            entries: &[wgpu::BindGroupEntry { binding: 0, resource: view_buffer.as_entire_binding() }],
+        let frame_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("SSAO Frame BG"), layout: &frame_bgl,
+            entries: &[wgpu::BindGroupEntry { binding: 0, resource: frame_buffer.as_entire_binding() }],
         });
 
         let quad_vertices: [[f32; 2]; 6] = [[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, -1.0], [1.0, 1.0], [-1.0, 1.0]];
@@ -601,16 +350,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
         Self {
             pipeline, quad_vertex_buffer, quad_vertex_count: 6,
-            params_buffer, view_proj_buffer, view_buffer,
-            params_bind_group: params_bg, view_proj_bind_group: view_proj_bg, view_bind_group: view_bg,
+            frame_buffer, frame_bind_group: frame_bg,
             pos_handle: None, normal_handle: None, texture_bind_group: None,
             texture_bind_group_layout: texture_bgl,
-            params_bind_group_layout: params_bgl,
-            view_proj_bind_group_layout: view_proj_bgl,
-            view_bind_group_layout: view_bgl,
-            view_proj: glam::Mat4::IDENTITY, view: glam::Mat4::IDENTITY,
+            frame_bind_group_layout: frame_bgl,
+            proj: glam::Mat4::IDENTITY, view: glam::Mat4::IDENTITY,
             screen_size: [1024.0, 768.0],
-            radius: 0.15,
+            half_width: 512, half_height: 384,
+            radius: 0.5,
             bias: 0.025,
             intensity: 1.5,
         }

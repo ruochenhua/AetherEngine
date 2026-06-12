@@ -12,7 +12,7 @@ use std::borrow::Cow;
 use wgpu::util::DeviceExt;
 
 /// Tone mapping algorithm.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[repr(u32)]
 pub enum ToneMappingMode {
     /// No tone mapping — linear clip to [0,1].
@@ -20,13 +20,8 @@ pub enum ToneMappingMode {
     /// Reinhard: color / (color + 1).
     Reinhard = 1,
     /// ACES Filmic approximation.
+    #[default]
     ACES = 2,
-}
-
-impl Default for ToneMappingMode {
-    fn default() -> Self {
-        ToneMappingMode::ACES
-    }
 }
 
 /// Uniforms for the tone mapping shader.

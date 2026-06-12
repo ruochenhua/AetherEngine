@@ -1,8 +1,14 @@
 //! Scene serializer: ECS World → RON.
 //!
 //! Traverses the ECS World and produces a `SceneDescription` that can be
-//! written to a `.ron` file. Editor-only components (`Selected`) are filtered
-//! out automatically.
+//! written to a `.ron` file.
+//!
+//! ## Known Pitfalls
+//! - **Name Component 遗漏**: `serialize_world` 查询 `(Transform, MeshHandle,
+//!   MaterialUniform, Visibility, Name)`。未附加 `Name` 的 entity 会被静默跳过。
+//!   所有 spawn 路径必须附加 `Name`。
+//! - **相机保存前同步**: 保存前必须调用 `write_camera_to_world` 将 FlyCamera
+//!   的 position/rotation 写回 ECS Camera Component，否则 RON 使用 stale 数据。
 
 use crate::ecs::components::{Camera, Light, MeshHandle, Name, Transform, Visibility};
 use crate::ecs::World;
@@ -56,7 +62,11 @@ pub fn to_ron_string(desc: &SceneDescription) -> anyhow::Result<String> {
 fn extract_camera(world: &World) -> CameraConfig {
     let mut camera = CameraConfig::default();
 
-    for (transform, cam) in world.query::<(&Transform, &Camera)>().iter() {
+    if let Some((transform, cam)) = world
+        .query::<(&Transform, &Camera)>()
+        .iter()
+        .next()
+    {
         let (yaw, pitch, _roll) = transform.rotation.to_euler(glam::EulerRot::YXZ);
         camera = CameraConfig {
             position: transform.translation.to_array(),
@@ -65,9 +75,7 @@ fn extract_camera(world: &World) -> CameraConfig {
             speed: 4.0,
             fov: cam.fov.to_degrees(),
         };
-        break; // Use first camera only
     }
-
     camera
 }
 

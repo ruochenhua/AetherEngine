@@ -1,5 +1,14 @@
 //! Shadow Map Pass — depth-only pass from light perspective.
 //! Uses a vertex buffer for per-instance model matrices (GPU instancing).
+//!
+//! ## Known Pitfalls
+//! - **Depth-only rendering**: No fragment shader needed; use `fragment: None`.
+//!   GPU derives depth from `@builtin(position)`. Manually writing
+//!   `@builtin(frag_depth)` is error-prone (e.g., returning 0.0).
+//! - **Per-object draw order**: Do NOT use `queue.write_buffer` inside the
+//!   render pass to update per-object uniforms; Metal may serve stale data.
+//!   Pre-upload all instance data to a dynamic uniform buffer before the
+//!   render pass, then switch via `set_bind_group(offset)` + draw per batch.
 
 use crate::asset::mesh::{InstanceData, Vertex};
 use crate::renderer::extract::RenderBatch;

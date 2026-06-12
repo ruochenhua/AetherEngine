@@ -98,13 +98,14 @@ impl FlyCamera {
                 .clamp(self.min_speed, self.max_speed);
         }
 
-        // Mouse look only when Alt + left mouse is held
-        if input.alt_held() && input.mouse_held(winit::event::MouseButton::Left) {
-            if mouse_dx.abs() > 0.0 || mouse_dy.abs() > 0.0 {
-                self.yaw -= mouse_dx * self.sensitivity;
-                self.pitch = (self.pitch + mouse_dy * self.sensitivity)
-                    .clamp(-std::f32::consts::FRAC_PI_2 + 0.01, std::f32::consts::FRAC_PI_2 - 0.01);
-            }
+        // Mouse look only when Alt + left mouse is held and mouse moved
+        if input.alt_held()
+            && input.mouse_held(winit::event::MouseButton::Left)
+            && (mouse_dx.abs() > 0.0 || mouse_dy.abs() > 0.0)
+        {
+            self.yaw -= mouse_dx * self.sensitivity;
+            self.pitch = (self.pitch + mouse_dy * self.sensitivity)
+                .clamp(-std::f32::consts::FRAC_PI_2 + 0.01, std::f32::consts::FRAC_PI_2 - 0.01);
         }
 
         // WASD movement along camera axes

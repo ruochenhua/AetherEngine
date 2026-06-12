@@ -201,10 +201,8 @@ pub fn detect_hover(
         let end_screen = project_screen(origin + *dir * SCALE_LEN, view, proj, width, height);
         let origin_screen = project_screen(origin, view, proj, width, height);
         let d = point_segment_dist_sq(mouse, origin_screen, end_screen).sqrt();
-        if d < HOVER_PIXEL_THRESHOLD {
-            if best_scale.map_or(true, |(_, bd)| d < bd) {
-                best_scale = Some((GizmoHandle::Scale(*axis), d));
-            }
+        if d < HOVER_PIXEL_THRESHOLD && best_scale.map_or(true, |(_, bd)| d < bd) {
+            best_scale = Some((GizmoHandle::Scale(*axis), d));
         }
     }
     if let Some((h, _)) = best_scale {
@@ -229,10 +227,8 @@ pub fn detect_hover(
             ring_screen.push(project_screen(pt, view, proj, width, height));
         }
         let d = point_polyline_dist_sq(mouse, &ring_screen).sqrt();
-        if d < HOVER_PIXEL_THRESHOLD {
-            if best_rotate.map_or(true, |(_, bd)| d < bd) {
-                best_rotate = Some((GizmoHandle::Rotate(*axis), d));
-            }
+        if d < HOVER_PIXEL_THRESHOLD && best_rotate.map_or(true, |(_, bd)| d < bd) {
+            best_rotate = Some((GizmoHandle::Rotate(*axis), d));
         }
     }
     if let Some((h, _)) = best_rotate {
@@ -250,13 +246,25 @@ pub fn detect_hover(
         let end_screen = project_screen(origin + *dir * TRANS_LEN, view, proj, width, height);
         let origin_screen = project_screen(origin, view, proj, width, height);
         let d = point_segment_dist_sq(mouse, origin_screen, end_screen).sqrt();
-        if d < HOVER_PIXEL_THRESHOLD {
-            if best_translate.map_or(true, |(_, bd)| d < bd) {
-                best_translate = Some((GizmoHandle::Translate(*axis), d));
-            }
+        if d < HOVER_PIXEL_THRESHOLD && best_translate.map_or(true, |(_, bd)| d < bd) {
+            best_translate = Some((GizmoHandle::Translate(*axis), d));
         }
     }
     best_translate.map(|(h, _)| h)
+}
+
+/// Camera context bundled for gizmo drag operations (avoids 8-arg functions).
+pub struct GizmoCameraCtx {
+    /// View matrix.
+    pub view: glam::Mat4,
+    /// Projection matrix.
+    pub proj: glam::Mat4,
+    /// Viewport width in pixels.
+    pub width: f32,
+    /// Viewport height in pixels.
+    pub height: f32,
+    /// Camera position in world space.
+    pub camera_pos: Vec3,
 }
 
 /// Apply drag manipulation along/around the given handle based on mouse screen delta.
@@ -264,16 +272,12 @@ pub fn apply_drag(
     transform: &mut Transform,
     handle: GizmoHandle,
     mouse_delta: Vec2,
-    view: glam::Mat4,
-    proj: glam::Mat4,
-    width: f32,
-    height: f32,
-    camera_pos: Vec3,
+    cam: &GizmoCameraCtx,
 ) {
     match handle {
-        GizmoHandle::Translate(axis) => apply_drag_translate(transform, axis, mouse_delta, view, proj, width, height, camera_pos),
-        GizmoHandle::Rotate(axis) => apply_drag_rotate(transform, axis, mouse_delta, view, proj, width, height, camera_pos),
-        GizmoHandle::Scale(axis) => apply_drag_scale(transform, axis, mouse_delta, view, proj, width, height, camera_pos),
+        GizmoHandle::Translate(axis) => apply_drag_translate(transform, axis, mouse_delta, cam),
+        GizmoHandle::Rotate(axis) => apply_drag_rotate(transform, axis, mouse_delta, cam),
+        GizmoHandle::Scale(axis) => apply_drag_scale(transform, axis, mouse_delta, cam),
     }
 }
 
@@ -281,22 +285,18 @@ fn apply_drag_translate(
     transform: &mut Transform,
     axis: GizmoAxis,
     mouse_delta: Vec2,
-    view: glam::Mat4,
-    proj: glam::Mat4,
-    width: f32,
-    height: f32,
-    camera_pos: Vec3,
+    cam: &GizmoCameraCtx,
 ) {
     let axis_dir = axis_to_vec3(axis);
-    let origin_screen = project_screen(transform.translation, view, proj, width, height);
-    let end_screen = project_screen(transform.translation + axis_dir * TRANS_LEN, view, proj, width, height);
+    let origin_screen = project_screen(transform.translation, cam.view, cam.proj, cam.width, cam.height);
+    let end_screen = project_screen(transform.translation + axis_dir * TRANS_LEN, cam.view, cam.proj, cam.width, cam.height);
     let axis_screen = end_screen - origin_screen;
     if axis_screen.length_squared() < 1e-6 {
         return;
     }
     let axis_screen_dir = axis_screen.normalize();
     let screen_move = mouse_delta.dot(axis_screen_dir);
-    let dist = (camera_pos - transform.translation).length().max(0.1);
+    let dist = (cam.camera_pos - transform.translation).length().max(0.1);
     let world_scale = dist * 0.002;
     let world_move = screen_move * world_scale;
     match axis {
@@ -310,14 +310,10 @@ fn apply_drag_rotate(
     transform: &mut Transform,
     axis: GizmoAxis,
     mouse_delta: Vec2,
-    view: glam::Mat4,
-    proj: glam::Mat4,
-    width: f32,
-    height: f32,
-    camera_pos: Vec3,
+    cam: &GizmoCameraCtx,
 ) {
     // Project rotation ring center to screen
-    let origin_screen = project_screen(transform.translation, view, proj, width, height);
+    let origin_screen = project_screen(transform.translation, cam.view, cam.proj, cam.width, cam.height);
     // Approximate: angle change proportional to tangential mouse movement around center
     let to_mouse = Vec2::new(
         origin_screen.x + mouse_delta.x,
@@ -329,8 +325,8 @@ fn apply_drag_rotate(
     // Use the perpendicular component of mouse delta as rotation amount
     let ring_r = ROT_RADIUS;
     let ring_r_screen = {
-        let p1 = project_screen(transform.translation, view, proj, width, height);
-        let p2 = project_screen(transform.translation + Vec3::X * ring_r, view, proj, width, height);
+        let p1 = project_screen(transform.translation, cam.view, cam.proj, cam.width, cam.height);
+        let p2 = project_screen(transform.translation + Vec3::X * ring_r, cam.view, cam.proj, cam.width, cam.height);
         (p2 - p1).length()
     };
     if ring_r_screen < 1.0 {
@@ -344,7 +340,7 @@ fn apply_drag_rotate(
     // Simplified: just use the magnitude with sign from movement direction
     let sign = {
         let axis_dir = axis_to_vec3(axis);
-        let cam_to_obj = transform.translation - camera_pos;
+        let cam_to_obj = transform.translation - cam.camera_pos;
         // Determine if we're viewing from + or - side of rotation axis
         let dot = cam_to_obj.dot(axis_dir);
         if dot > 0.0 { 1.0 } else { -1.0 }
@@ -364,22 +360,18 @@ fn apply_drag_scale(
     transform: &mut Transform,
     axis: GizmoAxis,
     mouse_delta: Vec2,
-    view: glam::Mat4,
-    proj: glam::Mat4,
-    width: f32,
-    height: f32,
-    camera_pos: Vec3,
+    cam: &GizmoCameraCtx,
 ) {
     let axis_dir = axis_to_vec3(axis);
-    let origin_screen = project_screen(transform.translation, view, proj, width, height);
-    let end_screen = project_screen(transform.translation + axis_dir * SCALE_LEN, view, proj, width, height);
+    let origin_screen = project_screen(transform.translation, cam.view, cam.proj, cam.width, cam.height);
+    let end_screen = project_screen(transform.translation + axis_dir * SCALE_LEN, cam.view, cam.proj, cam.width, cam.height);
     let axis_screen = end_screen - origin_screen;
     if axis_screen.length_squared() < 1e-6 {
         return;
     }
     let axis_screen_dir = axis_screen.normalize();
     let screen_move = mouse_delta.dot(axis_screen_dir);
-    let dist = (camera_pos - transform.translation).length().max(0.1);
+    let dist = (cam.camera_pos - transform.translation).length().max(0.1);
     let world_scale = dist * 0.002;
     let world_move = screen_move * world_scale;
     match axis {
@@ -399,8 +391,9 @@ fn axis_to_vec3(axis: GizmoAxis) -> Vec3 {
 
 /// Query the world for the selected entity and its transform.
 pub fn selected_entity_transform(world: &World) -> Option<(hecs::Entity, Transform)> {
-    for (entity, transform, _) in world.query::<(hecs::Entity, &Transform, &Selected)>().iter() {
-        return Some((entity, transform.clone()));
-    }
-    None
+    world
+        .query::<(hecs::Entity, &Transform, &Selected)>()
+        .iter()
+        .next()
+        .map(|(entity, transform, _)| (entity, transform.clone()))
 }

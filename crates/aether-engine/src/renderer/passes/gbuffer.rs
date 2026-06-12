@@ -1,8 +1,13 @@
 //! G-Buffer Pass
 //!
-//! Uses dynamic uniform offsets for per-batch material data. Instance transforms
-//! are passed via a vertex buffer for GPU instancing, reducing draw call overhead
-//! when multiple objects share the same mesh and material.
+//! Writes position, normal, albedo, and material to four MRT targets.
+//! Uses GPU instancing with pre-uploaded instance data.
+//!
+//! ## Known Pitfalls
+//! - **Per-object draw order**: All per-object uniform data must be pre-uploaded
+//!   before the render pass begins. `queue.write_buffer` inside the render pass
+//!   is unreliable on Metal — use dynamic uniform offsets to switch between
+//!   pre-uploaded data per draw batch.
 
 use crate::asset::mesh::{InstanceData, Vertex};
 use crate::renderer::extract::RenderBatch;
@@ -141,9 +146,8 @@ impl Pass for GBufferPass {
         pass.set_bind_group(0, &self.view_proj_bind_group, &[]);
 
         let obj_size = std::mem::size_of::<ObjectUniform>() as wgpu::BufferAddress;
-        let mut batch_index = 0usize;
         let mut instance_offset = 0usize;
-        for batch in &self.batches {
+        for (batch_index, batch) in self.batches.iter().enumerate() {
             if batch_index >= MAX_BATCHES {
                 break;
             }
@@ -161,7 +165,6 @@ impl Pass for GBufferPass {
             } else {
                 pass.draw(0..batch.mesh.vertex_count, 0..instance_count);
             }
-            batch_index += 1;
             instance_offset += batch.instances.len();
         }
     }

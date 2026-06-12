@@ -9,7 +9,8 @@
 - ✅ 基础模块骨架（ecs, scene, asset, renderer, physics, input, math, window）
 - ✅ Git 仓库初始化
 - ✅ 所有渲染 Pass 和示例程序（Phase 0–2）
-- ✅ 编辑器基础设施（Phase 3 进行中）
+- ✅ 编辑器基础设施（Phase 3 完成）
+- ✅ 后处理链（Phase 4 完成）
 
 ---
 
@@ -62,7 +63,7 @@
 | SSR 性能调优 / 视锥裁剪 | ✅ 已完成 | P1 |
 | SSR 深度采样重构（#39，已回退） | ❌ 已放弃 | P1 |
 
-### Phase 3: 编辑器基础设施 ✅ 当前阶段
+### Phase 3: 编辑器基础设施 ✅
 
 **目标**：ECS runtime、编辑器交互、场景持久化
 
@@ -80,16 +81,18 @@
 | 多选（Shift/Ctrl） | 🔲 待实现 | P2 |
 | Fullscreen 切换 | ✅ 已完成 | P2 |
 
-### Phase 4: 后处理链
+### Phase 4: 后处理链 ✅
 
 **目标**：可配置的后处理管线
 
 | 功能 | 状态 | 优先级 |
 |------|------|--------|
-| Post-process chain（可配置） | 🔲 待实现 | P2 |
-| Tone mapping | 🔲 待实现 | P2 |
-| Bloom / FXAA | 🔲 待实现 | P2 |
-| GPU Instancing | 🔲 待实现 | P2 |
+| Post-process chain（ToneMap→FXAA→DebugLine） | ✅ 已完成 | P2 |
+| Tone mapping（ACES / Reinhard / Off） | ✅ 已完成 | P2 |
+| Bloom（8-pass multi-mip extract→upsample） | ✅ 已完成 | P2 |
+| FXAA（3.11 quality presets Low/Med/High） | ✅ 已完成 | P2 |
+| GPU Instancing（per-batch instanced draw） | ✅ 已完成 | P2 |
+| SSAO View-Space 修复 + Bilateral Blur | ✅ 已完成 | P2 |
 
 ### Phase 5: 大场景渲染
 
@@ -177,7 +180,7 @@
 - ✅ IBL + Skybox
 - ✅ SSAO + SSR
 
-### v0.3.0 - 编辑器版 ✅ 当前
+### v0.3.0 - 编辑器版 ✅
 - ✅ ECS runtime
 - ✅ Ray picking
 - ✅ Transform gizmo（平移/旋转/缩放）
@@ -185,13 +188,15 @@
 - ✅ Undo / Redo / Delete
 - ✅ Scene save/load（Open/Import/Save，RON 格式）
 
-### v0.4.0 - 后处理版
-- Post-process chain
-- Tone mapping
-- Bloom / FXAA
-- GPU Instancing
+### v0.4.0 - 后处理版 ✅
+- ✅ Post-process chain
+- ✅ Tone mapping（ACES/Reinhard/Off）
+- ✅ Bloom（8-pass）
+- ✅ FXAA（3.11）
+- ✅ GPU Instancing
+- ✅ SSAO View-Space + Bilateral Blur
 
-### v0.5.0 - 大场景版
+### v0.5.0 - 大场景版 🔲 当前
 - Terrain
 - Atmosphere
 - Water

@@ -17,10 +17,10 @@ impl BuiltinMeshRegistry {
         let mut registry = Self {
             factories: HashMap::new(),
         };
-        registry.register("cube", || CpuMesh::cube());
+        registry.register("cube", CpuMesh::cube);
         registry.register("sphere", || CpuMesh::sphere(32));
-        registry.register("quad", || CpuMesh::quad());
-        registry.register("plane", || CpuMesh::plane());
+        registry.register("quad", CpuMesh::quad);
+        registry.register("plane", CpuMesh::plane);
         registry
     }
 

@@ -291,9 +291,9 @@ impl Pass for BloomPass {
 
         for (view, bg, label) in &downsample_targets {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some(*label),
+                label: Some(label),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: *view,
+                    view,
                     depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
@@ -320,9 +320,9 @@ impl Pass for BloomPass {
 
         for (view, bg, label) in &upsample_targets {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some(*label),
+                label: Some(label),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: *view,
+                    view,
                     depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
