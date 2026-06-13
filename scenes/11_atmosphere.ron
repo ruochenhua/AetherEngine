@@ -1,0 +1,65 @@
+SceneDescription(
+    name: "Atmosphere Scattering",
+    camera: (
+        position: (0.0, 2.0, 5.0),
+        yaw: 0.0,
+        pitch: -0.15,
+        fov: 60.0,
+    ),
+    ambient: 0.05,
+    lights: [(
+        light_type: Directional,
+        direction: (0.2, -1.0, 0.3),
+        color: (1.0, 0.95, 0.9),
+        intensity: 2.0,
+    )],
+    atmosphere: Some((
+        sun_direction: (-0.2, 0.2, -1.0),
+        planet_radius: 6360.0,
+        atmosphere_height: 100.0,
+        rayleigh_scattering: (0.005802, 0.013558, 0.033100),
+        mie_asymmetry: 0.758,
+        sun_intensity: 20.0,
+    )),
+    objects: [
+        (
+            name: "GroundPlane",
+            mesh: Builtin("cube"),
+            transform: (
+                translation: (0.0, -0.55, 0.0),
+                scale: (10.0, 0.1, 10.0),
+            ),
+            material: (
+                albedo: (0.2, 0.25, 0.15, 1.0),
+                roughness: 0.9,
+                metallic: 0.0,
+            ),
+        ),
+        (
+            name: "Sphere",
+            mesh: Builtin("sphere"),
+            transform: (
+                translation: (0.0, 0.5, 0.0),
+                scale: (0.8, 0.8, 0.8),
+            ),
+            material: (
+                albedo: (0.8, 0.3, 0.2, 1.0),
+                roughness: 0.3,
+                metallic: 0.0,
+            ),
+        ),
+        (
+            name: "Cube",
+            mesh: Builtin("cube"),
+            transform: (
+                translation: (-1.5, 0.0, 1.0),
+                scale: (0.6, 0.6, 0.6),
+            ),
+            material: (
+                albedo: (0.2, 0.5, 0.8, 1.0),
+                roughness: 0.5,
+                metallic: 0.0,
+            ),
+        ),
+    ],
+)

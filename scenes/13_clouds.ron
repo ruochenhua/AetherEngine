@@ -1,0 +1,43 @@
+SceneDescription(
+    name: "Volumetric Clouds",
+    camera: (
+        position: (0.0, 5.0, 20.0),
+        yaw: 0.0,
+        pitch: -0.05,
+        fov: 60.0,
+    ),
+    ambient: 0.05,
+    lights: [(
+        light_type: Directional,
+        direction: (0.3, -1.0, 0.2),
+        color: (1.0, 0.95, 0.9),
+        intensity: 2.0,
+    )],
+    atmosphere: Some((
+        sun_direction: (-0.3, 0.2, -1.0),
+        planet_radius: 6360.0,
+        atmosphere_height: 100.0,
+        rayleigh_scattering: (0.005802, 0.013558, 0.033100),
+        mie_asymmetry: 0.758,
+        sun_intensity: 20.0,
+    )),
+    terrain: Some((
+        source: Procedural(seed: 123, frequency: 0.03, amplitude: 4.0),
+        geometry: (extent: 128.0, chunk_size: 64, max_lod: 4),
+        layers: [
+            (albedo: (0.35, 0.4, 0.2, 1.0), roughness: 0.9),
+            (albedo: (0.5, 0.45, 0.3, 1.0), roughness: 0.8),
+            (albedo: (0.6, 0.55, 0.4, 1.0), roughness: 0.7),
+            (albedo: (0.8, 0.8, 0.75, 1.0), roughness: 0.6),
+        ],
+    )),
+    clouds: Some((
+        bottom_altitude: 15.0,
+        top_altitude: 35.0,
+        coverage: 0.7,
+        density: 3.0,
+        wind_direction: (1.0, 0.3),
+        wind_speed: 1.0,
+    )),
+    objects: [],
+)

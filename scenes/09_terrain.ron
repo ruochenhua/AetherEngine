@@ -1,0 +1,31 @@
+SceneDescription(
+    name: "Terrain LOD Demo",
+    camera: (
+        position: (0.0, 120.0, 240.0),
+        yaw: -2.356,
+        pitch: -0.524,
+        speed: 80.0,
+        fov: 60.0,
+    ),
+    ambient: 0.05,
+    lights: [
+        (
+            light_type: Directional,
+            direction: (0.3, -1.0, 0.5),
+            color: (1.0, 0.98, 0.95),
+            intensity: 1.5,
+        ),
+    ],
+    terrain: Some((
+        source: Procedural(seed: 42, frequency: 0.015, amplitude: 64.0),
+        geometry: (extent: 512.0, chunk_size: 64, max_lod: 5),
+        splatmap: Some("assets/terrain/splatmap.png"),
+        layers: [
+            (albedo: (0.36, 0.25, 0.13, 1.0), roughness: 0.95),
+            (albedo: (0.18, 0.42, 0.12, 1.0), roughness: 0.85),
+            (albedo: (0.55, 0.52, 0.48, 1.0), roughness: 0.75),
+            (albedo: (0.95, 0.95, 0.95, 1.0), roughness: 0.60),
+        ],
+    )),
+    objects: [],
+)
