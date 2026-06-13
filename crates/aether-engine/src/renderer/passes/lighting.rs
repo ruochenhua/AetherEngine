@@ -419,7 +419,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let kS = F;
     let kD = (vec3<f32>(1.0) - kS) * (1.0 - metallic);
 
-    let ambient = albedo * uniforms.ambient_intensity;
+    // AO darkens both the constant ambient term and the IBL contribution.
+    let ao_raw = textureSample(ao_texture, gbuffer_sampler, in.uv).r;
+    let ao = select(1.0, ao_raw, uniforms.ssao_enabled != 0u);
+    let ambient = albedo * uniforms.ambient_intensity * ao;
     let radiance = uniforms.light.color * uniforms.light.intensity;
     let diffuse_direct = kD * albedo / PI * NdotL * radiance;
     let specular_direct = specular * NdotL * radiance;
@@ -497,9 +500,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     let ibl_light = select(vec3<f32>(0.0), diffuse_ibl + specular_ibl, uniforms.ibl_enabled != 0u);
 
-    // Sample AO texture (R8Unorm → f32 in .r)
-    let ao_raw = textureSample(ao_texture, gbuffer_sampler, in.uv).r;
-    let ao = select(1.0, ao_raw, uniforms.ssao_enabled != 0u);
     let final_color = direct_light + ibl_light * ao;
 
     if (uniforms.debug_mode == 1u) {

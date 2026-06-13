@@ -46,6 +46,9 @@ pub(crate) fn render(
     let camera = &app.camera;
     let fps = app.fps;
     let ssao_enabled = &mut app.ssao_enabled;
+    let ssao_radius = &mut app.ssao_radius;
+    let ssao_bias = &mut app.ssao_bias;
+    let ssao_intensity = &mut app.ssao_intensity;
     let shadow_enabled = &mut app.shadow_enabled;
     let ibl_enabled = &mut app.ibl_enabled;
     let ssr_enabled = &mut app.ssr_enabled;
@@ -270,6 +273,22 @@ pub(crate) fn render(
 
                                     ui.heading("Features");
                                     ui.checkbox(ssao_enabled, "SSAO");
+                                    if *ssao_enabled {
+                                        ui.add(
+                                            egui::Slider::new(ssao_radius, 0.01..=2.0)
+                                                .logarithmic(true)
+                                                .text("SSAO Radius (world)"),
+                                        );
+                                        ui.add(
+                                            egui::Slider::new(ssao_bias, 0.001..=0.2)
+                                                .logarithmic(true)
+                                                .text("SSAO Bias (world)"),
+                                        );
+                                        ui.add(
+                                            egui::Slider::new(ssao_intensity, 0.0..=4.0)
+                                                .text("SSAO Intensity"),
+                                        );
+                                    }
                                     ui.checkbox(shadow_enabled, "Shadow Map");
                                     ui.checkbox(ibl_enabled, "IBL");
                                     ui.checkbox(ssr_enabled, "SSR");

@@ -19,7 +19,8 @@ use std::borrow::Cow;
 use wgpu::util::DeviceExt;
 
 /// SSAO parameters (matches WGSL std140 layout).
-/// `radius` is in view-space units.
+/// `radius` and `bias` are in world-space units. Because the view transform is
+/// rigid, these map 1:1 to view-space lengths used during hemisphere sampling.
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct SSAOParams {
@@ -285,18 +286,25 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         vec3<f32>( 0.3513, -0.1539,  0.0345),
     );
 
+    let view_radius = frame.params.radius;
+    let view_bias = frame.params.bias;
+
     for (var i: u32 = 0u; i < 16u; i = i + 1u) {
         let ks = KERNEL[i];
         let sd = tangent * ks.x + bitangent * ks.y + view_N * ks.z;
-        let sv = view_pos + sd * frame.params.radius;
+        let sv = view_pos + sd * view_radius;
         let sc = frame.proj_mat * vec4<f32>(sv, 1.0);
         let suv = vec2<f32>(sc.x / sc.w * 0.5 + 0.5, -sc.y / sc.w * 0.5 + 0.5);
         if (suv.x >= 0.0 && suv.x <= 1.0 && suv.y >= 0.0 && suv.y <= 1.0) {
             let occ_world = textureSample(gbuffer_position, gbuffer_sampler, suv);
             let occ_view_z = (frame.view_mat * vec4<f32>(occ_world.xyz, 1.0)).z;
-            if (occ_view_z >= sv.z + frame.params.bias) {
-                let r = smoothstep(0.0, 1.0, frame.params.radius / max(abs(frag_view_z - occ_view_z), 0.001));
-                occlusion += r;
+            if (occ_view_z >= sv.z + view_bias) {
+                let z_delta = abs(frag_view_z - occ_view_z);
+                // Range falloff: attenuate occlusion when the occluder is farther
+                // than `radius` away in view-space Z. This prevents distant surfaces
+                // from casting dark halos.
+                let range_attenuation = 1.0 - smoothstep(0.0, view_radius, z_delta);
+                occlusion += range_attenuation;
             }
         }
     }
@@ -464,12 +472,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         }
     }
 
-    /// Set SSAO sample radius (world-space units).
+    /// Set SSAO sample radius (world-space units). The shader scales it by the
+    /// fragment's view depth so the screen-space coverage stays consistent.
     pub fn set_radius(&mut self, radius: f32) {
         self.radius = radius.max(0.001);
     }
 
-    /// Set SSAO depth comparison bias.
+    /// Set SSAO depth comparison bias (world-space units). Scaled by view depth
+    /// in the shader together with `radius`.
     pub fn set_bias(&mut self, bias: f32) {
         self.bias = bias.max(0.0);
     }
