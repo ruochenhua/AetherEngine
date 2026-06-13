@@ -105,7 +105,7 @@
 | 视锥裁剪（Frustum Culling） | ✅ 已完成 (#76) | P2 |
 | 地形材质 Splatting 基础 | ✅ 已完成 (#77) | P2 |
 
-### Phase 5: 大场景渲染
+### Phase 5: 大场景渲染 ✅
 
 **目标**：地形、大气、水体、体积云
 
@@ -116,11 +116,11 @@
 | CSM 级联阴影 | ✅ 已完成 (#80) | P3 |
 | GPU Timer 性能面板 | ✅ 已完成 (#81) | P3 |
 | 物理大气散射 | ✅ 已完成 (#82) | P3 |
-| 水体（Gerstner 波） | 🔲 待实现 (#83) | P3 |
-| 体积云（Ray marching） | 🔲 待实现 (#84) | P3 |
-| God Ray | 🔲 待实现 (#85) | P3 |
+| 水体（Gerstner 波） | ✅ 已完成 (#83) | P3 |
+| 体积云（Ray marching） | ✅ 已完成 (#84) | P3 |
+| God Ray | ✅ 已完成 (#85) | P3 |
 
-### Phase 6: 光线追踪
+### Phase 6: 光线追踪 🔲 当前
 
 **目标**：从软件光追到硬件加速
 
@@ -170,11 +170,11 @@
 
 ### 中优先级
 - [ ] PipelineBuilder transient 资源复用优化
-- [ ] Asset 异步加载
+- [x] Asset 异步加载
 - [ ] 多线程 System 执行
 
 ### 低优先级
-- [ ] 性能分析面板
+- [x] 性能分析面板
 - [ ] 远程调试支持
 - [ ] 多选（Shift/Ctrl）
 - [ ] Camera speed 持久化（当前 save/load 不保存 speed）
@@ -210,15 +210,19 @@
 - ✅ GPU Instancing
 - ✅ SSAO View-Space + Bilateral Blur
 
-### v0.5.0 - 大场景版 🔲 当前
-- Terrain
-- Atmosphere
-- Water
-- Clouds
+### v0.5.0 - 大场景版 ✅
+- ✅ Terrain
+- ✅ Atmosphere
+- ✅ Water
+- ✅ Clouds
+- ✅ God Rays
+- ✅ CSM
+- ✅ GPU Timer
 
-### v0.6.0 - 光追版
+### v0.6.0 - 光追版 🔲 当前
 - Path Tracer
 - Hybrid RT
+- Denoising
 
 ---
 

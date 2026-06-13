@@ -57,8 +57,8 @@ Phase 1: Deferred PBR + Shadow + Pipeline + RON + IBL              ← ✅ 已�
 Phase 2: SSAO + SSR                                                 ← ✅ 已完成
 Phase 3: Editor (ECS runtime, Picking, Gizmo, UI, Save/Load)       ← ✅ 已完成
 Phase 4: Post-process chain + Tone mapping + Bloom + FXAA          ← ✅ 已完成
-Phase 5: 大场景渲染 (Terrain + Atmosphere + Water + Clouds)         ← 🔲 当前
-Phase 6: Ray Tracing (Compute + Hybrid)                            ← 🔲 计划
+Phase 5: 大场景渲染 (Terrain + Atmosphere + Water + Clouds + God Rays) ← ✅ 已完成
+Phase 6: Ray Tracing (Compute + Hybrid)                            ← 🔲 当前
 ```
 
 ## 已知陷阱（跨模块）

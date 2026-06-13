@@ -184,8 +184,8 @@ Resource wiring is type-checked at build time. Execution order is topological.
 | **Phase 2** | Screen-space effects (SSAO, SSR) | ✅ Complete |
 | **Phase 3** | ECS runtime, ray picking, transform gizmo, editor UI shell, scene save/load, undo/redo, delete | ✅ Complete |
 | **Phase 4** | Post-process chain, tone mapping, Bloom, FXAA, GPU Instancing | ✅ Complete |
-| **Phase 5** | Terrain + Atmosphere + Water + Volumetric Clouds | 🔲 Current |
-| **Phase 6** | Ray Tracing (Compute + Hybrid) | 🔲 Planned |
+| **Phase 5** | Terrain + Atmosphere + Water + Volumetric Clouds + God Rays | ✅ Complete |
+| **Phase 6** | Ray Tracing (Compute + Hybrid) | 🔲 Current |
 
 ## 📜 License
 
