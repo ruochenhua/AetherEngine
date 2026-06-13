@@ -8,6 +8,7 @@ pub(crate) struct CliArgs {
     pub(crate) exit_after_frames: Option<u32>,
     pub(crate) no_gui_overlay: bool,
     pub(crate) debug_mode: Option<i32>,
+    pub(crate) freeze_time: bool,
 }
 
 pub(crate) fn parse_args(args: &[String]) -> CliArgs {
@@ -17,6 +18,7 @@ pub(crate) fn parse_args(args: &[String]) -> CliArgs {
         exit_after_frames: None,
         no_gui_overlay: false,
         debug_mode: None,
+        freeze_time: false,
     };
     let mut i = 1;
     while i < args.len() {
@@ -47,6 +49,9 @@ pub(crate) fn parse_args(args: &[String]) -> CliArgs {
                 if i < args.len() {
                     cli.debug_mode = args[i].parse().ok();
                 }
+            }
+            "--freeze-time" => {
+                cli.freeze_time = true;
             }
             _ => {}
         }

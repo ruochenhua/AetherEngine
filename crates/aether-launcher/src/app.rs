@@ -118,6 +118,7 @@ pub(crate) struct App {
     pub(crate) cli: CliArgs,
     pub(crate) no_gui_overlay: bool,
     pub(crate) exit_after_frames: Option<u32>,
+    pub(crate) freeze_time: bool,
 }
 
 impl App {
@@ -129,6 +130,7 @@ impl App {
 
         let no_gui_overlay = cli.no_gui_overlay;
         let exit_after_frames = cli.exit_after_frames;
+        let freeze_time = cli.freeze_time;
 
         Self {
             window: None,
@@ -205,6 +207,7 @@ impl App {
             cli,
             no_gui_overlay,
             exit_after_frames,
+            freeze_time,
         }
     }
 
@@ -444,7 +447,7 @@ impl ApplicationHandler for App {
                     textures_delta,
                     screen_descriptor,
                     should_screenshot,
-                    dt,
+                    if self.freeze_time { 0.0 } else { dt },
                 );
             }
             _ => {}

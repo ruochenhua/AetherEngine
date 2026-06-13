@@ -4,6 +4,9 @@ Cargo.lock
 **/*.rs.bk
 *.pdb
 
+# Python venv
+.venv/
+
 # IDE
 .idea/
 .vscode/

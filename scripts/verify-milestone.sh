@@ -23,8 +23,8 @@ SCENES=(
     "scenes/03_shadow_demo.ron    03_shadow_demo    120  0"
     "scenes/03_shadow_demo.ron    03_shadow_debug   120  6"
     "scenes/04_ibl_debug.ron      04_ibl_debug      120  0"
-    "scenes/05_ssao_debug.ron     05_ssao_debug     120  14"
-    "scenes/06_ssao_extreme.ron   06_ssao_extreme   120  0"
+    "scenes/05_ssao_debug.ron     05_ssao_debug_mode14     120  14"
+    "scenes/06_ssao_extreme.ron   06_ssao_extreme_mode14   120  0"
     "scenes/07_ssr_debug.ron      07_ssr_debug      120  0"
 )
 
@@ -51,6 +51,7 @@ for entry in "${SCENES[@]}"; do
         --screenshot "$OUTPUT_DIR/${out_name}.png" \
         --exit-after-frames "$frames" \
         --no-gui-overlay \
+        --freeze-time \
         --debug-mode "$debug_mode" 2>/dev/null || {
         echo "  ❌ Launcher failed for $out_name"
         echo "| $out_name | $debug_mode | $frames | N/A | N/A | N/A | ❌ CRASH |" >> "$REPORT_FILE"
