@@ -117,67 +117,59 @@ impl Pass for LightingPass {
         let shadow_view = resources.get(self.shadow_depth_handle.unwrap());
         let ao_view = resources.get(self.ao_handle.unwrap());
 
-        self.texture_bind_group = Some(device.create_bind_group(
-            &wgpu::BindGroupDescriptor {
-                label: Some("Lighting Texture Bind Group"),
-                layout: &self.texture_bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(pos_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::TextureView(norm_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 2,
-                        resource: wgpu::BindingResource::TextureView(albedo_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 3,
-                        resource: wgpu::BindingResource::TextureView(material_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 4,
-                        resource: wgpu::BindingResource::Sampler(&gbuffer_sampler),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 5,
-                        resource: wgpu::BindingResource::TextureView(ao_view),
-                    },
-                ],
-            },
-        ));
+        self.texture_bind_group = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Lighting Texture Bind Group"),
+            layout: &self.texture_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(pos_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(norm_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(albedo_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::TextureView(material_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: wgpu::BindingResource::Sampler(&gbuffer_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: wgpu::BindingResource::TextureView(ao_view),
+                },
+            ],
+        }));
 
-        self.shadow_bind_group = Some(device.create_bind_group(
-            &wgpu::BindGroupDescriptor {
-                label: Some("Lighting Shadow Bind Group"),
-                layout: &self.shadow_bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(shadow_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&shadow_sampler),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 2,
-                        resource: wgpu::BindingResource::Sampler(&shadow_debug_sampler),
-                    },
-                ],
-            },
-        ));
-
+        self.shadow_bind_group = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Lighting Shadow Bind Group"),
+            layout: &self.shadow_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(shadow_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&shadow_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(&shadow_debug_sampler),
+                },
+            ],
+        }));
     }
 
     fn apply_frame(&mut self, frame: &RenderFrame) {
-        let light_dir =
-            glam::Vec3::from_array(frame.lighting.light.direction).normalize();
-        let light_view_proj =
-            crate::renderer::passes::shadow::compute_light_space_matrix(&light_dir);
+        let light_dir = glam::Vec3::from_array(frame.lighting.light.direction).normalize();
 
         let mut uniforms = *frame.lighting;
         uniforms.camera_pos = frame.camera.position.into();
@@ -186,16 +178,21 @@ impl Pass for LightingPass {
         uniforms.shadow_enabled = if self.shadow_enabled { 1 } else { 0 };
         uniforms.ibl_enabled = if self.ibl_enabled { 1 } else { 0 };
         uniforms.shadow_map_size = crate::renderer::passes::shadow::SHADOW_MAP_SIZE as f32;
-        uniforms.light_view_proj = light_view_proj.to_cols_array_2d();
+
+        let cascades = crate::renderer::passes::shadow::compute_cascades(frame, &light_dir);
+        for (i, cascade) in cascades.iter().enumerate() {
+            uniforms.cascade_view_projs[i] = cascade.view_proj.to_cols_array_2d();
+            uniforms.cascade_splits[i] = cascade.split_depth;
+        }
+        uniforms.cascade_count = crate::renderer::passes::shadow::CASCADE_COUNT as u32;
+
         let proj = frame.camera.projection_matrix(frame.aspect);
         let view = frame.camera.view_matrix();
         let inv_view_proj = (proj * view).inverse();
         uniforms.inv_view_proj = inv_view_proj.to_cols_array_2d();
-        frame.queue.write_buffer(
-            &self.uniform_buffer,
-            0,
-            bytemuck::cast_slice(&[uniforms]),
-        );
+        frame
+            .queue
+            .write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
     }
 
     fn execute(
@@ -204,7 +201,9 @@ impl Pass for LightingPass {
         resources: &ResourceTable,
         _surface_view: &wgpu::TextureView,
     ) {
-        let texture_bg = self.texture_bind_group.as_ref()
+        let texture_bg = self
+            .texture_bind_group
+            .as_ref()
             .expect("LightingPass: resolve not called");
         let scene_color_view = resources.get(resources.handle::<SceneColor>("scene_color"));
 
@@ -228,7 +227,11 @@ impl Pass for LightingPass {
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, texture_bg, &[]);
         pass.set_bind_group(1, &self.uniform_bind_group, &[]);
-        pass.set_bind_group(2, self.shadow_bind_group.as_ref().expect("Shadow BG not set"), &[]);
+        pass.set_bind_group(
+            2,
+            self.shadow_bind_group.as_ref().expect("Shadow BG not set"),
+            &[],
+        );
         pass.set_bind_group(3, &self.ibl_bind_group, &[]);
         pass.set_vertex_buffer(0, self.quad_vertex_buffer.slice(..));
         pass.draw(0..self.quad_vertex_count, 0..1);
@@ -247,11 +250,19 @@ impl LightingPass {
     }
 
     /// Create a lighting pass with custom IBL resources.
-    pub fn new_with_ibl(device: &wgpu::Device, surface_format: wgpu::TextureFormat, ibl: &crate::renderer::ibl::IblResources) -> Self {
+    pub fn new_with_ibl(
+        device: &wgpu::Device,
+        surface_format: wgpu::TextureFormat,
+        ibl: &crate::renderer::ibl::IblResources,
+    ) -> Self {
         Self::new_inner(device, surface_format, ibl)
     }
 
-    fn new_inner(device: &wgpu::Device, _surface_format: wgpu::TextureFormat, ibl: &crate::renderer::ibl::IblResources) -> Self {
+    fn new_inner(
+        device: &wgpu::Device,
+        _surface_format: wgpu::TextureFormat,
+        ibl: &crate::renderer::ibl::IblResources,
+    ) -> Self {
         // LightingPass outputs to SceneColor (Rgba16Float), not the swapchain
         let output_format = wgpu::TextureFormat::Rgba16Float;
         let shader_source = r#"
@@ -283,7 +294,9 @@ struct LightingUniforms {
     debug_mode: u32,
     shadow_normal_bias: f32,
     shadow_map_size: f32,
-    light_view_proj: mat4x4<f32>,
+    cascade_view_projs: array<mat4x4<f32>, 3>,
+    cascade_splits: vec3<f32>,
+    cascade_count: u32,
     inv_view_proj: mat4x4<f32>,
     ssao_enabled: u32,
     shadow_enabled: u32,
@@ -299,7 +312,7 @@ struct LightingUniforms {
 
 @group(1) @binding(0) var<uniform> uniforms: LightingUniforms;
 
-@group(2) @binding(0) var shadow_depth: texture_depth_2d;
+@group(2) @binding(0) var shadow_depth: texture_depth_2d_array;
 @group(2) @binding(1) var shadow_sampler: sampler_comparison;
 @group(2) @binding(2) var shadow_debug_sampler: sampler;
 
@@ -424,9 +437,19 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // surface normal, which effectively moves receiver surfaces toward the
     // occluder in light-space and eliminates the gap (peter-panning)
     // without needing excessive depth bias.
+    // CSM: select cascade based on view-space depth along the camera ray.
+    let view_depth = dot(world_pos - uniforms.camera_pos, view_dir);
+    var cascade_index: u32 = 0u;
+    for (var i: u32 = 0u; i < uniforms.cascade_count; i = i + 1u) {
+        if (view_depth < uniforms.cascade_splits[i]) {
+            cascade_index = i;
+            break;
+        }
+    }
+
     let normal_offset = 0.03;
     let shadow_sample_pos = world_pos + N * normal_offset;
-    let light_clip = uniforms.light_view_proj * vec4<f32>(shadow_sample_pos, 1.0);
+    let light_clip = uniforms.cascade_view_projs[cascade_index] * vec4<f32>(shadow_sample_pos, 1.0);
     var visibility: f32 = 1.0;
     if (light_clip.w > 0.0) {
         let light_ndc = light_clip.xyz / light_clip.w;
@@ -449,7 +472,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                 for (var y: i32 = -1; y <= 1; y = y + 1) {
                     let offset = vec2<f32>(f32(x) * texel_size, f32(y) * texel_size);
                     visibility = visibility + textureSampleCompare(
-                        shadow_depth, shadow_sampler, uv + offset, ref_depth
+                        shadow_depth, shadow_sampler, uv + offset, i32(cascade_index), ref_depth
                     );
                 }
             }
@@ -490,8 +513,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     } else if (uniforms.debug_mode == 5u) {
         output_color = vec3<f32>(NdotL);
     } else if (uniforms.debug_mode == 6u) {
-        // Shadow map as seen from light: sample depth at screen UV
-        let d = textureSample(shadow_depth, shadow_debug_sampler, in.uv);
+        // Shadow map as seen from light: sample depth at screen UV (cascade 0)
+        let d = textureSample(shadow_depth, shadow_debug_sampler, in.uv, 0);
         output_color = vec3<f32>(d);
     } else if (uniforms.debug_mode == 7u) {
         // Direct lighting only (no IBL)
@@ -596,7 +619,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Texture {
                             sample_type: wgpu::TextureSampleType::Depth,
-                            view_dimension: wgpu::TextureViewDimension::D2,
+                            view_dimension: wgpu::TextureViewDimension::D2Array,
                             multisampled: false,
                         },
                         count: None,
@@ -686,7 +709,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Lighting Pipeline Layout"),
-            bind_group_layouts: &[Some(&texture_bind_group_layout), Some(&uniform_bind_group_layout), Some(&shadow_bind_group_layout), Some(&ibl_bind_group_layout)],
+            bind_group_layouts: &[
+                Some(&texture_bind_group_layout),
+                Some(&uniform_bind_group_layout),
+                Some(&shadow_bind_group_layout),
+                Some(&ibl_bind_group_layout),
+            ],
             immediate_size: 0,
         });
 

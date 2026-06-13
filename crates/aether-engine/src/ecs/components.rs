@@ -3,7 +3,9 @@
 //! Plain data structs implementing `hecs::Component`.
 
 use crate::asset::mesh::GpuMesh;
+use crate::asset::terrain_material::TerrainMaterial;
 use crate::renderer::light::LightType;
+use crate::scene::{TerrainGeometry, TerrainLayerConfig, TerrainSource};
 use glam::{Quat, Vec3};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -165,6 +167,69 @@ impl Light {
 /// which stores the mesh reference (e.g. "cube").
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Name(pub String);
+
+/// Atmosphere component.
+///
+/// Attached to a single scene-level entity when the scene description
+/// contains an `atmosphere` section. The `AtmospherePass` reads this
+/// component to render a physically based sky background.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Atmosphere {
+    /// Atmosphere configuration data.
+    pub config: crate::scene::AtmosphereConfig,
+}
+
+/// Terrain component.
+///
+/// Attached to a single scene-level entity when the scene description
+/// contains a `terrain` section. The `TerrainPass` reads this component
+/// to generate and render chunked LOD geometry.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Terrain {
+    /// Height data source.
+    pub source: TerrainSource,
+    /// Geometry generation strategy.
+    pub geometry: TerrainGeometry,
+    /// Runtime material with resolved texture handles.
+    pub material: TerrainMaterial,
+    /// Original splat map path for serialization round-trip.
+    pub splatmap_path: Option<String>,
+    /// Original layer configurations for serialization round-trip.
+    pub layer_configs: Vec<TerrainLayerConfig>,
+}
+
+/// Water component.
+///
+/// Attached to a single scene-level entity when the scene description
+/// contains a `water` section. The `WaterPass` reads this component
+/// to render a transparent Gerstner-wave water surface.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Water {
+    /// Water configuration data.
+    pub config: crate::scene::WaterConfig,
+}
+
+/// Volumetric cloud component.
+///
+/// Attached to a single scene-level entity when the scene description
+/// contains a `clouds` section. The `VolumetricCloudPass` reads this
+/// component to render ray-marched cloud layers.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Clouds {
+    /// Cloud configuration data.
+    pub config: crate::scene::CloudConfig,
+}
+
+/// God ray component.
+///
+/// Attached to a single scene-level entity when the scene description
+/// contains a `god_ray` section. The `GodRayPass` reads this component
+/// to render volumetric light shafts.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GodRay {
+    /// God ray configuration data.
+    pub config: crate::scene::GodRayConfig,
+}
 
 #[cfg(test)]
 mod tests {

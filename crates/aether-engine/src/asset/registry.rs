@@ -72,7 +72,7 @@ mod tests {
     fn register_new_mesh() {
         let mut registry = BuiltinMeshRegistry::new();
         // Register a custom mesh (just re-use cube factory for testing)
-        registry.register("custom", || CpuMesh::cube());
+        registry.register("custom", CpuMesh::cube);
         assert!(registry.get("custom").is_some());
     }
 

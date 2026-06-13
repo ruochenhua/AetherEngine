@@ -80,12 +80,15 @@ impl Pass for DebugLinePass {
     }
 
     fn signature(&self) -> PassSignature {
-        PassSignature::new("DebugLine")
-            .read::<GDepth>("gbuffer_depth")
+        PassSignature::new("DebugLine").read::<GDepth>("gbuffer_depth")
     }
 
     fn init(device: &wgpu::Device) -> Self {
-        Self::new_inner(device, wgpu::TextureFormat::Bgra8UnormSrgb, wgpu::TextureFormat::Depth32Float)
+        Self::new_inner(
+            device,
+            wgpu::TextureFormat::Bgra8UnormSrgb,
+            wgpu::TextureFormat::Depth32Float,
+        )
     }
 
     fn resolve(&mut self, _device: &wgpu::Device, resources: &ResourceTable) {
@@ -104,7 +107,10 @@ impl Pass for DebugLinePass {
             .write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniform]));
 
         // Upload dynamic lines
-        let count = self.pending_dynamic_lines.len().min(self.max_dynamic_vertices as usize);
+        let count = self
+            .pending_dynamic_lines
+            .len()
+            .min(self.max_dynamic_vertices as usize);
         self.dynamic_vertex_count = count as u32;
         if count > 0 {
             frame.queue.write_buffer(
@@ -344,7 +350,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     pub fn set_dynamic_lines(&mut self, lines: Vec<DebugVertex>) {
         self.pending_dynamic_lines = lines;
     }
-
 }
 
 /// Build a debug grid on the XZ plane.
@@ -354,10 +359,22 @@ pub fn build_grid_lines(size: f32, spacing: f32) -> (Vec<DebugVertex>, u32) {
 
     let mut i = -size;
     while i <= size {
-        vertices.push(DebugVertex { position: [i, 0.0, -size], color });
-        vertices.push(DebugVertex { position: [i, 0.0, size], color });
-        vertices.push(DebugVertex { position: [-size, 0.0, i], color });
-        vertices.push(DebugVertex { position: [size, 0.0, i], color });
+        vertices.push(DebugVertex {
+            position: [i, 0.0, -size],
+            color,
+        });
+        vertices.push(DebugVertex {
+            position: [i, 0.0, size],
+            color,
+        });
+        vertices.push(DebugVertex {
+            position: [-size, 0.0, i],
+            color,
+        });
+        vertices.push(DebugVertex {
+            position: [size, 0.0, i],
+            color,
+        });
         i += spacing;
     }
 
@@ -370,28 +387,80 @@ pub fn build_gizmo_lines(length: f32) -> (Vec<DebugVertex>, u32) {
     let arrow_size = length * 0.3;
     let vertices = vec![
         // X axis (red)
-        DebugVertex { position: [0.0, 0.0, 0.0], color: [1.0, 0.0, 0.0, 1.0] },
-        DebugVertex { position: [length, 0.0, 0.0], color: [1.0, 0.0, 0.0, 1.0] },
-        DebugVertex { position: [length, 0.0, 0.0], color: [1.0, 0.0, 0.0, 1.0] },
-        DebugVertex { position: [length - arrow_size, arrow_size * 0.5, 0.0], color: [1.0, 0.0, 0.0, 1.0] },
-        DebugVertex { position: [length, 0.0, 0.0], color: [1.0, 0.0, 0.0, 1.0] },
-        DebugVertex { position: [length - arrow_size, -arrow_size * 0.5, 0.0], color: [1.0, 0.0, 0.0, 1.0] },
-
+        DebugVertex {
+            position: [0.0, 0.0, 0.0],
+            color: [1.0, 0.0, 0.0, 1.0],
+        },
+        DebugVertex {
+            position: [length, 0.0, 0.0],
+            color: [1.0, 0.0, 0.0, 1.0],
+        },
+        DebugVertex {
+            position: [length, 0.0, 0.0],
+            color: [1.0, 0.0, 0.0, 1.0],
+        },
+        DebugVertex {
+            position: [length - arrow_size, arrow_size * 0.5, 0.0],
+            color: [1.0, 0.0, 0.0, 1.0],
+        },
+        DebugVertex {
+            position: [length, 0.0, 0.0],
+            color: [1.0, 0.0, 0.0, 1.0],
+        },
+        DebugVertex {
+            position: [length - arrow_size, -arrow_size * 0.5, 0.0],
+            color: [1.0, 0.0, 0.0, 1.0],
+        },
         // Y axis (green)
-        DebugVertex { position: [0.0, 0.0, 0.0], color: [0.0, 1.0, 0.0, 1.0] },
-        DebugVertex { position: [0.0, length, 0.0], color: [0.0, 1.0, 0.0, 1.0] },
-        DebugVertex { position: [0.0, length, 0.0], color: [0.0, 1.0, 0.0, 1.0] },
-        DebugVertex { position: [arrow_size * 0.5, length - arrow_size, 0.0], color: [0.0, 1.0, 0.0, 1.0] },
-        DebugVertex { position: [0.0, length, 0.0], color: [0.0, 1.0, 0.0, 1.0] },
-        DebugVertex { position: [-arrow_size * 0.5, length - arrow_size, 0.0], color: [0.0, 1.0, 0.0, 1.0] },
-
+        DebugVertex {
+            position: [0.0, 0.0, 0.0],
+            color: [0.0, 1.0, 0.0, 1.0],
+        },
+        DebugVertex {
+            position: [0.0, length, 0.0],
+            color: [0.0, 1.0, 0.0, 1.0],
+        },
+        DebugVertex {
+            position: [0.0, length, 0.0],
+            color: [0.0, 1.0, 0.0, 1.0],
+        },
+        DebugVertex {
+            position: [arrow_size * 0.5, length - arrow_size, 0.0],
+            color: [0.0, 1.0, 0.0, 1.0],
+        },
+        DebugVertex {
+            position: [0.0, length, 0.0],
+            color: [0.0, 1.0, 0.0, 1.0],
+        },
+        DebugVertex {
+            position: [-arrow_size * 0.5, length - arrow_size, 0.0],
+            color: [0.0, 1.0, 0.0, 1.0],
+        },
         // Z axis (blue)
-        DebugVertex { position: [0.0, 0.0, 0.0], color: [0.0, 0.0, 1.0, 1.0] },
-        DebugVertex { position: [0.0, 0.0, length], color: [0.0, 0.0, 1.0, 1.0] },
-        DebugVertex { position: [0.0, 0.0, length], color: [0.0, 0.0, 1.0, 1.0] },
-        DebugVertex { position: [0.0, arrow_size * 0.5, length - arrow_size], color: [0.0, 0.0, 1.0, 1.0] },
-        DebugVertex { position: [0.0, 0.0, length], color: [0.0, 0.0, 1.0, 1.0] },
-        DebugVertex { position: [0.0, -arrow_size * 0.5, length - arrow_size], color: [0.0, 0.0, 1.0, 1.0] },
+        DebugVertex {
+            position: [0.0, 0.0, 0.0],
+            color: [0.0, 0.0, 1.0, 1.0],
+        },
+        DebugVertex {
+            position: [0.0, 0.0, length],
+            color: [0.0, 0.0, 1.0, 1.0],
+        },
+        DebugVertex {
+            position: [0.0, 0.0, length],
+            color: [0.0, 0.0, 1.0, 1.0],
+        },
+        DebugVertex {
+            position: [0.0, arrow_size * 0.5, length - arrow_size],
+            color: [0.0, 0.0, 1.0, 1.0],
+        },
+        DebugVertex {
+            position: [0.0, 0.0, length],
+            color: [0.0, 0.0, 1.0, 1.0],
+        },
+        DebugVertex {
+            position: [0.0, -arrow_size * 0.5, length - arrow_size],
+            color: [0.0, 0.0, 1.0, 1.0],
+        },
     ];
 
     let count = vertices.len() as u32;

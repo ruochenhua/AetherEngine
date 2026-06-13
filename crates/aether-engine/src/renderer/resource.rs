@@ -81,6 +81,18 @@ impl ResourceTag for ReflectionTexture {}
 pub enum SceneColor {}
 impl ResourceTag for SceneColor {}
 
+/// Water overlay color/alpha (Rgba16Float).
+pub enum WaterColor {}
+impl ResourceTag for WaterColor {}
+
+/// Volumetric cloud overlay color/alpha (Rgba16Float).
+pub enum CloudColor {}
+impl ResourceTag for CloudColor {}
+
+/// God ray light-shaft overlay (Rgba16Float).
+pub enum GodRayColor {}
+impl ResourceTag for GodRayColor {}
+
 /// Post-process input texture — HDR linear output from composite (Rgba16Float).
 pub enum PostProcessInput {}
 impl ResourceTag for PostProcessInput {}

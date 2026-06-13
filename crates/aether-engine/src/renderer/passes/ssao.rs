@@ -35,9 +35,9 @@ struct SSAOParams {
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct SSAOFrameUniforms {
-    params: SSAOParams,     // offset 0,   32 bytes
-    proj: [[f32; 4]; 4],    // offset 32,  64 bytes (mat4x4 = 4 × vec4)
-    view: [[f32; 4]; 4],    // offset 96,  64 bytes
+    params: SSAOParams,  // offset 0,   32 bytes
+    proj: [[f32; 4]; 4], // offset 32,  64 bytes (mat4x4 = 4 × vec4)
+    view: [[f32; 4]; 4], // offset 96,  64 bytes
 }
 // Total: 160 bytes, aligned to 16
 
@@ -68,16 +68,25 @@ pub struct SSAOPass {
 }
 
 impl Pass for SSAOPass {
-    fn name(&self) -> &str { "SSAO" }
+    fn name(&self) -> &str {
+        "SSAO"
+    }
 
     fn signature(&self) -> PassSignature {
         PassSignature::new("SSAO")
             .read::<GPosition>("gbuffer_position")
             .read::<GNormal>("gbuffer_normal")
-            .write_sized::<AOTexture>("ao", wgpu::TextureFormat::R8Unorm, self.half_width.max(1), self.half_height.max(1))
+            .write_sized::<AOTexture>(
+                "ao",
+                wgpu::TextureFormat::R8Unorm,
+                self.half_width.max(1),
+                self.half_height.max(1),
+            )
     }
 
-    fn init(device: &wgpu::Device) -> Self { Self::new(device) }
+    fn init(device: &wgpu::Device) -> Self {
+        Self::new(device)
+    }
 
     fn resolve(&mut self, device: &wgpu::Device, resources: &ResourceTable) {
         self.pos_handle = Some(resources.handle::<GPosition>("gbuffer_position"));
@@ -93,17 +102,24 @@ impl Pass for SSAOPass {
         let pos_view = resources.get(self.pos_handle.unwrap());
         let norm_view = resources.get(self.normal_handle.unwrap());
 
-        self.texture_bind_group = Some(device.create_bind_group(
-            &wgpu::BindGroupDescriptor {
-                label: Some("SSAO Texture Bind Group"),
-                layout: &self.texture_bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(pos_view) },
-                    wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(norm_view) },
-                    wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&sampler) },
-                ],
-            },
-        ));
+        self.texture_bind_group = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("SSAO Texture Bind Group"),
+            layout: &self.texture_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(pos_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(norm_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+            ],
+        }));
     }
 
     fn apply_frame(&mut self, frame: &RenderFrame) {
@@ -124,11 +140,21 @@ impl Pass for SSAOPass {
             proj: proj.to_cols_array_2d(),
             view: view.to_cols_array_2d(),
         };
-        frame.queue.write_buffer(&self.frame_buffer, 0, bytemuck::cast_slice(&[uniforms]));
+        frame
+            .queue
+            .write_buffer(&self.frame_buffer, 0, bytemuck::cast_slice(&[uniforms]));
     }
 
-    fn execute(&self, encoder: &mut wgpu::CommandEncoder, resources: &ResourceTable, _sv: &wgpu::TextureView) {
-        let texture_bg = self.texture_bind_group.as_ref().expect("SSAO: resolve not called");
+    fn execute(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        resources: &ResourceTable,
+        _sv: &wgpu::TextureView,
+    ) {
+        let texture_bg = self
+            .texture_bind_group
+            .as_ref()
+            .expect("SSAO: resolve not called");
         let ao_view = resources.get(resources.handle::<AOTexture>("ao"));
 
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -137,7 +163,10 @@ impl Pass for SSAOPass {
                 view: ao_view,
                 depth_slice: None,
                 resolve_target: None,
-                ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::WHITE), store: wgpu::StoreOp::Store },
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::WHITE),
+                    store: wgpu::StoreOp::Store,
+                },
             })],
             depth_stencil_attachment: None,
             multiview_mask: None,
@@ -151,7 +180,9 @@ impl Pass for SSAOPass {
         pass.draw(0..self.quad_vertex_count, 0..1);
     }
 
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
 }
 
 impl SSAOPass {
@@ -290,15 +321,47 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let texture_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("SSAO Texture BGL"),
             entries: &[
-                wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Texture { sample_type: wgpu::TextureSampleType::Float { filterable: true }, view_dimension: wgpu::TextureViewDimension::D2, multisampled: false }, count: None },
-                wgpu::BindGroupLayoutEntry { binding: 1, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Texture { sample_type: wgpu::TextureSampleType::Float { filterable: true }, view_dimension: wgpu::TextureViewDimension::D2, multisampled: false }, count: None },
-                wgpu::BindGroupLayoutEntry { binding: 2, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering), count: None },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
             ],
         });
 
         let frame_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("SSAO Frame BGL"),
-            entries: &[wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None }, count: None }],
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
         });
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -317,16 +380,32 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                 buffers: &[wgpu::VertexBufferLayout {
                     array_stride: std::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
                     step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &[wgpu::VertexAttribute { offset: 0, shader_location: 0, format: wgpu::VertexFormat::Float32x2 }],
+                    attributes: &[wgpu::VertexAttribute {
+                        offset: 0,
+                        shader_location: 0,
+                        format: wgpu::VertexFormat::Float32x2,
+                    }],
                 }],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
                 entry_point: Some("fs_main"),
                 compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState { format: wgpu::TextureFormat::R8Unorm, blend: None, write_mask: wgpu::ColorWrites::ALL })],
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: wgpu::TextureFormat::R8Unorm,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
             }),
-            primitive: wgpu::PrimitiveState { topology: wgpu::PrimitiveTopology::TriangleList, strip_index_format: None, front_face: wgpu::FrontFace::Ccw, cull_mode: None, polygon_mode: wgpu::PolygonMode::Fill, unclipped_depth: false, conservative: false },
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: None,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
             multiview_mask: None,
@@ -334,29 +413,51 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         });
 
         let frame_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("SSAO Frame"), size: std::mem::size_of::<SSAOFrameUniforms>() as wgpu::BufferAddress,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false,
+            label: Some("SSAO Frame"),
+            size: std::mem::size_of::<SSAOFrameUniforms>() as wgpu::BufferAddress,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
         });
 
         let frame_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("SSAO Frame BG"), layout: &frame_bgl,
-            entries: &[wgpu::BindGroupEntry { binding: 0, resource: frame_buffer.as_entire_binding() }],
+            label: Some("SSAO Frame BG"),
+            layout: &frame_bgl,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: frame_buffer.as_entire_binding(),
+            }],
         });
 
-        let quad_vertices: [[f32; 2]; 6] = [[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, -1.0], [1.0, 1.0], [-1.0, 1.0]];
+        let quad_vertices: [[f32; 2]; 6] = [
+            [-1.0, -1.0],
+            [1.0, -1.0],
+            [1.0, 1.0],
+            [-1.0, -1.0],
+            [1.0, 1.0],
+            [-1.0, 1.0],
+        ];
         let quad_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("SSAO Quad Vtx"), contents: bytemuck::cast_slice(&quad_vertices), usage: wgpu::BufferUsages::VERTEX,
+            label: Some("SSAO Quad Vtx"),
+            contents: bytemuck::cast_slice(&quad_vertices),
+            usage: wgpu::BufferUsages::VERTEX,
         });
 
         Self {
-            pipeline, quad_vertex_buffer, quad_vertex_count: 6,
-            frame_buffer, frame_bind_group: frame_bg,
-            pos_handle: None, normal_handle: None, texture_bind_group: None,
+            pipeline,
+            quad_vertex_buffer,
+            quad_vertex_count: 6,
+            frame_buffer,
+            frame_bind_group: frame_bg,
+            pos_handle: None,
+            normal_handle: None,
+            texture_bind_group: None,
             texture_bind_group_layout: texture_bgl,
             frame_bind_group_layout: frame_bgl,
-            proj: glam::Mat4::IDENTITY, view: glam::Mat4::IDENTITY,
+            proj: glam::Mat4::IDENTITY,
+            view: glam::Mat4::IDENTITY,
             screen_size: [1024.0, 768.0],
-            half_width: 512, half_height: 384,
+            half_width: 512,
+            half_height: 384,
             radius: 0.5,
             bias: 0.025,
             intensity: 1.5,
@@ -386,8 +487,12 @@ mod tests {
 
     fn headless_device() -> wgpu::Device {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())).expect("need adapter");
-        let (device, _) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).expect("need device");
+        let adapter =
+            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+                .expect("need adapter");
+        let (device, _) =
+            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
+                .expect("need device");
         device
     }
 

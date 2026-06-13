@@ -44,16 +44,25 @@ pub struct AOBlurPass {
 }
 
 impl Pass for AOBlurPass {
-    fn name(&self) -> &str { "AOBlur" }
+    fn name(&self) -> &str {
+        "AOBlur"
+    }
 
     fn signature(&self) -> PassSignature {
         PassSignature::new("AOBlur")
             .read::<AOTexture>("ao")
             .read::<GPosition>("gbuffer_position")
-            .write_sized::<AOTextureBlurred>("ao_blurred", wgpu::TextureFormat::R8Unorm, self.half_width.max(1), self.half_height.max(1))
+            .write_sized::<AOTextureBlurred>(
+                "ao_blurred",
+                wgpu::TextureFormat::R8Unorm,
+                self.half_width.max(1),
+                self.half_height.max(1),
+            )
     }
 
-    fn init(device: &wgpu::Device) -> Self { Self::new(device) }
+    fn init(device: &wgpu::Device) -> Self {
+        Self::new(device)
+    }
 
     fn resolve(&mut self, device: &wgpu::Device, resources: &ResourceTable) {
         self.ao_handle = Some(resources.handle::<AOTexture>("ao"));
@@ -69,33 +78,58 @@ impl Pass for AOBlurPass {
         let ao_view = resources.get(self.ao_handle.unwrap());
         let pos_view = resources.get(self.pos_handle.unwrap());
 
-        self.texture_bind_group = Some(device.create_bind_group(
-            &wgpu::BindGroupDescriptor {
-                label: Some("AOBlur Texture Bind Group"),
-                layout: &self.texture_bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(ao_view) },
-                    wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(pos_view) },
-                    wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&sampler) },
-                ],
-            },
-        ));
+        self.texture_bind_group = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("AOBlur Texture Bind Group"),
+            layout: &self.texture_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(ao_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(pos_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+            ],
+        }));
     }
 
     fn apply_frame(&mut self, _frame: &RenderFrame) {
-        let texel_w = if self.half_width > 0 { 1.0 / self.half_width as f32 } else { 0.0 };
-        let texel_h = if self.half_height > 0 { 1.0 / self.half_height as f32 } else { 0.0 };
+        let texel_w = if self.half_width > 0 {
+            1.0 / self.half_width as f32
+        } else {
+            0.0
+        };
+        let texel_h = if self.half_height > 0 {
+            1.0 / self.half_height as f32
+        } else {
+            0.0
+        };
         let p = BlurParams {
             depth_sigma: 0.5,
             _pad0: 0.0,
             texel_size: [texel_w, texel_h],
             _pad1: [0.0; 8],
         };
-        _frame.queue.write_buffer(&self.params_buffer, 0, bytemuck::cast_slice(&[p]));
+        _frame
+            .queue
+            .write_buffer(&self.params_buffer, 0, bytemuck::cast_slice(&[p]));
     }
 
-    fn execute(&self, encoder: &mut wgpu::CommandEncoder, resources: &ResourceTable, _sv: &wgpu::TextureView) {
-        let texture_bg = self.texture_bind_group.as_ref().expect("AOBlur: resolve not called");
+    fn execute(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        resources: &ResourceTable,
+        _sv: &wgpu::TextureView,
+    ) {
+        let texture_bg = self
+            .texture_bind_group
+            .as_ref()
+            .expect("AOBlur: resolve not called");
         let ao_blurred_view = resources.get(resources.handle::<AOTextureBlurred>("ao_blurred"));
 
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -104,7 +138,10 @@ impl Pass for AOBlurPass {
                 view: ao_blurred_view,
                 depth_slice: None,
                 resolve_target: None,
-                ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::WHITE), store: wgpu::StoreOp::Store },
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::WHITE),
+                    store: wgpu::StoreOp::Store,
+                },
             })],
             depth_stencil_attachment: None,
             multiview_mask: None,
@@ -118,7 +155,9 @@ impl Pass for AOBlurPass {
         pass.draw(0..self.quad_vertex_count, 0..1);
     }
 
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
 }
 
 impl AOBlurPass {
@@ -216,15 +255,47 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let texture_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("AOBlur Texture BGL"),
             entries: &[
-                wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Texture { sample_type: wgpu::TextureSampleType::Float { filterable: true }, view_dimension: wgpu::TextureViewDimension::D2, multisampled: false }, count: None },
-                wgpu::BindGroupLayoutEntry { binding: 1, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Texture { sample_type: wgpu::TextureSampleType::Float { filterable: true }, view_dimension: wgpu::TextureViewDimension::D2, multisampled: false }, count: None },
-                wgpu::BindGroupLayoutEntry { binding: 2, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering), count: None },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
             ],
         });
 
         let params_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("AOBlur Params BGL"),
-            entries: &[wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None }, count: None }],
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
         });
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -243,16 +314,32 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                 buffers: &[wgpu::VertexBufferLayout {
                     array_stride: std::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
                     step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &[wgpu::VertexAttribute { offset: 0, shader_location: 0, format: wgpu::VertexFormat::Float32x2 }],
+                    attributes: &[wgpu::VertexAttribute {
+                        offset: 0,
+                        shader_location: 0,
+                        format: wgpu::VertexFormat::Float32x2,
+                    }],
                 }],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
                 entry_point: Some("fs_main"),
                 compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState { format: wgpu::TextureFormat::R8Unorm, blend: None, write_mask: wgpu::ColorWrites::ALL })],
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: wgpu::TextureFormat::R8Unorm,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
             }),
-            primitive: wgpu::PrimitiveState { topology: wgpu::PrimitiveTopology::TriangleList, strip_index_format: None, front_face: wgpu::FrontFace::Ccw, cull_mode: None, polygon_mode: wgpu::PolygonMode::Fill, unclipped_depth: false, conservative: false },
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: None,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
             multiview_mask: None,
@@ -260,29 +347,49 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         });
 
         let params_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("AOBlur Params"), size: std::mem::size_of::<BlurParams>() as wgpu::BufferAddress,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false,
+            label: Some("AOBlur Params"),
+            size: std::mem::size_of::<BlurParams>() as wgpu::BufferAddress,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
         });
 
         let params_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("AOBlur Params BG"), layout: &params_bgl,
-            entries: &[wgpu::BindGroupEntry { binding: 0, resource: params_buffer.as_entire_binding() }],
+            label: Some("AOBlur Params BG"),
+            layout: &params_bgl,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: params_buffer.as_entire_binding(),
+            }],
         });
 
-        let quad_vertices: [[f32; 2]; 6] = [[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, -1.0], [1.0, 1.0], [-1.0, 1.0]];
+        let quad_vertices: [[f32; 2]; 6] = [
+            [-1.0, -1.0],
+            [1.0, -1.0],
+            [1.0, 1.0],
+            [-1.0, -1.0],
+            [1.0, 1.0],
+            [-1.0, 1.0],
+        ];
         let quad_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("AOBlur Quad Vtx"), contents: bytemuck::cast_slice(&quad_vertices), usage: wgpu::BufferUsages::VERTEX,
+            label: Some("AOBlur Quad Vtx"),
+            contents: bytemuck::cast_slice(&quad_vertices),
+            usage: wgpu::BufferUsages::VERTEX,
         });
 
         Self {
-            pipeline, quad_vertex_buffer, quad_vertex_count: 6,
+            pipeline,
+            quad_vertex_buffer,
+            quad_vertex_count: 6,
             params_buffer,
             params_bind_group: params_bg,
-            ao_handle: None, pos_handle: None, texture_bind_group: None,
+            ao_handle: None,
+            pos_handle: None,
+            texture_bind_group: None,
             texture_bind_group_layout: texture_bgl,
             params_bind_group_layout: params_bgl,
             screen_size: [1024.0, 768.0],
-            half_width: 512, half_height: 384,
+            half_width: 512,
+            half_height: 384,
         }
     }
 }
@@ -294,8 +401,12 @@ mod tests {
 
     fn headless_device() -> wgpu::Device {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())).expect("need adapter");
-        let (device, _) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).expect("need device");
+        let adapter =
+            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+                .expect("need adapter");
+        let (device, _) =
+            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
+                .expect("need device");
         device
     }
 
@@ -306,7 +417,10 @@ mod tests {
         assert_eq!(sig.name, "AOBlur");
         assert_eq!(sig.reads.len(), 2);
         assert_eq!(sig.writes.len(), 1);
-        assert!(sig.writes[0].type_id == TypeId::of::<AOTextureBlurred>() && sig.writes[0].name == "ao_blurred");
+        assert!(
+            sig.writes[0].type_id == TypeId::of::<AOTextureBlurred>()
+                && sig.writes[0].name == "ao_blurred"
+        );
     }
 
     #[test]

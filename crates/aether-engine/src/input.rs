@@ -37,40 +37,36 @@ impl InputManager {
                         ..
                     },
                 ..
-            } => {
-                match state {
-                    ElementState::Pressed => {
-                        if !self.keys_held.contains(keycode) {
-                            self.keys_pressed.push(*keycode);
-                            self.keys_held.push(*keycode);
-                        }
-                    }
-                    ElementState::Released => {
-                        self.keys_held.retain(|k| k != keycode);
-                        self.keys_released.push(*keycode);
+            } => match state {
+                ElementState::Pressed => {
+                    if !self.keys_held.contains(keycode) {
+                        self.keys_pressed.push(*keycode);
+                        self.keys_held.push(*keycode);
                     }
                 }
-            }
+                ElementState::Released => {
+                    self.keys_held.retain(|k| k != keycode);
+                    self.keys_released.push(*keycode);
+                }
+            },
             WindowEvent::CursorMoved { position, .. } => {
                 let new_pos = (position.x as f32, position.y as f32);
                 self.mouse_delta.0 += new_pos.0 - self.mouse_position.0;
                 self.mouse_delta.1 += new_pos.1 - self.mouse_position.1;
                 self.mouse_position = new_pos;
             }
-            WindowEvent::MouseInput { state, button, .. } => {
-                match state {
-                    ElementState::Pressed => {
-                        if !self.mouse_buttons_held.contains(button) {
-                            self.mouse_buttons_pressed.push(*button);
-                            self.mouse_buttons_held.push(*button);
-                        }
-                    }
-                    ElementState::Released => {
-                        self.mouse_buttons_held.retain(|b| b != button);
-                        self.mouse_buttons_released.push(*button);
+            WindowEvent::MouseInput { state, button, .. } => match state {
+                ElementState::Pressed => {
+                    if !self.mouse_buttons_held.contains(button) {
+                        self.mouse_buttons_pressed.push(*button);
+                        self.mouse_buttons_held.push(*button);
                     }
                 }
-            }
+                ElementState::Released => {
+                    self.mouse_buttons_held.retain(|b| b != button);
+                    self.mouse_buttons_released.push(*button);
+                }
+            },
             _ => {}
         }
     }

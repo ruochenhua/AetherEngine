@@ -37,47 +37,103 @@ impl CpuMesh {
         // Cube vertices: 6 faces x 4 vertices = 24 vertices (no sharing for flat normals)
         let positions = vec![
             // Front face (+Z)
-            [-0.5, -0.5,  0.5], [ 0.5, -0.5,  0.5], [ 0.5,  0.5,  0.5], [-0.5,  0.5,  0.5],
+            [-0.5, -0.5, 0.5],
+            [0.5, -0.5, 0.5],
+            [0.5, 0.5, 0.5],
+            [-0.5, 0.5, 0.5],
             // Back face (-Z)
-            [ 0.5, -0.5, -0.5], [-0.5, -0.5, -0.5], [-0.5,  0.5, -0.5], [ 0.5,  0.5, -0.5],
+            [0.5, -0.5, -0.5],
+            [-0.5, -0.5, -0.5],
+            [-0.5, 0.5, -0.5],
+            [0.5, 0.5, -0.5],
             // Top face (+Y)
-            [-0.5,  0.5,  0.5], [ 0.5,  0.5,  0.5], [ 0.5,  0.5, -0.5], [-0.5,  0.5, -0.5],
+            [-0.5, 0.5, 0.5],
+            [0.5, 0.5, 0.5],
+            [0.5, 0.5, -0.5],
+            [-0.5, 0.5, -0.5],
             // Bottom face (-Y)
-            [-0.5, -0.5, -0.5], [ 0.5, -0.5, -0.5], [ 0.5, -0.5,  0.5], [-0.5, -0.5,  0.5],
+            [-0.5, -0.5, -0.5],
+            [0.5, -0.5, -0.5],
+            [0.5, -0.5, 0.5],
+            [-0.5, -0.5, 0.5],
             // Right face (+X)
-            [ 0.5, -0.5,  0.5], [ 0.5, -0.5, -0.5], [ 0.5,  0.5, -0.5], [ 0.5,  0.5,  0.5],
+            [0.5, -0.5, 0.5],
+            [0.5, -0.5, -0.5],
+            [0.5, 0.5, -0.5],
+            [0.5, 0.5, 0.5],
             // Left face (-X)
-            [-0.5, -0.5, -0.5], [-0.5, -0.5,  0.5], [-0.5,  0.5,  0.5], [-0.5,  0.5, -0.5],
+            [-0.5, -0.5, -0.5],
+            [-0.5, -0.5, 0.5],
+            [-0.5, 0.5, 0.5],
+            [-0.5, 0.5, -0.5],
         ];
 
         let normals = vec![
             // Front
-            [0.0, 0.0, 1.0], [0.0, 0.0, 1.0], [0.0, 0.0, 1.0], [0.0, 0.0, 1.0],
+            [0.0, 0.0, 1.0],
+            [0.0, 0.0, 1.0],
+            [0.0, 0.0, 1.0],
+            [0.0, 0.0, 1.0],
             // Back
-            [0.0, 0.0, -1.0], [0.0, 0.0, -1.0], [0.0, 0.0, -1.0], [0.0, 0.0, -1.0],
+            [0.0, 0.0, -1.0],
+            [0.0, 0.0, -1.0],
+            [0.0, 0.0, -1.0],
+            [0.0, 0.0, -1.0],
             // Top
-            [0.0, 1.0, 0.0], [0.0, 1.0, 0.0], [0.0, 1.0, 0.0], [0.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
             // Bottom
-            [0.0, -1.0, 0.0], [0.0, -1.0, 0.0], [0.0, -1.0, 0.0], [0.0, -1.0, 0.0],
+            [0.0, -1.0, 0.0],
+            [0.0, -1.0, 0.0],
+            [0.0, -1.0, 0.0],
+            [0.0, -1.0, 0.0],
             // Right
-            [1.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
             // Left
-            [-1.0, 0.0, 0.0], [-1.0, 0.0, 0.0], [-1.0, 0.0, 0.0], [-1.0, 0.0, 0.0],
+            [-1.0, 0.0, 0.0],
+            [-1.0, 0.0, 0.0],
+            [-1.0, 0.0, 0.0],
+            [-1.0, 0.0, 0.0],
         ];
 
         let uvs = vec![
-            [0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0], // Front
-            [0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0], // Back
-            [0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0], // Top
-            [0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0], // Bottom
-            [0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0], // Right
-            [0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0], // Left
+            [0.0, 1.0],
+            [1.0, 1.0],
+            [1.0, 0.0],
+            [0.0, 0.0], // Front
+            [0.0, 1.0],
+            [1.0, 1.0],
+            [1.0, 0.0],
+            [0.0, 0.0], // Back
+            [0.0, 1.0],
+            [1.0, 1.0],
+            [1.0, 0.0],
+            [0.0, 0.0], // Top
+            [0.0, 1.0],
+            [1.0, 1.0],
+            [1.0, 0.0],
+            [0.0, 0.0], // Bottom
+            [0.0, 1.0],
+            [1.0, 1.0],
+            [1.0, 0.0],
+            [0.0, 0.0], // Right
+            [0.0, 1.0],
+            [1.0, 1.0],
+            [1.0, 0.0],
+            [0.0, 0.0], // Left
         ];
 
-        let indices: Vec<u32> = (0..6).flat_map(|face| {
-            let base = face * 4;
-            vec![base, base + 1, base + 2, base, base + 2, base + 3]
-        }).collect();
+        let indices: Vec<u32> = (0..6)
+            .flat_map(|face| {
+                let base = face * 4;
+                vec![base, base + 1, base + 2, base, base + 2, base + 3]
+            })
+            .collect();
 
         Self {
             positions,
@@ -144,9 +200,9 @@ impl CpuMesh {
     pub fn quad() -> Self {
         let positions = vec![
             [-1.0, -1.0, 0.0],
-            [ 1.0, -1.0, 0.0],
-            [ 1.0,  1.0, 0.0],
-            [-1.0,  1.0, 0.0],
+            [1.0, -1.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [-1.0, 1.0, 0.0],
         ];
         let normals = vec![
             [0.0, 0.0, 1.0],
@@ -154,12 +210,7 @@ impl CpuMesh {
             [0.0, 0.0, 1.0],
             [0.0, 0.0, 1.0],
         ];
-        let uvs = vec![
-            [0.0, 1.0],
-            [1.0, 1.0],
-            [1.0, 0.0],
-            [0.0, 0.0],
-        ];
+        let uvs = vec![[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]];
         let indices = vec![0, 1, 2, 0, 2, 3];
 
         Self {
@@ -175,9 +226,9 @@ impl CpuMesh {
     pub fn plane() -> Self {
         let positions = vec![
             [-1.0, 0.0, -1.0],
-            [ 1.0, 0.0, -1.0],
-            [ 1.0, 0.0,  1.0],
-            [-1.0, 0.0,  1.0],
+            [1.0, 0.0, -1.0],
+            [1.0, 0.0, 1.0],
+            [-1.0, 0.0, 1.0],
         ];
         let normals = vec![
             [0.0, 1.0, 0.0],
@@ -185,12 +236,7 @@ impl CpuMesh {
             [0.0, 1.0, 0.0],
             [0.0, 1.0, 0.0],
         ];
-        let uvs = vec![
-            [0.0, 0.0],
-            [1.0, 0.0],
-            [1.0, 1.0],
-            [0.0, 1.0],
-        ];
+        let uvs = vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
         let indices = vec![0, 3, 2, 0, 2, 1];
 
         Self {
@@ -211,7 +257,11 @@ impl CpuMesh {
                 position: self.positions[i],
                 normal: self.normals[i],
                 uv: self.uvs.get(i).copied().unwrap_or([0.0, 0.0]),
-                tangent: self.tangents.get(i).copied().unwrap_or([1.0, 0.0, 0.0, 1.0]),
+                tangent: self
+                    .tangents
+                    .get(i)
+                    .copied()
+                    .unwrap_or([1.0, 0.0, 0.0, 1.0]),
             });
         }
         vertices
@@ -259,24 +309,20 @@ impl GpuMesh {
         use wgpu::util::DeviceExt;
 
         let vertices = cpu.to_vertices();
-        let vertex_buffer = device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("Mesh Vertex Buffer"),
-                contents: bytemuck::cast_slice(&vertices),
-                usage: wgpu::BufferUsages::VERTEX,
-            }
-        );
+        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Mesh Vertex Buffer"),
+            contents: bytemuck::cast_slice(&vertices),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
 
         let (index_buffer, index_count) = if cpu.indices.is_empty() {
             (None, vertices.len() as u32)
         } else {
-            let buffer = device.create_buffer_init(
-                &wgpu::util::BufferInitDescriptor {
-                    label: Some("Mesh Index Buffer"),
-                    contents: bytemuck::cast_slice(&cpu.indices),
-                    usage: wgpu::BufferUsages::INDEX,
-                }
-            );
+            let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Mesh Index Buffer"),
+                contents: bytemuck::cast_slice(&cpu.indices),
+                usage: wgpu::BufferUsages::INDEX,
+            });
             (Some(buffer), cpu.indices.len() as u32)
         };
 

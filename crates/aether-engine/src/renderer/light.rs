@@ -48,8 +48,12 @@ pub struct LightingUniforms {
     pub shadow_normal_bias: f32,
     /// Shadow map texture size in pixels (width == height).
     pub shadow_map_size: f32,
-    /// Light-space view-projection for shadow sampling.
-    pub light_view_proj: [[f32; 4]; 4],
+    /// Light-space view-projection matrices for each cascade.
+    pub cascade_view_projs: [[[f32; 4]; 4]; 3],
+    /// Far split distances for each cascade.
+    pub cascade_splits: [f32; 3],
+    /// Number of active cascades.
+    pub cascade_count: u32,
     /// Inverse view-projection matrix for skybox view-ray reconstruction.
     pub inv_view_proj: [[f32; 4]; 4],
     /// Feature toggle: SSAO enabled (0 = off, 1 = on).
@@ -72,7 +76,9 @@ impl Default for LightingUniforms {
             debug_mode: 0,
             shadow_normal_bias: 0.001,
             shadow_map_size: 2048.0,
-            light_view_proj: [[0.0; 4]; 4],
+            cascade_view_projs: [[[0.0; 4]; 4]; 3],
+            cascade_splits: [0.0; 3],
+            cascade_count: 3,
             inv_view_proj: [[0.0; 4]; 4],
             ssao_enabled: 1,
             shadow_enabled: 1,
@@ -96,5 +102,3 @@ pub enum LightType {
     /// Spot light (cone).
     Spot,
 }
-
-

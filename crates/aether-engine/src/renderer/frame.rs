@@ -8,15 +8,19 @@
 //! Adding a pass that needs new data means adding a field here, but the number
 //! of distinct data categories in a deferred renderer is bounded (~4-6 fields).
 
+use crate::ecs::World;
 use crate::renderer::{camera::FlyCamera, extract::RenderBatch, light::LightingUniforms};
+use std::sync::Arc;
 
 /// Read-only per-frame data available to every pass.
 ///
-/// All fields are references — the Scheduler/Launcher owns the data.
+/// Most fields are references — the Scheduler/Launcher owns the data.
+/// `batches` is an `Arc` so the hottest passes can share the extracted batch
+/// list without cloning it every frame.
 /// Passes that don't need a particular field simply ignore it.
 pub struct RenderFrame<'a> {
     /// Render batches extracted from the ECS World; shared by GBufferPass, ShadowPass.
-    pub batches: &'a [RenderBatch],
+    pub batches: Arc<[RenderBatch]>,
     /// Camera state (position, view/proj matrices).
     pub camera: &'a FlyCamera,
     /// Lighting uniforms (directional light, ambient, debug mode).
@@ -27,4 +31,6 @@ pub struct RenderFrame<'a> {
     pub aspect: f32,
     /// Frame delta time in seconds.
     pub delta_time: f32,
+    /// ECS world reference for passes that read scene components (e.g. TerrainPass).
+    pub world: &'a World,
 }

@@ -61,7 +61,10 @@ impl World {
     }
 
     /// Remove components from an entity.
-    pub fn remove<T: hecs::Bundle + 'static>(&mut self, entity: Entity) -> Result<T, hecs::ComponentError> {
+    pub fn remove<T: hecs::Bundle + 'static>(
+        &mut self,
+        entity: Entity,
+    ) -> Result<T, hecs::ComponentError> {
         self.inner.remove::<T>(entity)
     }
 

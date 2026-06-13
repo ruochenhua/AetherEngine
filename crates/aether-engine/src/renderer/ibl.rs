@@ -62,13 +62,19 @@ pub struct IblResources {
 impl IblResources {
     /// Debug: get the raw irradiance texture (for direct write testing).
     #[doc(hidden)]
-    pub fn irradiance_texture(&self) -> &wgpu::Texture { &self._irradiance_texture }
+    pub fn irradiance_texture(&self) -> &wgpu::Texture {
+        &self._irradiance_texture
+    }
     /// Debug: get the raw prefiltered texture.
     #[doc(hidden)]
-    pub fn prefiltered_texture(&self) -> &wgpu::Texture { &self._prefiltered_texture }
+    pub fn prefiltered_texture(&self) -> &wgpu::Texture {
+        &self._prefiltered_texture
+    }
     /// Debug: get the raw BRDF LUT texture.
     #[doc(hidden)]
-    pub fn brdf_lut_texture(&self) -> &wgpu::Texture { &self._brdf_lut_texture }
+    pub fn brdf_lut_texture(&self) -> &wgpu::Texture {
+        &self._brdf_lut_texture
+    }
     /// Generate all IBL resources. Pass `None` for queue in tests.
     pub fn generate(
         device: &wgpu::Device,
@@ -125,17 +131,34 @@ impl IblResources {
 
             // 1. Equirect → Cubemap
             CpuCubemap::equirect_to_cubemap(
-                device, queue, &hdr_view, &hdr_sampler, &env_tex, config.env_size, &cube_mesh,
+                device,
+                queue,
+                &hdr_view,
+                &hdr_sampler,
+                &env_tex,
+                config.env_size,
+                &cube_mesh,
             );
 
             // 2. Irradiance convolution
             CpuCubemap::irradiance_convolution(
-                device, queue, &env_view, &irradiance_tex, config.irradiance_size, &cube_mesh,
+                device,
+                queue,
+                &env_view,
+                &irradiance_tex,
+                config.irradiance_size,
+                &cube_mesh,
             );
 
             // 3. Prefilter (one pass per mip)
             CpuCubemap::prefiltration(
-                device, queue, &env_view, &prefiltered_tex, config.prefilter_size, config.prefilter_mips, &cube_mesh,
+                device,
+                queue,
+                &env_view,
+                &prefiltered_tex,
+                config.prefilter_size,
+                config.prefilter_mips,
+                &cube_mesh,
             );
 
             // 4. BRDF LUT (compute)
@@ -169,11 +192,15 @@ fn load_hdr_texture(
         // Generate a 16×8 magenta/cyan checkerboard for debugging
         let w = 16u32;
         let h = 8u32;
-        let mut data: Vec<u8> = Vec::with_capacity((w * h * 8) as usize);  // Rgba16Float = 8 bytes/pixel
+        let mut data: Vec<u8> = Vec::with_capacity((w * h * 8) as usize); // Rgba16Float = 8 bytes/pixel
         for y in 0..h {
             for x in 0..w {
                 let is_magenta = ((x / 2) + (y / 2)) % 2 == 0;
-                let (r, g, b) = if is_magenta { (1.0f32, 0.0, 1.0) } else { (0.0f32, 1.0, 1.0) };
+                let (r, g, b) = if is_magenta {
+                    (1.0f32, 0.0, 1.0)
+                } else {
+                    (0.0f32, 1.0, 1.0)
+                };
                 for c in [r, g, b, 1.0f32] {
                     data.extend_from_slice(&half::f16::from_f32(c).to_bits().to_le_bytes());
                 }
@@ -225,7 +252,7 @@ fn load_hdr_texture(
         &rgba,
         wgpu::TexelCopyBufferLayout {
             offset: 0,
-            bytes_per_row: Some(8 * w),  // Rgba16Float = 8 bytes/pixel
+            bytes_per_row: Some(8 * w), // Rgba16Float = 8 bytes/pixel
             rows_per_image: Some(h),
         },
         wgpu::Extent3d {
@@ -295,8 +322,7 @@ impl CubeMesh {
             contents: bytemuck::cast_slice(&vertices),
             usage: wgpu::BufferUsages::VERTEX,
         });
-        let indices: [u32; 36] =
-            std::array::from_fn(|i| i as u32);
+        let indices: [u32; 36] = std::array::from_fn(|i| i as u32);
         let index_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Cube IB"),
             contents: bytemuck::cast_slice(&indices),
@@ -322,12 +348,12 @@ fn capture_views() -> [[f32; 16]; 6] {
         .to_cols_array()
     };
     [
-        look_at([0.,0.,0.], [ 1.,0.,0.], [0.,-1.,0.]),  // +X
-        look_at([0.,0.,0.], [-1.,0.,0.], [0.,-1.,0.]),  // -X
-        look_at([0.,0.,0.], [0.,-1.,0.], [0.,0.,-1.]),  // +Y layer ← render -Y view
-        look_at([0.,0.,0.], [0., 1.,0.], [0.,0., 1.]),  // -Y layer ← render +Y view
-        look_at([0.,0.,0.], [0.,0., 1.], [0.,-1.,0.]),  // +Z
-        look_at([0.,0.,0.], [0.,0.,-1.], [0.,-1.,0.]),  // -Z
+        look_at([0., 0., 0.], [1., 0., 0.], [0., -1., 0.]), // +X
+        look_at([0., 0., 0.], [-1., 0., 0.], [0., -1., 0.]), // -X
+        look_at([0., 0., 0.], [0., -1., 0.], [0., 0., -1.]), // +Y layer ← render -Y view
+        look_at([0., 0., 0.], [0., 1., 0.], [0., 0., 1.]),  // -Y layer ← render +Y view
+        look_at([0., 0., 0.], [0., 0., 1.], [0., -1., 0.]), // +Z
+        look_at([0., 0., 0.], [0., 0., -1.], [0., -1., 0.]), // -Z
     ]
 }
 
@@ -338,10 +364,7 @@ fn capture_projection() -> [f32; 16] {
     //   x' = 2*x_gl,      y' = 2*y_gl    (compensate to keep x/w, y/w unchanged)
     let p_gl = glam::Mat4::perspective_rh(90.0f32.to_radians(), 1.0, 0.1, 10.0);
     let correction = glam::Mat4::from_cols_array(&[
-        2.0, 0.0, 0.0, 0.0,
-        0.0, 2.0, 0.0, 0.0,
-        0.0, 0.0, 1.0, 0.0,
-        0.0, 0.0, 1.0, 2.0,
+        2.0, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 2.0,
     ]);
     // correction * p_gl: apply GL projection first, then z-correction
     (correction * p_gl).to_cols_array()
@@ -370,21 +393,18 @@ impl CpuCubemap {
             usage: wgpu::BufferUsages::UNIFORM,
         });
         let (bgl0, bgl1) = Self::bgl_pair(device, wgpu::TextureViewDimension::D2);
-        let pipeline = Self::create_pipeline(
-            device, EQUIRECT_SHADER, &bgl0, &bgl1, "Equirect",
-        );
+        let pipeline = Self::create_pipeline(device, EQUIRECT_SHADER, &bgl0, &bgl1, "Equirect");
 
         let views = capture_views();
         let flips: [[u32; 4]; 6] = [
-            [0, 0, 0, 0],  // +X
-            [0, 0, 0, 0],  // -X
-            [0, 0, 0, 0],  // -Y view
-            [0, 0, 0, 0],  // +Y view
-            [0, 0, 0, 0],  // +Z
-            [0, 0, 0, 0],  // -Z
+            [0, 0, 0, 0], // +X
+            [0, 0, 0, 0], // -X
+            [0, 0, 0, 0], // -Y view
+            [0, 0, 0, 0], // +Y view
+            [0, 0, 0, 0], // +Z
+            [0, 0, 0, 0], // -Z
         ];
-        let mut encoder =
-            device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         for face in 0u32..6 {
             let view_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: None,
@@ -478,9 +498,7 @@ impl CpuCubemap {
             usage: wgpu::BufferUsages::UNIFORM,
         });
         let (bgl0, bgl1) = Self::bgl_pair(device, wgpu::TextureViewDimension::Cube);
-        let pipeline = Self::create_pipeline(
-            device, IRRADIANCE_SHADER, &bgl0, &bgl1, "Irradiance",
-        );
+        let pipeline = Self::create_pipeline(device, IRRADIANCE_SHADER, &bgl0, &bgl1, "Irradiance");
         let env_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
@@ -493,8 +511,7 @@ impl CpuCubemap {
         });
 
         let views = capture_views();
-        let mut encoder =
-            device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         for face in 0u32..6 {
             let view_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: None,
@@ -800,11 +817,9 @@ impl CpuCubemap {
                 ),
             }],
         });
-        let mut encoder =
-            device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         {
-            let mut cpass =
-                encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
+            let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
             cpass.set_pipeline(&pipeline);
             cpass.set_bind_group(0, &bg, &[]);
             cpass.dispatch_workgroups(size / 8, size / 8, 1);
@@ -1192,10 +1207,9 @@ mod tests {
 
     fn headless_device_and_queue() -> (wgpu::Device, wgpu::Queue) {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter = pollster::block_on(
-            instance.request_adapter(&wgpu::RequestAdapterOptions::default()),
-        )
-        .expect("need adapter");
+        let adapter =
+            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+                .expect("need adapter");
         pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
             .expect("need device")
     }

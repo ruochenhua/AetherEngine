@@ -65,22 +65,20 @@ impl Pass for ToneMappingPass {
         self.input_handle = Some(resources.handle::<BloomResult>("bloom_result"));
         let input_view = resources.get(self.input_handle.unwrap());
 
-        self.texture_bind_group = Some(device.create_bind_group(
-            &wgpu::BindGroupDescriptor {
-                label: Some("ToneMapping Texture Bind Group"),
-                layout: &self.texture_bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(input_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&self.sampler),
-                    },
-                ],
-            },
-        ));
+        self.texture_bind_group = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("ToneMapping Texture Bind Group"),
+            layout: &self.texture_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(input_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+            ],
+        }));
     }
 
     fn execute(
@@ -89,7 +87,9 @@ impl Pass for ToneMappingPass {
         resources: &ResourceTable,
         _surface_view: &wgpu::TextureView,
     ) {
-        let texture_bg = self.texture_bind_group.as_ref()
+        let texture_bg = self
+            .texture_bind_group
+            .as_ref()
             .expect("ToneMappingPass: resolve not called");
         let fxaa_view = resources.get(resources.handle::<FxaaInput>("fxaa_input"));
 
@@ -229,7 +229,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("ToneMapping Pipeline Layout"),
-            bind_group_layouts: &[Some(&texture_bind_group_layout), Some(&uniform_bind_group_layout)],
+            bind_group_layouts: &[
+                Some(&texture_bind_group_layout),
+                Some(&uniform_bind_group_layout),
+            ],
             immediate_size: 0,
         });
 
@@ -348,8 +351,12 @@ mod tests {
 
     fn headless_device() -> wgpu::Device {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())).expect("need adapter");
-        let (device, _) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).expect("need device");
+        let adapter =
+            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+                .expect("need adapter");
+        let (device, _) =
+            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
+                .expect("need device");
         device
     }
 

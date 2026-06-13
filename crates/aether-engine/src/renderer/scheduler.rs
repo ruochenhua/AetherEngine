@@ -5,10 +5,11 @@
 //! passes each frame.
 
 use crate::renderer::frame::RenderFrame;
+use crate::renderer::gpu_timer::GpuTimer;
 use crate::renderer::pass::Pass;
-use crate::renderer::pipeline_builder::PipelineBuilder;
 #[cfg(test)]
 use crate::renderer::pipeline_builder::compute_topological_order;
+use crate::renderer::pipeline_builder::PipelineBuilder;
 use crate::renderer::resource_table::ResourceTable;
 use std::collections::HashMap;
 
@@ -31,13 +32,36 @@ impl Scheduler {
     }
 
     /// Execute all passes in topological order.
+    ///
+    /// Passes whose `should_run(frame)` returns `false` are skipped.
+    /// If `timer` is provided, timestamp queries are written around the frame
+    /// and each pass.
     pub fn execute_all(
         &self,
         encoder: &mut wgpu::CommandEncoder,
         surface_view: &wgpu::TextureView,
+        frame: &RenderFrame,
+        timer: Option<&mut GpuTimer>,
     ) {
-        for pass in &self.passes {
-            pass.execute(encoder, &self.resource_table, surface_view);
+        if let Some(timer) = timer {
+            encoder.write_timestamp(timer.query_set(), timer.frame_start_index());
+
+            for (i, pass) in self.passes.iter().enumerate() {
+                if pass.should_run(frame) {
+                    encoder.write_timestamp(timer.query_set(), timer.pass_start_index(i));
+                    pass.execute(encoder, &self.resource_table, surface_view);
+                    encoder.write_timestamp(timer.query_set(), timer.pass_end_index(i));
+                }
+            }
+
+            encoder.write_timestamp(timer.query_set(), timer.frame_end_index());
+            timer.resolve(encoder);
+        } else {
+            for pass in &self.passes {
+                if pass.should_run(frame) {
+                    pass.execute(encoder, &self.resource_table, surface_view);
+                }
+            }
         }
     }
 
@@ -46,170 +70,136 @@ impl Scheduler {
         self.passes.len()
     }
 
+    /// Return the names of all scheduled passes in execution order.
+    pub fn pass_names(&self) -> Vec<String> {
+        self.passes.iter().map(|p| p.name().to_string()).collect()
+    }
+
+    /// Find the first pass of type `T` and return a mutable reference.
+    fn pass_mut<T: 'static>(&mut self) -> Option<&mut T> {
+        self.passes
+            .iter_mut()
+            .find_map(|p| p.as_any_mut().downcast_mut::<T>())
+    }
+
     /// Set screen size on the SSAOPass (for texel-accurate blur).
     pub fn set_ssao_screen_size(&mut self, width: u32, height: u32) {
-        for pass in &mut self.passes {
-            if pass.name() == "SSAO" {
-                if let Some(ssao) = pass.as_any_mut().downcast_mut::<crate::renderer::passes::ssao::SSAOPass>() {
-                    ssao.set_screen_size(width, height);
-                }
-                break;
-            }
+        if let Some(ssao) = self.pass_mut::<crate::renderer::passes::ssao::SSAOPass>() {
+            ssao.set_screen_size(width, height);
         }
     }
 
     /// Set dynamic debug lines on the DebugLinePass.
     pub fn set_dynamic_lines(&mut self, lines: Vec<crate::renderer::passes::debug::DebugVertex>) {
-        for pass in &mut self.passes {
-            if pass.name() == "DebugLine" {
-                if let Some(debug) = pass.as_any_mut().downcast_mut::<crate::renderer::passes::debug::DebugLinePass>() {
-                    debug.set_dynamic_lines(lines);
-                }
-                break;
-            }
+        if let Some(debug) = self.pass_mut::<crate::renderer::passes::debug::DebugLinePass>() {
+            debug.set_dynamic_lines(lines);
         }
     }
 
     /// Set screen size on the AOBlurPass.
     pub fn set_ao_blur_screen_size(&mut self, width: u32, height: u32) {
-        for pass in &mut self.passes {
-            if pass.name() == "AOBlur" {
-                if let Some(blur) = pass.as_any_mut().downcast_mut::<crate::renderer::passes::ao_blur::AOBlurPass>() {
-                    blur.set_screen_size(width, height);
-                }
-                break;
-            }
+        if let Some(blur) = self.pass_mut::<crate::renderer::passes::ao_blur::AOBlurPass>() {
+            blur.set_screen_size(width, height);
         }
     }
 
     /// Set screen size on the SSRPass (for textureLoad pixel coords).
     pub fn set_ssr_screen_size(&mut self, width: u32, height: u32) {
-        for pass in &mut self.passes {
-            if pass.name() == "SSR" {
-                if let Some(ssr) = pass.as_any_mut().downcast_mut::<crate::renderer::passes::ssr::SSRPass>() {
-                    ssr.set_screen_size(width, height);
-                }
-                break;
-            }
+        if let Some(ssr) = self.pass_mut::<crate::renderer::passes::ssr::SSRPass>() {
+            ssr.set_screen_size(width, height);
         }
     }
 
     /// Set the debug visualization mode on the LightingPass.
     pub fn set_debug_mode(&mut self, mode: u32) {
-        for pass in &mut self.passes {
-            if pass.name() == "Lighting" {
-                if let Some(lp) = pass.as_any_mut().downcast_mut::<crate::renderer::passes::lighting::LightingPass>() {
-                    lp.set_debug_mode(mode);
-                }
-                break;
-            }
+        if let Some(lp) = self.pass_mut::<crate::renderer::passes::lighting::LightingPass>() {
+            lp.set_debug_mode(mode);
         }
     }
 
     /// Set the SSR debug visualization mode.
     pub fn set_ssr_debug_mode(&mut self, mode: u32) {
-        for pass in &mut self.passes {
-            if pass.name() == "SSR" {
-                if let Some(ssr) = pass.as_any_mut().downcast_mut::<crate::renderer::passes::ssr::SSRPass>() {
-                    ssr.set_debug_mode(mode);
-                }
-                break;
-            }
+        if let Some(ssr) = self.pass_mut::<crate::renderer::passes::ssr::SSRPass>() {
+            ssr.set_debug_mode(mode);
         }
     }
 
     /// Enable or disable SSR.
     pub fn set_ssr_enabled(&mut self, enabled: bool) {
-        for pass in &mut self.passes {
-            if pass.name() == "SSR" {
-                if let Some(ssr) = pass.as_any_mut().downcast_mut::<crate::renderer::passes::ssr::SSRPass>() {
-                    ssr.set_enabled(enabled);
-                }
-                break;
-            }
+        if let Some(ssr) = self.pass_mut::<crate::renderer::passes::ssr::SSRPass>() {
+            ssr.set_enabled(enabled);
         }
     }
 
     /// Set SSAO parameters (radius, bias, intensity).
     pub fn set_ssao_params(&mut self, radius: f32, bias: f32, intensity: f32) {
-        for pass in &mut self.passes {
-            if pass.name() == "SSAO" {
-                if let Some(ssao) = pass.as_any_mut().downcast_mut::<crate::renderer::passes::ssao::SSAOPass>() {
-                    ssao.set_radius(radius);
-                    ssao.set_bias(bias);
-                    ssao.set_intensity(intensity);
-                }
-                break;
-            }
+        if let Some(ssao) = self.pass_mut::<crate::renderer::passes::ssao::SSAOPass>() {
+            ssao.set_radius(radius);
+            ssao.set_bias(bias);
+            ssao.set_intensity(intensity);
         }
     }
 
     /// Toggle rendering features in the LightingPass.
     pub fn set_feature_flags(&mut self, ssao: bool, shadow: bool, ibl: bool) {
-        for pass in &mut self.passes {
-            if pass.name() == "Lighting" {
-                if let Some(lp) = pass.as_any_mut().downcast_mut::<crate::renderer::passes::lighting::LightingPass>() {
-                    lp.set_ssao_enabled(ssao);
-                    lp.set_shadow_enabled(shadow);
-                    lp.set_ibl_enabled(ibl);
-                }
-                break;
-            }
+        if let Some(lp) = self.pass_mut::<crate::renderer::passes::lighting::LightingPass>() {
+            lp.set_ssao_enabled(ssao);
+            lp.set_shadow_enabled(shadow);
+            lp.set_ibl_enabled(ibl);
         }
     }
 
     /// Set tone mapping mode on the ToneMappingPass.
-    pub fn set_tone_mapping_mode(&mut self, mode: crate::renderer::passes::tone_mapping::ToneMappingMode, queue: &wgpu::Queue) {
-        for pass in &mut self.passes {
-            if pass.name() == "ToneMapping" {
-                if let Some(tmp) = pass.as_any_mut().downcast_mut::<crate::renderer::passes::tone_mapping::ToneMappingPass>() {
-                    tmp.set_mode(mode);
-                    tmp.update_uniforms(queue);
-                }
-                break;
-            }
+    pub fn set_tone_mapping_mode(
+        &mut self,
+        mode: crate::renderer::passes::tone_mapping::ToneMappingMode,
+        queue: &wgpu::Queue,
+    ) {
+        if let Some(tmp) = self.pass_mut::<crate::renderer::passes::tone_mapping::ToneMappingPass>()
+        {
+            tmp.set_mode(mode);
+            tmp.update_uniforms(queue);
         }
     }
 
     /// Set bloom parameters.
-    pub fn set_bloom_params(&mut self, enabled: bool, threshold: f32, intensity: f32, bloom_intensity: f32, queue: &wgpu::Queue) {
-        for pass in &mut self.passes {
-            if pass.name() == "Bloom" {
-                if let Some(bloom) = pass.as_any_mut().downcast_mut::<crate::renderer::passes::bloom::BloomPass>() {
-                    bloom.set_enabled(enabled);
-                    bloom.set_threshold(threshold);
-                    bloom.set_intensity(intensity);
-                    bloom.set_bloom_intensity(bloom_intensity);
-                    bloom.update_uniforms(queue);
-                }
-                break;
-            }
+    pub fn set_bloom_params(
+        &mut self,
+        enabled: bool,
+        threshold: f32,
+        intensity: f32,
+        bloom_intensity: f32,
+        queue: &wgpu::Queue,
+    ) {
+        if let Some(bloom) = self.pass_mut::<crate::renderer::passes::bloom::BloomPass>() {
+            bloom.set_enabled(enabled);
+            bloom.set_threshold(threshold);
+            bloom.set_intensity(intensity);
+            bloom.set_bloom_intensity(bloom_intensity);
+            bloom.update_uniforms(queue);
         }
     }
 
     /// Set bloom screen size (call before rebuild).
     pub fn set_bloom_screen_size(&mut self, width: u32, height: u32) {
-        for pass in &mut self.passes {
-            if pass.name() == "Bloom" {
-                if let Some(bloom) = pass.as_any_mut().downcast_mut::<crate::renderer::passes::bloom::BloomPass>() {
-                    bloom.set_screen_size(width, height);
-                }
-                break;
-            }
+        if let Some(bloom) = self.pass_mut::<crate::renderer::passes::bloom::BloomPass>() {
+            bloom.set_screen_size(width, height);
         }
     }
 
     /// Set FXAA parameters.
-    pub fn set_fxaa_params(&mut self, enabled: bool, quality: crate::renderer::passes::fxaa::FxaaQuality, queue: &wgpu::Queue) {
-        for pass in &mut self.passes {
-            if pass.name() == "FXAA" {
-                if let Some(fxaa) = pass.as_any_mut().downcast_mut::<crate::renderer::passes::fxaa::FXAAPass>() {
-                    fxaa.set_enabled(enabled);
-                    fxaa.set_quality(quality);
-                    fxaa.update_uniforms_with_queue(queue);
-                }
-                break;
-            }
+    pub fn set_fxaa_params(
+        &mut self,
+        enabled: bool,
+        quality: crate::renderer::passes::fxaa::FxaaQuality,
+        edge_threshold: Option<f32>,
+        queue: &wgpu::Queue,
+    ) {
+        if let Some(fxaa) = self.pass_mut::<crate::renderer::passes::fxaa::FXAAPass>() {
+            fxaa.set_enabled(enabled);
+            fxaa.set_quality(quality);
+            fxaa.set_edge_threshold(edge_threshold);
+            fxaa.update_uniforms_with_queue(queue);
         }
     }
 
@@ -232,9 +222,12 @@ impl Scheduler {
                 let format = write_slot.format.expect("Write slot must have format");
                 let tex_width = write_slot.width.unwrap_or(width);
                 let tex_height = write_slot.height.unwrap_or(height);
-                let texture = PipelineBuilder::create_transient_texture(device, format, tex_width, tex_height);
+                let layers = write_slot.layers.unwrap_or(1);
+                let texture = PipelineBuilder::create_transient_texture(
+                    device, format, tex_width, tex_height, layers,
+                );
                 let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-                new_table.allocate(write_slot.type_id, write_slot.name, view);
+                new_table.allocate_with_texture(write_slot.type_id, write_slot.name, texture, view);
             }
         }
 
@@ -267,30 +260,49 @@ mod tests {
 
     impl MockPass {
         fn new(name: &'static str, order_log: std::sync::Arc<Mutex<Vec<String>>>) -> Self {
-            Self { name, reads: Vec::new(), writes: Vec::new(), order_log }
+            Self {
+                name,
+                reads: Vec::new(),
+                writes: Vec::new(),
+                order_log,
+            }
         }
 
         fn with_write<T: ResourceTag>(
-            mut self, name: &'static str, format: wgpu::TextureFormat,
+            mut self,
+            name: &'static str,
+            format: wgpu::TextureFormat,
         ) -> Self {
             self.writes.push(ResSlot {
-                type_id: TypeId::of::<T>(), name, format: Some(format), kind: SlotKind::Write,
-                width: None, height: None,
+                type_id: TypeId::of::<T>(),
+                name,
+                format: Some(format),
+                kind: SlotKind::Write,
+                width: None,
+                height: None,
+                layers: None,
             });
             self
         }
 
         fn with_read<T: ResourceTag>(mut self, name: &'static str) -> Self {
             self.reads.push(ResSlot {
-                type_id: TypeId::of::<T>(), name, format: None, kind: SlotKind::Read,
-                width: None, height: None,
+                type_id: TypeId::of::<T>(),
+                name,
+                format: None,
+                kind: SlotKind::Read,
+                width: None,
+                height: None,
+                layers: None,
             });
             self
         }
     }
 
     impl Pass for MockPass {
-        fn name(&self) -> &str { self.name }
+        fn name(&self) -> &str {
+            self.name
+        }
         fn signature(&self) -> PassSignature {
             PassSignature {
                 name: self.name,
@@ -301,7 +313,12 @@ mod tests {
         fn init(_device: &wgpu::Device) -> Self {
             panic!("MockPass does not support init()")
         }
-        fn execute(&self, _encoder: &mut wgpu::CommandEncoder, _resources: &ResourceTable, _surface_view: &wgpu::TextureView) {
+        fn execute(
+            &self,
+            _encoder: &mut wgpu::CommandEncoder,
+            _resources: &ResourceTable,
+            _surface_view: &wgpu::TextureView,
+        ) {
             self.order_log.lock().unwrap().push(self.name.to_string());
         }
         fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
@@ -322,77 +339,91 @@ mod tests {
         }
     }
 
-    #[test] fn single_pass_executes() {
+    #[test]
+    fn single_pass_executes() {
         let log = std::sync::Arc::new(Mutex::new(Vec::new()));
         let pass = MockPass::new("Single", log.clone());
         let s = build_mock_scheduler(vec![pass]);
         assert_eq!(s.passes.len(), 1);
     }
 
-    #[test] fn dependency_order_before_dependent() {
+    #[test]
+    fn dependency_order_before_dependent() {
         let log = std::sync::Arc::new(Mutex::new(Vec::new()));
         let a = MockPass::new("Producer", log.clone())
             .with_write::<GPosition>("pos", wgpu::TextureFormat::Rgba16Float);
-        let b = MockPass::new("Consumer", log.clone())
-            .with_read::<GPosition>("pos");
+        let b = MockPass::new("Consumer", log.clone()).with_read::<GPosition>("pos");
         let passes = vec![a, b];
-        let boxed: Vec<Box<dyn Pass>> = passes.into_iter().map(|p| Box::new(p) as Box<dyn Pass>).collect();
+        let boxed: Vec<Box<dyn Pass>> = passes
+            .into_iter()
+            .map(|p| Box::new(p) as Box<dyn Pass>)
+            .collect();
         let order = compute_topological_order(&boxed);
         assert_eq!(boxed[order[0]].name(), "Producer");
         assert_eq!(boxed[order[1]].name(), "Consumer");
     }
 
-    #[test] fn three_pass_chain() {
+    #[test]
+    fn three_pass_chain() {
         let log = std::sync::Arc::new(Mutex::new(Vec::new()));
         let a = MockPass::new("A", log.clone())
             .with_write::<GPosition>("pos", wgpu::TextureFormat::Rgba16Float);
         let b = MockPass::new("B", log.clone())
             .with_read::<GPosition>("pos")
             .with_write::<GNormal>("norm", wgpu::TextureFormat::Rgba16Float);
-        let c = MockPass::new("C", log.clone())
-            .with_read::<GNormal>("norm");
+        let c = MockPass::new("C", log.clone()).with_read::<GNormal>("norm");
         let passes = vec![a, b, c];
-        let boxed: Vec<Box<dyn Pass>> = passes.into_iter().map(|p| Box::new(p) as Box<dyn Pass>).collect();
+        let boxed: Vec<Box<dyn Pass>> = passes
+            .into_iter()
+            .map(|p| Box::new(p) as Box<dyn Pass>)
+            .collect();
         let order = compute_topological_order(&boxed);
         assert_eq!(boxed[order[0]].name(), "A");
         assert_eq!(boxed[order[1]].name(), "B");
         assert_eq!(boxed[order[2]].name(), "C");
     }
 
-    #[test] fn independent_passes_keep_registration_order() {
+    #[test]
+    fn independent_passes_keep_registration_order() {
         let log = std::sync::Arc::new(Mutex::new(Vec::new()));
         let a = MockPass::new("First", log.clone())
             .with_write::<GPosition>("pos", wgpu::TextureFormat::Rgba16Float);
         let b = MockPass::new("Second", log.clone())
             .with_write::<GNormal>("norm", wgpu::TextureFormat::Rgba16Float);
         let passes = vec![a, b];
-        let boxed: Vec<Box<dyn Pass>> = passes.into_iter().map(|p| Box::new(p) as Box<dyn Pass>).collect();
+        let boxed: Vec<Box<dyn Pass>> = passes
+            .into_iter()
+            .map(|p| Box::new(p) as Box<dyn Pass>)
+            .collect();
         let order = compute_topological_order(&boxed);
         assert_eq!(boxed[order[0]].name(), "First");
         assert_eq!(boxed[order[1]].name(), "Second");
     }
 
-    #[test] #[should_panic(expected = "Missing producer")]
+    #[test]
+    #[should_panic(expected = "Missing producer")]
     fn missing_producer_panics() {
         let log = std::sync::Arc::new(Mutex::new(Vec::new()));
-        let pass = MockPass::new("Consumer", log.clone())
-            .with_read::<GPosition>("nonexistent");
+        let pass = MockPass::new("Consumer", log.clone()).with_read::<GPosition>("nonexistent");
         let boxed: Vec<Box<dyn Pass>> = vec![Box::new(pass)];
         compute_topological_order(&boxed);
     }
 
-    #[test] #[should_panic(expected = "Resource conflict")]
-    fn duplicate_producer_panics() {
+    #[test]
+    fn sequential_writers_are_ordered() {
         let log = std::sync::Arc::new(Mutex::new(Vec::new()));
         let a = MockPass::new("A", log.clone())
             .with_write::<GPosition>("same", wgpu::TextureFormat::Rgba16Float);
         let b = MockPass::new("B", log.clone())
             .with_write::<GPosition>("same", wgpu::TextureFormat::Rgba16Float);
         let boxed: Vec<Box<dyn Pass>> = vec![Box::new(a), Box::new(b)];
-        compute_topological_order(&boxed);
+        let order = compute_topological_order(&boxed);
+        assert_eq!(boxed[order[0]].name(), "A");
+        assert_eq!(boxed[order[1]].name(), "B");
     }
 
-    #[test] #[should_panic(expected = "Dependency cycle")]
+    #[test]
+    #[should_panic(expected = "Dependency cycle")]
     fn cycle_detection() {
         let log = std::sync::Arc::new(Mutex::new(Vec::new()));
         let a = MockPass::new("A", log.clone())
@@ -405,7 +436,8 @@ mod tests {
         compute_topological_order(&boxed);
     }
 
-    #[test] fn pass_with_no_dependencies_works() {
+    #[test]
+    fn pass_with_no_dependencies_works() {
         let log = std::sync::Arc::new(Mutex::new(Vec::new()));
         let pass = MockPass::new("Orphan", log.clone())
             .with_write::<Swapchain>("output", wgpu::TextureFormat::Bgra8Unorm);
@@ -414,7 +446,8 @@ mod tests {
         assert_eq!(order, vec![0]);
     }
 
-    #[test] fn rebuild_reallocates_textures() {
+    #[test]
+    fn rebuild_reallocates_textures() {
         let device = headless_device();
         let pass_a = ShadowPass::new(&device);
         let pass_b = GBufferPass::new(&device);
@@ -436,7 +469,8 @@ mod tests {
         assert!(table2.len() >= 7);
     }
 
-    #[test] fn build_all_passes_works() {
+    #[test]
+    fn build_all_passes_works() {
         let device = headless_device();
         let sf = wgpu::TextureFormat::Bgra8UnormSrgb;
         let df = wgpu::TextureFormat::Depth32Float;
@@ -456,14 +490,12 @@ mod tests {
 
     fn headless_device() -> wgpu::Device {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter = pollster::block_on(
-            instance.request_adapter(&wgpu::RequestAdapterOptions::default()),
-        )
-        .expect("need adapter");
-        let (device, _queue) = pollster::block_on(
-            adapter.request_device(&wgpu::DeviceDescriptor::default()),
-        )
-        .expect("need device");
+        let adapter =
+            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+                .expect("need adapter");
+        let (device, _queue) =
+            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
+                .expect("need device");
         device
     }
 }

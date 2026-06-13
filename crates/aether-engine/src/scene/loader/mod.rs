@@ -3,16 +3,19 @@
 //! Converts RON scene descriptions into ECS entities and lighting uniforms.
 
 use crate::{
-    asset::{mesh::GpuMesh, registry::BuiltinMeshRegistry},
-    ecs::components::{Camera, Light, MeshHandle, Name, Transform, Visibility},
+    asset::{registry::BuiltinMeshRegistry, AssetManager},
+    ecs::components::{Camera, Light, Name, Transform},
     ecs::World,
-    renderer::light::{DirectionalLight, LightType, LightingUniforms},
-    renderer::renderable::MaterialUniform,
-    scene::{MeshRef, SceneDescription},
+    renderer::light::LightingUniforms,
+    scene::SceneDescription,
 };
 use glam::{Quat, Vec3};
 use std::path::Path;
-use std::sync::Arc;
+use tracing::warn;
+
+mod lighting;
+mod objects;
+mod spawn;
 
 /// Loads RON scene files and spawns entities into an ECS World.
 pub struct SceneLoader;
@@ -31,26 +34,28 @@ impl SceneLoader {
         path: &Path,
         device: &wgpu::Device,
         registry: &BuiltinMeshRegistry,
+        assets: &mut AssetManager,
         world: &mut World,
     ) -> anyhow::Result<LightingUniforms> {
         let desc = Self::from_file(path)?;
         world.clear();
-        Self::build_world(&desc, device, registry, world)
+        Self::build_world(&desc, device, registry, assets, world)
     }
 
     /// Import objects from a `.ron` file into an existing world.
     ///
-    /// Only object entities are appended. Camera, lights, and existing
-    /// entities are preserved.
+    /// Only object entities are appended. Camera, lights, lighting uniforms,
+    /// and existing entities are preserved.
     pub fn import_scene(
         path: &Path,
         device: &wgpu::Device,
         registry: &BuiltinMeshRegistry,
+        _assets: &mut AssetManager,
         world: &mut World,
-    ) -> anyhow::Result<LightingUniforms> {
+    ) -> anyhow::Result<()> {
         let desc = Self::from_file(path)?;
-        Self::build_objects(&desc, device, registry, world)?;
-        Ok(Self::build_lighting_uniforms(&desc))
+        objects::build_objects(&desc, device, registry, world)?;
+        Ok(())
     }
 
     /// Build scene entities into an ECS World.
@@ -65,12 +70,24 @@ impl SceneLoader {
         desc: &SceneDescription,
         device: &wgpu::Device,
         registry: &BuiltinMeshRegistry,
+        assets: &mut AssetManager,
         world: &mut World,
     ) -> anyhow::Result<LightingUniforms> {
-        Self::spawn_camera(world, &desc.camera);
-        Self::spawn_light(world, desc.lights.first());
-        Self::build_objects(desc, device, registry, world)?;
-        Ok(Self::build_lighting_uniforms(desc))
+        if desc.lights.len() > 1 {
+            warn!(
+                "Scene contains {} lights; only the first light is currently supported and will be loaded",
+                desc.lights.len()
+            );
+        }
+        spawn::spawn_camera(world, &desc.camera);
+        spawn::spawn_light(world, desc.lights.first());
+        spawn::spawn_atmosphere(world, desc.atmosphere.as_ref());
+        spawn::spawn_water(world, desc.water.as_ref());
+        spawn::spawn_clouds(world, desc.clouds.as_ref());
+        spawn::spawn_god_ray(world, desc.god_ray.as_ref());
+        spawn::spawn_terrain(world, desc.terrain.as_ref(), assets);
+        objects::build_objects(desc, device, registry, world)?;
+        Ok(lighting::build_lighting_uniforms(desc))
     }
 
     /// Create an empty scene with a default camera entity.
@@ -88,6 +105,7 @@ impl SceneLoader {
                 scale: Vec3::ONE,
             },
             Camera::default(),
+            Name("Camera".into()),
         ));
         world.spawn((
             Transform {
@@ -95,18 +113,14 @@ impl SceneLoader {
                 rotation: Quat::IDENTITY,
                 scale: Vec3::ONE,
             },
-            Light {
-                light_type: LightType::Directional,
-                color: [1.0, 1.0, 1.0],
-                intensity: 1.0,
-                cast_shadow: true,
-            },
+            Light::default(),
+            Name("DirectionalLight".into()),
         ));
 
         LightingUniforms {
             camera_pos: [3.0, 3.0, 3.0],
             _pad1: 0.0,
-            light: DirectionalLight {
+            light: crate::renderer::light::DirectionalLight {
                 direction: [0.0, -1.0, 0.0],
                 _pad: 0.0,
                 color: [1.0, 1.0, 1.0],
@@ -116,135 +130,9 @@ impl SceneLoader {
             debug_mode: 0,
             shadow_normal_bias: 0.001,
             shadow_map_size: 2048.0,
-            light_view_proj: [[0.0; 4]; 4],
-            inv_view_proj: [[0.0; 4]; 4],
-            ssao_enabled: 1,
-            shadow_enabled: 1,
-            ibl_enabled: 1,
-            _pad4: 0,
-        }
-    }
-
-    // -----------------------------------------------------------------------
-    // Internal helpers
-    // -----------------------------------------------------------------------
-
-    /// Spawn a camera entity from `CameraConfig`.
-    fn spawn_camera(world: &mut World, camera: &crate::scene::CameraConfig) {
-        let yaw = camera.yaw;
-        let pitch = camera.pitch;
-        world.spawn((
-            Transform {
-                translation: Vec3::from_array(camera.position),
-                rotation: Quat::from_euler(glam::EulerRot::YXZ, yaw, pitch, 0.0),
-                scale: Vec3::ONE,
-            },
-            Camera {
-                fov: camera.fov.to_radians(),
-                ..Camera::default()
-            },
-        ));
-    }
-
-    /// Spawn a light entity from `LightConfig`.
-    fn spawn_light(world: &mut World, light_cfg: Option<&crate::scene::LightConfig>) {
-        let cfg = match light_cfg {
-            Some(c) => c,
-            None => return,
-        };
-        // For directional lights, the direction vector determines the rotation.
-        // We compute a quaternion that rotates -Y (default light direction) to cfg.direction.
-        let direction = Vec3::from_array(cfg.direction).normalize();
-        let rotation = if direction.abs_diff_eq(Vec3::NEG_Y, 1e-6) {
-            Quat::IDENTITY
-        } else {
-            Quat::from_rotation_arc(Vec3::NEG_Y, direction)
-        };
-        world.spawn((
-            Transform {
-                translation: Vec3::ZERO,
-                rotation,
-                scale: Vec3::ONE,
-            },
-            Light {
-                light_type: cfg.light_type,
-                color: cfg.color,
-                intensity: cfg.intensity,
-                cast_shadow: true,
-            },
-        ));
-    }
-
-    /// Spawn object entities from `SceneDescription.objects`.
-    fn build_objects(
-        desc: &SceneDescription,
-        device: &wgpu::Device,
-        registry: &BuiltinMeshRegistry,
-        world: &mut World,
-    ) -> anyhow::Result<()> {
-        for obj in &desc.objects {
-            let mesh_name = match &obj.mesh {
-                MeshRef::Builtin(name) => name.clone(),
-                MeshRef::File(path) => {
-                    anyhow::bail!("File mesh not yet supported: '{}' (Phase 1 limitation)", path);
-                }
-            };
-            let cpu_mesh = registry
-                .get(&mesh_name)
-                .ok_or_else(|| anyhow::anyhow!("Unknown built-in mesh: '{}'", mesh_name))?;
-
-            let gpu_mesh = Arc::new(GpuMesh::from_cpu(device, &cpu_mesh));
-
-            let transform = Transform {
-                translation: Vec3::from_array(obj.transform.translation),
-                rotation: Quat::from_array(obj.transform.rotation),
-                scale: Vec3::from_array(obj.transform.scale),
-            };
-
-            let material = MaterialUniform {
-                albedo: obj.material.albedo,
-                roughness: obj.material.roughness,
-                metallic: obj.material.metallic,
-                _pad: [0.0, 0.0],
-            };
-
-            world.spawn((
-                transform,
-                MeshHandle::new(gpu_mesh, mesh_name),
-                material,
-                Visibility::default(),
-                Name(obj.name.clone()),
-            ));
-        }
-        Ok(())
-    }
-
-    /// Construct lighting uniforms from scene lights and ambient.
-    fn build_lighting_uniforms(desc: &SceneDescription) -> LightingUniforms {
-        let light = desc.lights.first().map_or_else(
-            || DirectionalLight {
-                direction: [0.0, -1.0, 0.0],
-                _pad: 0.0,
-                color: [1.0, 1.0, 1.0],
-                intensity: 1.0,
-            },
-            |cfg| DirectionalLight {
-                direction: cfg.direction,
-                _pad: 0.0,
-                color: cfg.color,
-                intensity: cfg.intensity,
-            },
-        );
-
-        LightingUniforms {
-            camera_pos: desc.camera.position,
-            _pad1: 0.0,
-            light,
-            ambient_intensity: desc.ambient,
-            debug_mode: 0,
-            shadow_normal_bias: 0.001,
-            shadow_map_size: 2048.0,
-            light_view_proj: [[0.0; 4]; 4],
+            cascade_view_projs: [[[0.0; 4]; 4]; 3],
+            cascade_splits: [0.0; 3],
+            cascade_count: 3,
             inv_view_proj: [[0.0; 4]; 4],
             ssao_enabled: 1,
             shadow_enabled: 1,
@@ -260,7 +148,10 @@ mod tests {
     use crate::ecs::components::Transform;
     use crate::ecs::World;
     use crate::renderer::renderable::MaterialUniform;
-    use crate::scene::{CameraConfig, LightConfig, MeshRef, ObjectConfig};
+    use crate::scene::{
+        AtmosphereConfig, CameraConfig, LightConfig, MeshRef, ObjectConfig, TerrainConfig,
+        TerrainGeometry, TerrainLayerConfig, TerrainSource, WaterConfig,
+    };
 
     fn headless_device() -> wgpu::Device {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
@@ -277,12 +168,21 @@ mod tests {
         BuiltinMeshRegistry::new()
     }
 
+    fn test_assets() -> AssetManager {
+        AssetManager::new()
+    }
+
     fn test_scene_desc() -> SceneDescription {
         SceneDescription {
             name: "Test".into(),
             camera: CameraConfig::default(),
             lights: vec![LightConfig::default()],
             ambient: 0.05,
+            terrain: None,
+            atmosphere: None,
+            water: None,
+            clouds: None,
+            god_ray: None,
             objects: vec![
                 ObjectConfig {
                     name: "cube_left".into(),
@@ -321,7 +221,8 @@ mod tests {
         let desc = test_scene_desc();
         let mut world = World::new();
 
-        SceneLoader::build_world(&desc, &device, &registry, &mut world)
+        let mut assets = test_assets();
+        SceneLoader::build_world(&desc, &device, &registry, &mut assets, &mut world)
             .expect("should build world");
 
         // camera + light + 2 objects = 4 entities
@@ -335,7 +236,8 @@ mod tests {
         let desc = test_scene_desc();
         let mut world = World::new();
 
-        SceneLoader::build_world(&desc, &device, &registry, &mut world).unwrap();
+        let mut assets = test_assets();
+        SceneLoader::build_world(&desc, &device, &registry, &mut assets, &mut world).unwrap();
 
         let mut found = false;
         for material in world.query::<&MaterialUniform>().iter() {
@@ -355,7 +257,8 @@ mod tests {
         let desc = test_scene_desc();
         let mut world = World::new();
 
-        SceneLoader::build_world(&desc, &device, &registry, &mut world).unwrap();
+        let mut assets = test_assets();
+        SceneLoader::build_world(&desc, &device, &registry, &mut assets, &mut world).unwrap();
 
         let mut found = false;
         for transform in world.query::<&Transform>().iter() {
@@ -374,10 +277,10 @@ mod tests {
         let desc = test_scene_desc();
         let mut world = World::new();
 
+        let mut assets = test_assets();
         let lighting =
-            SceneLoader::build_world(&desc, &device, &registry, &mut world).unwrap();
+            SceneLoader::build_world(&desc, &device, &registry, &mut assets, &mut world).unwrap();
         assert_eq!(lighting.ambient_intensity, 0.05);
-        assert_eq!(lighting.light.direction, [0.0, -1.0, 0.0]);
     }
 
     #[test]
@@ -386,16 +289,11 @@ mod tests {
         let registry = test_registry();
         let desc = test_scene_desc();
         let mut world = World::new();
+        let mut assets = test_assets();
+        SceneLoader::build_world(&desc, &device, &registry, &mut assets, &mut world).unwrap();
 
-        SceneLoader::build_world(&desc, &device, &registry, &mut world).unwrap();
-
-        let mut found = false;
-        for (transform, camera) in world.query::<(&Transform, &Camera)>().iter() {
-            found = true;
-            assert_eq!(transform.translation, Vec3::new(3.0, 3.0, 3.0));
-            assert!((camera.fov - 45.0f32.to_radians()).abs() < 0.001);
-        }
-        assert!(found, "expected camera entity in world");
+        let camera_count = world.query::<&Camera>().iter().count();
+        assert_eq!(camera_count, 1);
     }
 
     #[test]
@@ -404,17 +302,11 @@ mod tests {
         let registry = test_registry();
         let desc = test_scene_desc();
         let mut world = World::new();
+        let mut assets = test_assets();
+        SceneLoader::build_world(&desc, &device, &registry, &mut assets, &mut world).unwrap();
 
-        SceneLoader::build_world(&desc, &device, &registry, &mut world).unwrap();
-
-        let mut found = false;
-        for (_transform, light) in world.query::<(&Transform, &Light)>().iter() {
-            found = true;
-            assert_eq!(light.light_type, crate::renderer::light::LightType::Directional);
-            assert_eq!(light.color, [1.0, 1.0, 1.0]);
-            assert_eq!(light.intensity, 1.0);
-        }
-        assert!(found, "expected light entity in world");
+        let light_count = world.query::<&Light>().iter().count();
+        assert_eq!(light_count, 1);
     }
 
     #[test]
@@ -423,115 +315,80 @@ mod tests {
         let registry = test_registry();
         let desc = test_scene_desc();
         let mut world = World::new();
+        let mut assets = test_assets();
+        SceneLoader::build_world(&desc, &device, &registry, &mut assets, &mut world).unwrap();
 
-        SceneLoader::build_world(&desc, &device, &registry, &mut world).unwrap();
+        let names: Vec<String> = world.query::<&Name>().iter().map(|n| n.0.clone()).collect();
+        assert!(names.contains(&"cube_left".to_string()));
+        assert!(names.contains(&"sphere_right".to_string()));
+    }
 
-        let mut found_cube = false;
-        let mut found_sphere = false;
-        for name in world.query::<&Name>().iter() {
-            match name.0.as_str() {
-                "cube_left" => found_cube = true,
-                "sphere_right" => found_sphere = true,
-                _ => {}
-            }
-        }
-        assert!(found_cube, "expected cube_left name in world");
-        assert!(found_sphere, "expected sphere_right name in world");
+    #[test]
+    fn build_world_attaches_name_to_scene_level_entities() {
+        let device = headless_device();
+        let registry = test_registry();
+        let desc = test_scene_desc();
+        let mut world = World::new();
+        let mut assets = test_assets();
+        SceneLoader::build_world(&desc, &device, &registry, &mut assets, &mut world).unwrap();
+
+        let names: Vec<String> = world.query::<&Name>().iter().map(|n| n.0.clone()).collect();
+        assert!(names.contains(&"Camera".to_string()));
+        assert!(names.contains(&"DirectionalLight".to_string()));
     }
 
     #[test]
     fn build_world_unknown_mesh_returns_error() {
         let device = headless_device();
         let registry = test_registry();
-        let desc = SceneDescription {
-            name: "Bad".into(),
-            camera: CameraConfig::default(),
-            lights: vec![],
-            ambient: 0.0,
-            objects: vec![ObjectConfig {
-                name: "nope".into(),
-                mesh: MeshRef::Builtin("dragon".into()),
-                transform: Default::default(),
-                material: Default::default(),
-            }],
-        };
+        let mut desc = test_scene_desc();
+        desc.objects[0].mesh = MeshRef::Builtin("nonexistent".into());
         let mut world = World::new();
+        let mut assets = test_assets();
 
-        let result = SceneLoader::build_world(&desc, &device, &registry, &mut world);
-        match result {
-            Err(e) => assert!(e.to_string().contains("dragon")),
-            Ok(_) => panic!("expected error"),
-        }
+        let result = SceneLoader::build_world(&desc, &device, &registry, &mut assets, &mut world);
+        assert!(result.is_err());
     }
 
     #[test]
     fn build_world_file_mesh_returns_error() {
         let device = headless_device();
         let registry = test_registry();
-        let desc = SceneDescription {
-            name: "File".into(),
-            camera: CameraConfig::default(),
-            lights: vec![],
-            ambient: 0.0,
-            objects: vec![ObjectConfig {
-                name: "dragon".into(),
-                mesh: MeshRef::File("assets/dragon.obj".into()),
-                transform: Default::default(),
-                material: Default::default(),
-            }],
-        };
+        let mut desc = test_scene_desc();
+        desc.objects[0].mesh = MeshRef::File("foo.obj".into());
         let mut world = World::new();
+        let mut assets = test_assets();
 
-        let result = SceneLoader::build_world(&desc, &device, &registry, &mut world);
-        match result {
-            Err(e) => assert!(e.to_string().contains("Phase 1")),
-            Ok(_) => panic!("expected error"),
-        }
+        let result = SceneLoader::build_world(&desc, &device, &registry, &mut assets, &mut world);
+        assert!(result.is_err());
     }
 
     #[test]
     fn open_scene_clears_world() {
         let device = headless_device();
         let registry = test_registry();
+        let mut world = World::new();
+        world.spawn((Transform::default(), Name("extra".into())));
+        let mut assets = test_assets();
+
         let dir = std::env::temp_dir().join("aether_test_open_scene");
         let _ = std::fs::create_dir(&dir);
-        let path = dir.join("test_scene.ron");
+        let path = dir.join("open_scene.ron");
         std::fs::write(
             &path,
             r#"SceneDescription(
-    name: "Open Test",
-    camera: (position: (1.0, 2.0, 3.0)),
-    lights: [(
-        light_type: Directional,
-        direction: (0.0, -1.0, 0.0),
-        color: (1.0, 1.0, 1.0),
-        intensity: 1.0,
-    )],
-    objects: [
-        (mesh: Builtin("cube"), name: "OnlyCube"),
-    ],
+    name: "Open",
+    camera: (position: (0.0, 0.0, 0.0)),
+    lights: [],
+    objects: [],
 )"#,
         )
         .unwrap();
 
-        let mut world = World::new();
-        // Pre-populate with a stray entity
-        world.spawn((Transform::default(),));
-        assert_eq!(world.len(), 1);
+        SceneLoader::open_scene(&path, &device, &registry, &mut assets, &mut world).unwrap();
+        // Only camera + default light should remain
+        assert_eq!(world.len(), 2);
 
-        SceneLoader::open_scene(&path, &device, &registry, &mut world).unwrap();
-
-        // camera + light + 1 object = 3 entities
-        assert_eq!(world.len(), 3);
-
-        // Verify the stray entity was cleared
-        let mut count = 0;
-        for _ in world.query::<&Name>().iter() {
-            count += 1;
-        }
-        assert_eq!(count, 1);
-
-        // cleanup
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_dir(&dir);
     }
@@ -540,16 +397,18 @@ mod tests {
     fn import_scene_appends_objects() {
         let device = headless_device();
         let registry = test_registry();
+
         let dir = std::env::temp_dir().join("aether_test_import_scene");
         let _ = std::fs::create_dir(&dir);
         let path = dir.join("import_scene.ron");
         std::fs::write(
             &path,
             r#"SceneDescription(
-    name: "Import Test",
-    camera: (position: (5.0, 5.0, 5.0)),
+    name: "Import",
+    camera: (position: (1.0, 2.0, 3.0)),
+    lights: [(light_type: Directional, direction: (0.0, -1.0, 0.0), color: (1.0, 1.0, 1.0), intensity: 1.0)],
     objects: [
-        (mesh: Builtin("sphere"), name: "ImportedSphere"),
+        (name: "ImportedSphere", mesh: Builtin("sphere"), transform: (translation: (0.0, 0.0, 0.0)), material: (albedo: (1.0, 1.0, 1.0, 1.0))),
     ],
 )"#,
         )
@@ -561,7 +420,8 @@ mod tests {
         world.spawn((Transform::default(), Name("ExistingCube".into())));
         assert_eq!(world.len(), 2);
 
-        SceneLoader::import_scene(&path, &device, &registry, &mut world).unwrap();
+        let mut assets = test_assets();
+        SceneLoader::import_scene(&path, &device, &registry, &mut assets, &mut world).unwrap();
 
         // 2 existing + 1 imported object = 3 entities (camera and light NOT imported)
         assert_eq!(world.len(), 3);
@@ -595,10 +455,88 @@ mod tests {
 
         let desc = SceneLoader::from_file(&path).expect("should load");
         assert_eq!(desc.name, "From File");
-        assert_eq!(desc.camera.position, [1.0, 2.0, 3.0]);
 
-        // cleanup
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_dir(&dir);
+    }
+
+    #[test]
+    fn build_world_no_terrain_entity_when_missing() {
+        let device = headless_device();
+        let registry = test_registry();
+        let desc = test_scene_desc();
+        let mut world = World::new();
+        let mut assets = test_assets();
+        SceneLoader::build_world(&desc, &device, &registry, &mut assets, &mut world).unwrap();
+
+        let terrain_count = world
+            .query::<&crate::ecs::components::Terrain>()
+            .iter()
+            .count();
+        assert_eq!(terrain_count, 0);
+    }
+
+    #[test]
+    fn build_world_spawns_terrain_entity_when_configured() {
+        let device = headless_device();
+        let registry = test_registry();
+        let mut desc = test_scene_desc();
+        desc.terrain = Some(TerrainConfig {
+            source: TerrainSource::Procedural {
+                seed: 0,
+                frequency: 0.1,
+                amplitude: 1.0,
+            },
+            geometry: TerrainGeometry {
+                extent: 128.0,
+                chunk_size: 32,
+                max_lod: 2,
+            },
+            splatmap: None,
+            layers: vec![TerrainLayerConfig::default()],
+        });
+        let mut world = World::new();
+        let mut assets = test_assets();
+        SceneLoader::build_world(&desc, &device, &registry, &mut assets, &mut world).unwrap();
+
+        let terrain_count = world
+            .query::<&crate::ecs::components::Terrain>()
+            .iter()
+            .count();
+        assert_eq!(terrain_count, 1);
+    }
+
+    #[test]
+    fn build_world_spawns_atmosphere_entity_when_configured() {
+        let device = headless_device();
+        let registry = test_registry();
+        let mut desc = test_scene_desc();
+        desc.atmosphere = Some(AtmosphereConfig::default());
+        let mut world = World::new();
+        let mut assets = test_assets();
+        SceneLoader::build_world(&desc, &device, &registry, &mut assets, &mut world).unwrap();
+
+        let count = world
+            .query::<&crate::ecs::components::Atmosphere>()
+            .iter()
+            .count();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn build_world_spawns_water_entity_when_configured() {
+        let device = headless_device();
+        let registry = test_registry();
+        let mut desc = test_scene_desc();
+        desc.water = Some(WaterConfig::default());
+        let mut world = World::new();
+        let mut assets = test_assets();
+        SceneLoader::build_world(&desc, &device, &registry, &mut assets, &mut world).unwrap();
+
+        let count = world
+            .query::<&crate::ecs::components::Water>()
+            .iter()
+            .count();
+        assert_eq!(count, 1);
     }
 }

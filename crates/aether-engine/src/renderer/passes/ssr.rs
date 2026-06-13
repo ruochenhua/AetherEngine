@@ -61,7 +61,9 @@ pub struct SSRPass {
 }
 
 impl Pass for SSRPass {
-    fn name(&self) -> &str { "SSR" }
+    fn name(&self) -> &str {
+        "SSR"
+    }
 
     fn signature(&self) -> PassSignature {
         PassSignature::new("SSR")
@@ -73,7 +75,9 @@ impl Pass for SSRPass {
             .write::<ReflectionTexture>("reflection", wgpu::TextureFormat::Rgba16Float)
     }
 
-    fn init(device: &wgpu::Device) -> Self { Self::new(device) }
+    fn init(device: &wgpu::Device) -> Self {
+        Self::new(device)
+    }
 
     fn resolve(&mut self, device: &wgpu::Device, resources: &ResourceTable) {
         self.pos_handle = Some(resources.handle::<GPosition>("gbuffer_position"));
@@ -88,20 +92,36 @@ impl Pass for SSRPass {
         let depth_view = resources.get(self.depth_handle.unwrap());
         let scene_color_view = resources.get(self.scene_color_handle.unwrap());
 
-        self.texture_bind_group = Some(device.create_bind_group(
-            &wgpu::BindGroupDescriptor {
-                label: Some("SSR Texture Bind Group"),
-                layout: &self.texture_bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(pos_view) },
-                    wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(norm_view) },
-                    wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(material_view) },
-                    wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(depth_view) },
-                    wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::TextureView(scene_color_view) },
-                    wgpu::BindGroupEntry { binding: 5, resource: wgpu::BindingResource::Sampler(&self.sampler) },
-                ],
-            },
-        ));
+        self.texture_bind_group = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("SSR Texture Bind Group"),
+            layout: &self.texture_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(pos_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(norm_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(material_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::TextureView(depth_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: wgpu::BindingResource::TextureView(scene_color_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+            ],
+        }));
     }
 
     fn apply_frame(&mut self, frame: &RenderFrame) {
@@ -128,11 +148,21 @@ impl Pass for SSRPass {
             ssr_enabled: self.ssr_enabled,
             _pad2: 0,
         };
-        frame.queue.write_buffer(&self.settings_buffer, 0, bytemuck::cast_slice(&[settings]));
+        frame
+            .queue
+            .write_buffer(&self.settings_buffer, 0, bytemuck::cast_slice(&[settings]));
     }
 
-    fn execute(&self, encoder: &mut wgpu::CommandEncoder, resources: &ResourceTable, _sv: &wgpu::TextureView) {
-        let texture_bg = self.texture_bind_group.as_ref().expect("SSR: resolve not called");
+    fn execute(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        resources: &ResourceTable,
+        _sv: &wgpu::TextureView,
+    ) {
+        let texture_bg = self
+            .texture_bind_group
+            .as_ref()
+            .expect("SSR: resolve not called");
         let reflection_view = resources.get(resources.handle::<ReflectionTexture>("reflection"));
 
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -141,7 +171,10 @@ impl Pass for SSRPass {
                 view: reflection_view,
                 depth_slice: None,
                 resolve_target: None,
-                ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store },
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                    store: wgpu::StoreOp::Store,
+                },
             })],
             depth_stencil_attachment: None,
             multiview_mask: None,
@@ -155,7 +188,9 @@ impl Pass for SSRPass {
         pass.draw(0..self.quad_vertex_count, 0..1);
     }
 
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
 }
 
 impl SSRPass {
@@ -586,18 +621,77 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let texture_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("SSR Texture BGL"),
             entries: &[
-                wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Texture { sample_type: wgpu::TextureSampleType::Float { filterable: true }, view_dimension: wgpu::TextureViewDimension::D2, multisampled: false }, count: None },
-                wgpu::BindGroupLayoutEntry { binding: 1, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Texture { sample_type: wgpu::TextureSampleType::Float { filterable: true }, view_dimension: wgpu::TextureViewDimension::D2, multisampled: false }, count: None },
-                wgpu::BindGroupLayoutEntry { binding: 2, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Texture { sample_type: wgpu::TextureSampleType::Float { filterable: true }, view_dimension: wgpu::TextureViewDimension::D2, multisampled: false }, count: None },
-                wgpu::BindGroupLayoutEntry { binding: 3, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Texture { sample_type: wgpu::TextureSampleType::Float { filterable: false }, view_dimension: wgpu::TextureViewDimension::D2, multisampled: false }, count: None },
-                wgpu::BindGroupLayoutEntry { binding: 4, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Texture { sample_type: wgpu::TextureSampleType::Float { filterable: true }, view_dimension: wgpu::TextureViewDimension::D2, multisampled: false }, count: None },
-                wgpu::BindGroupLayoutEntry { binding: 5, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering), count: None },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 4,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 5,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
             ],
         });
 
         let settings_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("SSR Settings BGL"),
-            entries: &[wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None }, count: None }],
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
         });
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -616,16 +710,32 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                 buffers: &[wgpu::VertexBufferLayout {
                     array_stride: std::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
                     step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &[wgpu::VertexAttribute { offset: 0, shader_location: 0, format: wgpu::VertexFormat::Float32x2 }],
+                    attributes: &[wgpu::VertexAttribute {
+                        offset: 0,
+                        shader_location: 0,
+                        format: wgpu::VertexFormat::Float32x2,
+                    }],
                 }],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
                 entry_point: Some("fs_main"),
                 compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState { format: wgpu::TextureFormat::Rgba16Float, blend: None, write_mask: wgpu::ColorWrites::ALL })],
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: wgpu::TextureFormat::Rgba16Float,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
             }),
-            primitive: wgpu::PrimitiveState { topology: wgpu::PrimitiveTopology::TriangleList, strip_index_format: None, front_face: wgpu::FrontFace::Ccw, cull_mode: None, polygon_mode: wgpu::PolygonMode::Fill, unclipped_depth: false, conservative: false },
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: None,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
             multiview_mask: None,
@@ -642,12 +752,24 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let settings_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("SSR Settings BG"),
             layout: &settings_bgl,
-            entries: &[wgpu::BindGroupEntry { binding: 0, resource: settings_buffer.as_entire_binding() }],
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: settings_buffer.as_entire_binding(),
+            }],
         });
 
-        let quad_vertices: [[f32; 2]; 6] = [[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, -1.0], [1.0, 1.0], [-1.0, 1.0]];
+        let quad_vertices: [[f32; 2]; 6] = [
+            [-1.0, -1.0],
+            [1.0, -1.0],
+            [1.0, 1.0],
+            [-1.0, -1.0],
+            [1.0, 1.0],
+            [-1.0, 1.0],
+        ];
         let quad_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("SSR Quad Vtx"), contents: bytemuck::cast_slice(&quad_vertices), usage: wgpu::BufferUsages::VERTEX,
+            label: Some("SSR Quad Vtx"),
+            contents: bytemuck::cast_slice(&quad_vertices),
+            usage: wgpu::BufferUsages::VERTEX,
         });
 
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -658,13 +780,20 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         });
 
         Self {
-            pipeline, quad_vertex_buffer, quad_vertex_count: 6,
-            settings_buffer, settings_bind_group,
+            pipeline,
+            quad_vertex_buffer,
+            quad_vertex_count: 6,
+            settings_buffer,
+            settings_bind_group,
             texture_bind_group_layout: texture_bgl,
             settings_bind_group_layout: settings_bgl,
             sampler,
-            pos_handle: None, normal_handle: None, material_handle: None,
-            depth_handle: None, scene_color_handle: None, texture_bind_group: None,
+            pos_handle: None,
+            normal_handle: None,
+            material_handle: None,
+            depth_handle: None,
+            scene_color_handle: None,
+            texture_bind_group: None,
             ssr_debug_mode: 0,
             ssr_enabled: 1,
             screen_size: [1280.0, 720.0],
@@ -694,8 +823,12 @@ mod tests {
 
     fn headless_device() -> wgpu::Device {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())).expect("need adapter");
-        let (device, _) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).expect("need device");
+        let adapter =
+            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+                .expect("need adapter");
+        let (device, _) =
+            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
+                .expect("need device");
         device
     }
 
@@ -706,7 +839,10 @@ mod tests {
         assert_eq!(sig.name, "SSR");
         assert_eq!(sig.reads.len(), 5);
         assert_eq!(sig.writes.len(), 1);
-        assert!(sig.writes[0].type_id == TypeId::of::<ReflectionTexture>() && sig.writes[0].name == "reflection");
+        assert!(
+            sig.writes[0].type_id == TypeId::of::<ReflectionTexture>()
+                && sig.writes[0].name == "reflection"
+        );
     }
 
     #[test]

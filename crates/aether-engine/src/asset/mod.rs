@@ -2,16 +2,20 @@
 //!
 //! Manages loading, caching, and lifetime of runtime assets.
 
+/// Asynchronous asset loading.
+pub mod async_loader;
+/// Material definitions.
+pub mod material;
 /// Mesh asset types.
 pub mod mesh;
 /// Built-in mesh registry.
 pub mod registry;
-/// Texture asset types.
-pub mod texture;
-/// Material definitions.
-pub mod material;
 /// Shader utilities.
 pub mod shader;
+/// Terrain splatting material.
+pub mod terrain_material;
+/// Texture asset types.
+pub mod texture;
 
 use std::any::Any;
 use std::collections::HashMap;

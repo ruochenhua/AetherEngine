@@ -34,11 +34,7 @@ impl ShaderLibrary {
     }
 
     /// Compile a shader module from source.
-    pub fn compile(
-        &self,
-        device: &wgpu::Device,
-        name: &str,
-    ) -> Option<wgpu::ShaderModule> {
+    pub fn compile(&self, device: &wgpu::Device, name: &str) -> Option<wgpu::ShaderModule> {
         let source = self.shaders.get(name)?;
         Some(device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some(name),
@@ -58,5 +54,43 @@ impl ShaderLibrary {
             "solid_color.frag",
             include_str!("../../../../assets/shaders/solid_color.frag.wgsl"),
         );
+
+        // Terrain splatting fragment shader (compile-only foundation for Phase 5)
+        self.register(
+            "terrain_splat.frag",
+            include_str!("../../../../assets/shaders/terrain_splat.frag.wgsl"),
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn headless_device() -> wgpu::Device {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        let adapter =
+            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+                .expect("need adapter");
+        let (device, _queue) =
+            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
+                .expect("need device");
+        device
+    }
+
+    #[test]
+    fn terrain_splat_shader_compiles() {
+        let device = headless_device();
+        let lib = ShaderLibrary::new();
+        let module = lib.compile(&device, "terrain_splat.frag");
+        assert!(module.is_some(), "terrain splat shader should compile");
+    }
+
+    #[test]
+    fn fullscreen_quad_shader_compiles() {
+        let device = headless_device();
+        let lib = ShaderLibrary::new();
+        let module = lib.compile(&device, "fullscreen_quad.vert");
+        assert!(module.is_some(), "fullscreen quad shader should compile");
     }
 }

@@ -67,6 +67,14 @@ pub trait Pass {
     /// per-frame data don't need to override this.
     fn apply_frame(&mut self, _frame: &RenderFrame) {}
 
+    /// Decide whether this pass should run this frame.
+    ///
+    /// Default is `true`. Passes can override this to skip execution when
+    /// their input data is absent (e.g. no terrain entity in the world).
+    fn should_run(&self, _frame: &RenderFrame) -> bool {
+        true
+    }
+
     /// Record render commands.
     fn execute(
         &self,
@@ -109,12 +117,17 @@ impl PassSignature {
             kind: SlotKind::Read,
             width: None,
             height: None,
+            layers: None,
         });
         self
     }
 
     /// Add a write dependency with the texture format.
-    pub fn write<T: ResourceTag>(mut self, name: &'static str, format: wgpu::TextureFormat) -> Self {
+    pub fn write<T: ResourceTag>(
+        mut self,
+        name: &'static str,
+        format: wgpu::TextureFormat,
+    ) -> Self {
         self.writes.push(ResSlot {
             type_id: TypeId::of::<T>(),
             name,
@@ -122,12 +135,19 @@ impl PassSignature {
             kind: SlotKind::Write,
             width: None,
             height: None,
+            layers: None,
         });
         self
     }
 
     /// Add a write dependency with a fixed texture size.
-    pub fn write_sized<T: ResourceTag>(mut self, name: &'static str, format: wgpu::TextureFormat, width: u32, height: u32) -> Self {
+    pub fn write_sized<T: ResourceTag>(
+        mut self,
+        name: &'static str,
+        format: wgpu::TextureFormat,
+        width: u32,
+        height: u32,
+    ) -> Self {
         self.writes.push(ResSlot {
             type_id: TypeId::of::<T>(),
             name,
@@ -135,6 +155,28 @@ impl PassSignature {
             kind: SlotKind::Write,
             width: Some(width),
             height: Some(height),
+            layers: None,
+        });
+        self
+    }
+
+    /// Add a write dependency for a fixed-size array texture.
+    pub fn write_array<T: ResourceTag>(
+        mut self,
+        name: &'static str,
+        format: wgpu::TextureFormat,
+        width: u32,
+        height: u32,
+        layers: u32,
+    ) -> Self {
+        self.writes.push(ResSlot {
+            type_id: TypeId::of::<T>(),
+            name,
+            format: Some(format),
+            kind: SlotKind::Write,
+            width: Some(width),
+            height: Some(height),
+            layers: Some(layers),
         });
         self
     }
@@ -155,6 +197,8 @@ pub struct ResSlot {
     pub width: Option<u32>,
     /// Fixed height for this texture (overrides scheduler default). Only meaningful for writes.
     pub height: Option<u32>,
+    /// Array layer count for array textures. Only meaningful for writes.
+    pub layers: Option<u32>,
 }
 
 impl ResSlot {
@@ -167,6 +211,7 @@ impl ResSlot {
             kind: SlotKind::Write,
             width: None,
             height: None,
+            layers: None,
         }
     }
 
@@ -179,6 +224,7 @@ impl ResSlot {
             kind: SlotKind::Read,
             width: None,
             height: None,
+            layers: None,
         }
     }
 }

@@ -40,7 +40,6 @@ pub struct TemplatePass {
     // - Option<ResHandle<YourTag>> (populated in resolve)
     #[allow(dead_code)]
     placeholder: u32,
-
     // TODO: Add per-frame state here.
     // Examples:
     // - view/proj matrices

@@ -46,6 +46,7 @@ pub struct FXAAPass {
     texture_bind_group: Option<wgpu::BindGroup>,
     sampler: wgpu::Sampler,
     quality: FxaaQuality,
+    edge_threshold: Option<f32>,
     enabled: bool,
 }
 
@@ -55,8 +56,7 @@ impl Pass for FXAAPass {
     }
 
     fn signature(&self) -> PassSignature {
-        PassSignature::new("FXAA")
-            .read::<FxaaInput>("fxaa_input")
+        PassSignature::new("FXAA").read::<FxaaInput>("fxaa_input")
     }
 
     fn init(device: &wgpu::Device) -> Self {
@@ -67,22 +67,20 @@ impl Pass for FXAAPass {
         self.input_handle = Some(resources.handle::<FxaaInput>("fxaa_input"));
         let input_view = resources.get(self.input_handle.unwrap());
 
-        self.texture_bind_group = Some(device.create_bind_group(
-            &wgpu::BindGroupDescriptor {
-                label: Some("FXAA Texture Bind Group"),
-                layout: &self.texture_bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(input_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&self.sampler),
-                    },
-                ],
-            },
-        ));
+        self.texture_bind_group = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("FXAA Texture Bind Group"),
+            layout: &self.texture_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(input_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+            ],
+        }));
     }
 
     fn execute(
@@ -91,7 +89,9 @@ impl Pass for FXAAPass {
         _resources: &ResourceTable,
         surface_view: &wgpu::TextureView,
     ) {
-        let texture_bg = self.texture_bind_group.as_ref()
+        let texture_bg = self
+            .texture_bind_group
+            .as_ref()
             .expect("FXAAPass: resolve not called");
 
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -336,7 +336,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("FXAA Pipeline Layout"),
-            bind_group_layouts: &[Some(&texture_bind_group_layout), Some(&uniform_bind_group_layout)],
+            bind_group_layouts: &[
+                Some(&texture_bind_group_layout),
+                Some(&uniform_bind_group_layout),
+            ],
             immediate_size: 0,
         });
 
@@ -431,6 +434,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             texture_bind_group: None,
             sampler,
             quality: FxaaQuality::default(),
+            edge_threshold: None,
             enabled: true,
         }
     }
@@ -438,6 +442,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     /// Set FXAA quality preset.
     pub fn set_quality(&mut self, quality: FxaaQuality) {
         self.quality = quality;
+        // Reset custom threshold so the preset takes effect.
+        self.edge_threshold = None;
+    }
+
+    /// Set a custom edge threshold. Pass `None` to fall back to the current
+    /// quality preset's default.
+    pub fn set_edge_threshold(&mut self, threshold: Option<f32>) {
+        self.edge_threshold = threshold;
     }
 
     /// Enable/disable FXAA.
@@ -445,13 +457,19 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         self.enabled = enabled;
     }
 
-    /// Update uniform buffer with a queue reference.
-    pub fn update_uniforms_with_queue(&self, queue: &wgpu::Queue) {
-        let (edge_threshold, edge_threshold_min, subpixel_quality) = match self.quality {
+    fn quality_defaults(quality: FxaaQuality) -> (f32, f32, f32) {
+        match quality {
             FxaaQuality::Low => (0.063, 0.0, 0.75),
             FxaaQuality::Medium => (0.031, 0.0, 0.5),
             FxaaQuality::High => (0.016, 0.0, 0.25),
-        };
+        }
+    }
+
+    /// Update uniform buffer with a queue reference.
+    pub fn update_uniforms_with_queue(&self, queue: &wgpu::Queue) {
+        let (default_threshold, edge_threshold_min, subpixel_quality) =
+            Self::quality_defaults(self.quality);
+        let edge_threshold = self.edge_threshold.unwrap_or(default_threshold);
 
         let uniforms = FXAAUniforms {
             edge_threshold,
@@ -469,8 +487,12 @@ mod tests {
 
     fn headless_device() -> wgpu::Device {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())).expect("need adapter");
-        let (device, _) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).expect("need device");
+        let adapter =
+            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+                .expect("need adapter");
+        let (device, _) =
+            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
+                .expect("need device");
         device
     }
 

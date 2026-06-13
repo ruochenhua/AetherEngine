@@ -5,8 +5,6 @@
 //! (GBufferPass, ShadowPass, SceneLoader, Scheduler). Living in a single
 //! pass module was a leakage.
 
-
-
 /// Per-object uniform (material only; model matrix now from instance buffer).
 #[repr(C, align(256))]
 #[derive(Clone, Copy, Debug)]
@@ -57,5 +55,3 @@ impl Default for MaterialUniform {
         }
     }
 }
-
-

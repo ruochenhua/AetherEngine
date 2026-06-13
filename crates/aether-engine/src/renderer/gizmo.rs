@@ -51,11 +51,21 @@ pub fn build_transform_gizmo(transform: &Transform) -> Vec<DebugVertex> {
     ];
     for (dir, color) in &t_axes {
         let end = origin + *dir * TRANS_LEN;
-        lines.push(DebugVertex { position: origin.to_array(), color: *color });
-        lines.push(DebugVertex { position: end.to_array(), color: *color });
+        lines.push(DebugVertex {
+            position: origin.to_array(),
+            color: *color,
+        });
+        lines.push(DebugVertex {
+            position: end.to_array(),
+            color: *color,
+        });
         // Arrow head (small pyramid hint: two short perpendicular lines)
         let head_size = 0.08;
-        let perp1 = if dir.dot(Vec3::Y).abs() < 0.9 { Vec3::Y } else { Vec3::Z };
+        let perp1 = if dir.dot(Vec3::Y).abs() < 0.9 {
+            Vec3::Y
+        } else {
+            Vec3::Z
+        };
         let perp2 = dir.cross(perp1).normalize();
         let perp1 = perp1.cross(*dir).normalize();
         let tip = end;
@@ -63,14 +73,38 @@ pub fn build_transform_gizmo(transform: &Transform) -> Vec<DebugVertex> {
         let base2 = tip - *dir * head_size * 2.0 - perp1 * head_size;
         let base3 = tip - *dir * head_size * 2.0 + perp2 * head_size;
         let base4 = tip - *dir * head_size * 2.0 - perp2 * head_size;
-        lines.push(DebugVertex { position: tip.to_array(), color: *color });
-        lines.push(DebugVertex { position: base1.to_array(), color: *color });
-        lines.push(DebugVertex { position: tip.to_array(), color: *color });
-        lines.push(DebugVertex { position: base2.to_array(), color: *color });
-        lines.push(DebugVertex { position: tip.to_array(), color: *color });
-        lines.push(DebugVertex { position: base3.to_array(), color: *color });
-        lines.push(DebugVertex { position: tip.to_array(), color: *color });
-        lines.push(DebugVertex { position: base4.to_array(), color: *color });
+        lines.push(DebugVertex {
+            position: tip.to_array(),
+            color: *color,
+        });
+        lines.push(DebugVertex {
+            position: base1.to_array(),
+            color: *color,
+        });
+        lines.push(DebugVertex {
+            position: tip.to_array(),
+            color: *color,
+        });
+        lines.push(DebugVertex {
+            position: base2.to_array(),
+            color: *color,
+        });
+        lines.push(DebugVertex {
+            position: tip.to_array(),
+            color: *color,
+        });
+        lines.push(DebugVertex {
+            position: base3.to_array(),
+            color: *color,
+        });
+        lines.push(DebugVertex {
+            position: tip.to_array(),
+            color: *color,
+        });
+        lines.push(DebugVertex {
+            position: base4.to_array(),
+            color: *color,
+        });
     }
 
     // --- Scale axes (slightly darker, shorter, with box at end) ---
@@ -81,11 +115,21 @@ pub fn build_transform_gizmo(transform: &Transform) -> Vec<DebugVertex> {
     ];
     for (dir, color) in &s_axes {
         let end = origin + *dir * SCALE_LEN;
-        lines.push(DebugVertex { position: origin.to_array(), color: *color });
-        lines.push(DebugVertex { position: end.to_array(), color: *color });
+        lines.push(DebugVertex {
+            position: origin.to_array(),
+            color: *color,
+        });
+        lines.push(DebugVertex {
+            position: end.to_array(),
+            color: *color,
+        });
         // Box at end
         let box_s = 0.06;
-        let perp = if dir.dot(Vec3::Y).abs() < 0.9 { Vec3::Y } else { Vec3::Z };
+        let perp = if dir.dot(Vec3::Y).abs() < 0.9 {
+            Vec3::Y
+        } else {
+            Vec3::Z
+        };
         let perp2 = dir.cross(perp).normalize();
         let perp = perp.cross(*dir).normalize();
         let c = end;
@@ -100,12 +144,28 @@ pub fn build_transform_gizmo(transform: &Transform) -> Vec<DebugVertex> {
             c - perp * box_s - perp2 * box_s - *dir * box_s,
         ];
         let edges = [
-            (0,1),(0,2),(0,4),(1,3),(1,5),(2,3),(2,6),(3,7),
-            (4,5),(4,6),(5,7),(6,7),
+            (0, 1),
+            (0, 2),
+            (0, 4),
+            (1, 3),
+            (1, 5),
+            (2, 3),
+            (2, 6),
+            (3, 7),
+            (4, 5),
+            (4, 6),
+            (5, 7),
+            (6, 7),
         ];
-        for (i,j) in &edges {
-            lines.push(DebugVertex { position: corners[*i].to_array(), color: *color });
-            lines.push(DebugVertex { position: corners[*j].to_array(), color: *color });
+        for (i, j) in &edges {
+            lines.push(DebugVertex {
+                position: corners[*i].to_array(),
+                color: *color,
+            });
+            lines.push(DebugVertex {
+                position: corners[*j].to_array(),
+                color: *color,
+            });
         }
     }
 
@@ -116,15 +176,25 @@ pub fn build_transform_gizmo(transform: &Transform) -> Vec<DebugVertex> {
         ([0.5, 0.5, 1.0, 1.0], Vec3::Z), // Z rotation ring in XY plane
     ];
     for (color, axis) in &r_colors {
-        let perp1 = if axis.dot(Vec3::Y).abs() < 0.9 { Vec3::Y } else { Vec3::Z };
+        let perp1 = if axis.dot(Vec3::Y).abs() < 0.9 {
+            Vec3::Y
+        } else {
+            Vec3::Z
+        };
         let perp2 = axis.cross(perp1).normalize();
         let perp1 = perp1.cross(*axis).normalize();
         let mut prev = origin + perp1 * ROT_RADIUS;
         for i in 1..=ROT_SEGMENTS {
             let angle = (i as f32 / ROT_SEGMENTS as f32) * std::f32::consts::TAU;
             let next = origin + (perp1 * angle.cos() + perp2 * angle.sin()) * ROT_RADIUS;
-            lines.push(DebugVertex { position: prev.to_array(), color: *color });
-            lines.push(DebugVertex { position: next.to_array(), color: *color });
+            lines.push(DebugVertex {
+                position: prev.to_array(),
+                color: *color,
+            });
+            lines.push(DebugVertex {
+                position: next.to_array(),
+                color: *color,
+            });
             prev = next;
         }
     }
@@ -217,7 +287,11 @@ pub fn detect_hover(
     ];
     let mut best_rotate: Option<(GizmoHandle, f32)> = None;
     for (axis, axis_dir) in &r_axes {
-        let perp1 = if axis_dir.dot(Vec3::Y).abs() < 0.9 { Vec3::Y } else { Vec3::Z };
+        let perp1 = if axis_dir.dot(Vec3::Y).abs() < 0.9 {
+            Vec3::Y
+        } else {
+            Vec3::Z
+        };
         let perp2 = axis_dir.cross(perp1).normalize();
         let perp1 = perp1.cross(*axis_dir).normalize();
         let mut ring_screen = Vec::with_capacity(ROT_SEGMENTS + 1);
@@ -288,8 +362,20 @@ fn apply_drag_translate(
     cam: &GizmoCameraCtx,
 ) {
     let axis_dir = axis_to_vec3(axis);
-    let origin_screen = project_screen(transform.translation, cam.view, cam.proj, cam.width, cam.height);
-    let end_screen = project_screen(transform.translation + axis_dir * TRANS_LEN, cam.view, cam.proj, cam.width, cam.height);
+    let origin_screen = project_screen(
+        transform.translation,
+        cam.view,
+        cam.proj,
+        cam.width,
+        cam.height,
+    );
+    let end_screen = project_screen(
+        transform.translation + axis_dir * TRANS_LEN,
+        cam.view,
+        cam.proj,
+        cam.width,
+        cam.height,
+    );
     let axis_screen = end_screen - origin_screen;
     if axis_screen.length_squared() < 1e-6 {
         return;
@@ -313,7 +399,13 @@ fn apply_drag_rotate(
     cam: &GizmoCameraCtx,
 ) {
     // Project rotation ring center to screen
-    let origin_screen = project_screen(transform.translation, cam.view, cam.proj, cam.width, cam.height);
+    let origin_screen = project_screen(
+        transform.translation,
+        cam.view,
+        cam.proj,
+        cam.width,
+        cam.height,
+    );
     // Approximate: angle change proportional to tangential mouse movement around center
     let to_mouse = Vec2::new(
         origin_screen.x + mouse_delta.x,
@@ -325,8 +417,20 @@ fn apply_drag_rotate(
     // Use the perpendicular component of mouse delta as rotation amount
     let ring_r = ROT_RADIUS;
     let ring_r_screen = {
-        let p1 = project_screen(transform.translation, cam.view, cam.proj, cam.width, cam.height);
-        let p2 = project_screen(transform.translation + Vec3::X * ring_r, cam.view, cam.proj, cam.width, cam.height);
+        let p1 = project_screen(
+            transform.translation,
+            cam.view,
+            cam.proj,
+            cam.width,
+            cam.height,
+        );
+        let p2 = project_screen(
+            transform.translation + Vec3::X * ring_r,
+            cam.view,
+            cam.proj,
+            cam.width,
+            cam.height,
+        );
         (p2 - p1).length()
     };
     if ring_r_screen < 1.0 {
@@ -343,7 +447,11 @@ fn apply_drag_rotate(
         let cam_to_obj = transform.translation - cam.camera_pos;
         // Determine if we're viewing from + or - side of rotation axis
         let dot = cam_to_obj.dot(axis_dir);
-        if dot > 0.0 { 1.0 } else { -1.0 }
+        if dot > 0.0 {
+            1.0
+        } else {
+            -1.0
+        }
     };
     // Use x delta for X/Y axis rotation, y for Z — simplified heuristic
     let signed_delta = angle_delta * sign * 0.5;
@@ -363,8 +471,20 @@ fn apply_drag_scale(
     cam: &GizmoCameraCtx,
 ) {
     let axis_dir = axis_to_vec3(axis);
-    let origin_screen = project_screen(transform.translation, cam.view, cam.proj, cam.width, cam.height);
-    let end_screen = project_screen(transform.translation + axis_dir * SCALE_LEN, cam.view, cam.proj, cam.width, cam.height);
+    let origin_screen = project_screen(
+        transform.translation,
+        cam.view,
+        cam.proj,
+        cam.width,
+        cam.height,
+    );
+    let end_screen = project_screen(
+        transform.translation + axis_dir * SCALE_LEN,
+        cam.view,
+        cam.proj,
+        cam.width,
+        cam.height,
+    );
     let axis_screen = end_screen - origin_screen;
     if axis_screen.length_squared() < 1e-6 {
         return;

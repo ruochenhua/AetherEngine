@@ -16,7 +16,6 @@ pub struct RigidBody {
     pub is_static: bool,
 }
 
-
 impl Default for RigidBody {
     fn default() -> Self {
         Self {
@@ -53,7 +52,6 @@ pub struct Collider {
     /// Restitution (bounciness).
     pub restitution: f32,
 }
-
 
 impl Default for Collider {
     fn default() -> Self {

@@ -103,8 +103,9 @@ pub fn ray_aabb_intersect(ray: &Ray, aabb: &Aabb, model_matrix: Mat4) -> Option<
 pub fn pick_entity(world: &mut World, ray: &Ray) -> Option<hecs::Entity> {
     let mut closest: Option<(hecs::Entity, f32)> = None;
 
-    for (entity, transform, mesh_handle) in
-        world.query::<(hecs::Entity, &Transform, &MeshHandle)>().iter()
+    for (entity, transform, mesh_handle) in world
+        .query::<(hecs::Entity, &Transform, &MeshHandle)>()
+        .iter()
     {
         let model = Mat4::from_scale_rotation_translation(
             transform.scale,
@@ -158,7 +159,10 @@ mod tests {
         // Expected: from (3,3,3) along (-1,-1,-1), hit at t ≈ 2.5*sqrt(3) ≈ 4.33
         // But actually the face is at 0.5, so t = (3 - 0.5) / (1/sqrt(3)) = 2.5 * sqrt(3) ≈ 4.33
         let expected = 2.5 * 3.0f32.sqrt();
-        assert!((t - expected).abs() < 0.01, "Expected t≈{expected}, got {t}");
+        assert!(
+            (t - expected).abs() < 0.01,
+            "Expected t≈{expected}, got {t}"
+        );
     }
 
     #[test]
@@ -181,7 +185,15 @@ mod tests {
         let proj = Mat4::perspective_rh(45.0f32.to_radians(), 1.0, 0.1, 100.0);
         let width = 800.0;
         let height = 600.0;
-        let ray = screen_ray(width / 2.0, height / 2.0, width, height, view, proj, camera_pos);
+        let ray = screen_ray(
+            width / 2.0,
+            height / 2.0,
+            width,
+            height,
+            view,
+            proj,
+            camera_pos,
+        );
         // Ray direction should point roughly toward origin
         let expected_dir = (Vec3::ZERO - camera_pos).normalize();
         let dot = ray.dir.dot(expected_dir);

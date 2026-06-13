@@ -25,11 +25,13 @@ impl RenderContext {
     pub async fn new(window: &Window) -> Self {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
 
-        let surface = instance.create_surface(window)
+        let surface = instance
+            .create_surface(window)
             .expect("Failed to create surface");
         // SAFETY: Window lives for the entire application lifetime,
         // so extending Surface lifetime to 'static is sound.
-        let surface = unsafe { std::mem::transmute::<wgpu::Surface<'_>, wgpu::Surface<'static>>(surface) };
+        let surface =
+            unsafe { std::mem::transmute::<wgpu::Surface<'_>, wgpu::Surface<'static>>(surface) };
 
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -47,16 +49,14 @@ impl RenderContext {
         );
 
         let (device, queue) = adapter
-            .request_device(
-                &wgpu::DeviceDescriptor {
-                    label: Some("Device"),
-                    required_features: wgpu::Features::empty(),
-                    required_limits: wgpu::Limits::default(),
-                    experimental_features: Default::default(),
-                    memory_hints: Default::default(),
-                    trace: Default::default(),
-                },
-            )
+            .request_device(&wgpu::DeviceDescriptor {
+                label: Some("Device"),
+                required_features: wgpu::Features::empty(),
+                required_limits: wgpu::Limits::default(),
+                experimental_features: Default::default(),
+                memory_hints: Default::default(),
+                trace: Default::default(),
+            })
             .await
             .expect("Failed to create device");
 
@@ -75,7 +75,10 @@ impl RenderContext {
             width: size.width,
             height: size.height,
             present_mode: wgpu::PresentMode::Fifo,
-            alpha_mode: *surface_caps.alpha_modes.first().unwrap_or(&wgpu::CompositeAlphaMode::Opaque),
+            alpha_mode: *surface_caps
+                .alpha_modes
+                .first()
+                .unwrap_or(&wgpu::CompositeAlphaMode::Opaque),
             view_formats: vec![],
             desired_maximum_frame_latency: 2,
         };

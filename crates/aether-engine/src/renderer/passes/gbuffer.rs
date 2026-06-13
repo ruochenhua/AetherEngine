@@ -17,7 +17,7 @@ use crate::renderer::renderable::*;
 use crate::renderer::resource::*;
 use crate::renderer::resource_table::ResourceTable;
 use glam::Mat4;
-use tracing::warn;
+use std::sync::Arc;
 
 /// G-Buffer Pass — renders world-space position, normal, albedo, and material
 /// properties into a multi-render-target (MRT) framebuffer for deferred shading.
@@ -28,7 +28,9 @@ pub struct GBufferPass {
     view_proj_bind_group: wgpu::BindGroup,
     /// Per-batch material uniform buffer (dynamic).
     object_buffer: wgpu::Buffer,
+    object_buffer_capacity: usize,
     object_bind_group: wgpu::BindGroup,
+    object_bind_group_layout: wgpu::BindGroupLayout,
     /// Per-instance transform + entity_id vertex buffer.
     instance_buffer: wgpu::Buffer,
     instance_buffer_capacity: usize,
@@ -39,13 +41,15 @@ pub struct GBufferPass {
     material_handle: Option<ResHandle<GMaterial>>,
     depth_handle: Option<ResHandle<GDepth>>,
 
-    batches: Vec<RenderBatch>,
+    batches: Arc<[RenderBatch]>,
     view: Mat4,
     proj: Mat4,
 }
 
 impl Pass for GBufferPass {
-    fn name(&self) -> &str { "GBuffer" }
+    fn name(&self) -> &str {
+        "GBuffer"
+    }
 
     fn signature(&self) -> PassSignature {
         PassSignature::new("GBuffer")
@@ -56,7 +60,9 @@ impl Pass for GBufferPass {
             .write::<GDepth>("gbuffer_depth", wgpu::TextureFormat::Depth32Float)
     }
 
-    fn init(device: &wgpu::Device) -> Self { Self::new(device) }
+    fn init(device: &wgpu::Device) -> Self {
+        Self::new(device)
+    }
 
     fn resolve(&mut self, _device: &wgpu::Device, resources: &ResourceTable) {
         self.pos_handle = Some(resources.handle::<GPosition>("gbuffer_position"));
@@ -67,7 +73,7 @@ impl Pass for GBufferPass {
     }
 
     fn apply_frame(&mut self, frame: &RenderFrame) {
-        self.batches = frame.batches.to_vec();
+        self.batches = frame.batches.clone();
         self.view = frame.camera.view_matrix();
         self.proj = frame.camera.projection_matrix(frame.aspect);
 
@@ -76,22 +82,37 @@ impl Pass for GBufferPass {
             view: self.view.to_cols_array_2d(),
             proj: self.proj.to_cols_array_2d(),
         };
-        frame.queue.write_buffer(&self.view_proj_buffer, 0, bytemuck::cast_slice(&[vp]));
+        frame
+            .queue
+            .write_buffer(&self.view_proj_buffer, 0, bytemuck::cast_slice(&[vp]));
 
         // Upload per-batch material data (one ObjectUniform per batch)
         let obj_size = std::mem::size_of::<ObjectUniform>() as wgpu::BufferAddress;
         let batch_count = self.batches.len();
-        if batch_count > MAX_BATCHES {
-            warn!(
-                "GBufferPass: {} batches exceed MAX_BATCHES ({}); truncating",
-                batch_count, MAX_BATCHES
-            );
+        if batch_count > self.object_buffer_capacity {
+            let new_capacity = batch_count.max(256);
+            self.object_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("GBuffer Obj Buf"),
+                size: (new_capacity as u64) * obj_size,
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            self.object_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("GBuffer Obj BG"),
+                layout: &self.object_bind_group_layout,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                        buffer: &self.object_buffer,
+                        offset: 0,
+                        size: Some(std::num::NonZeroU64::new(obj_size).unwrap()),
+                    }),
+                }],
+            });
+            self.object_buffer_capacity = new_capacity;
         }
-        let mut obj_data: Vec<u8> = Vec::with_capacity(batch_count.min(MAX_BATCHES) * obj_size as usize);
-        for batch in &self.batches {
-            if obj_data.len() / obj_size as usize >= MAX_BATCHES {
-                break;
-            }
+        let mut obj_data: Vec<u8> = Vec::with_capacity(batch_count * obj_size as usize);
+        for batch in self.batches.iter() {
             let obj = ObjectUniform {
                 albedo: batch.material.albedo,
                 roughness: batch.material.roughness,
@@ -115,30 +136,74 @@ impl Pass for GBufferPass {
             });
             self.instance_buffer_capacity = new_capacity;
         }
-        let mut instance_data: Vec<u8> = Vec::with_capacity(total_instances * std::mem::size_of::<InstanceData>());
-        for batch in &self.batches {
+        let mut instance_data: Vec<u8> =
+            Vec::with_capacity(total_instances * std::mem::size_of::<InstanceData>());
+        for batch in self.batches.iter() {
             instance_data.extend_from_slice(bytemuck::cast_slice(&batch.instances));
         }
         if !instance_data.is_empty() {
-            frame.queue.write_buffer(&self.instance_buffer, 0, &instance_data);
+            frame
+                .queue
+                .write_buffer(&self.instance_buffer, 0, &instance_data);
         }
     }
 
-    fn execute(&self, encoder: &mut wgpu::CommandEncoder, resources: &ResourceTable, _surface_view: &wgpu::TextureView) {
+    fn execute(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        resources: &ResourceTable,
+        _surface_view: &wgpu::TextureView,
+    ) {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("GBuffer"),
             color_attachments: &[
-                Some(wgpu::RenderPassColorAttachment { view: resources.get(self.pos_handle.unwrap()), depth_slice: None, resolve_target: None, ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store } }),
-                Some(wgpu::RenderPassColorAttachment { view: resources.get(self.normal_handle.unwrap()), depth_slice: None, resolve_target: None, ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store } }),
-                Some(wgpu::RenderPassColorAttachment { view: resources.get(self.albedo_handle.unwrap()), depth_slice: None, resolve_target: None, ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store } }),
-                Some(wgpu::RenderPassColorAttachment { view: resources.get(self.material_handle.unwrap()), depth_slice: None, resolve_target: None, ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store } }),
+                Some(wgpu::RenderPassColorAttachment {
+                    view: resources.get(self.pos_handle.unwrap()),
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                }),
+                Some(wgpu::RenderPassColorAttachment {
+                    view: resources.get(self.normal_handle.unwrap()),
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                }),
+                Some(wgpu::RenderPassColorAttachment {
+                    view: resources.get(self.albedo_handle.unwrap()),
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                }),
+                Some(wgpu::RenderPassColorAttachment {
+                    view: resources.get(self.material_handle.unwrap()),
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                }),
             ],
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                 view: resources.get(self.depth_handle.unwrap()),
-                depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }),
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(1.0),
+                    store: wgpu::StoreOp::Store,
+                }),
                 stencil_ops: None,
             }),
-            timestamp_writes: None, occlusion_query_set: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
             multiview_mask: None,
         });
 
@@ -148,17 +213,21 @@ impl Pass for GBufferPass {
         let obj_size = std::mem::size_of::<ObjectUniform>() as wgpu::BufferAddress;
         let mut instance_offset = 0usize;
         for (batch_index, batch) in self.batches.iter().enumerate() {
-            if batch_index >= MAX_BATCHES {
-                break;
-            }
             let instance_count = batch.instances.len() as u32;
             let offset = batch_index as u32 * obj_size as u32;
             pass.set_bind_group(1, &self.object_bind_group, &[offset]);
 
             pass.set_vertex_buffer(0, batch.mesh.vertex_buffer.slice(..));
-            let instance_byte_start = (instance_offset * std::mem::size_of::<InstanceData>()) as wgpu::BufferAddress;
-            let instance_byte_end = instance_byte_start + (batch.instances.len() * std::mem::size_of::<InstanceData>()) as wgpu::BufferAddress;
-            pass.set_vertex_buffer(1, self.instance_buffer.slice(instance_byte_start..instance_byte_end));
+            let instance_byte_start =
+                (instance_offset * std::mem::size_of::<InstanceData>()) as wgpu::BufferAddress;
+            let instance_byte_end = instance_byte_start
+                + (batch.instances.len() * std::mem::size_of::<InstanceData>())
+                    as wgpu::BufferAddress;
+            pass.set_vertex_buffer(
+                1,
+                self.instance_buffer
+                    .slice(instance_byte_start..instance_byte_end),
+            );
             if let Some(ref ib) = batch.mesh.index_buffer {
                 pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
                 pass.draw_indexed(0..batch.mesh.index_count, 0, 0..instance_count);
@@ -172,8 +241,6 @@ impl Pass for GBufferPass {
         self
     }
 }
-
-const MAX_BATCHES: usize = 256;
 
 impl GBufferPass {
     /// Create a new G-Buffer pass.
@@ -220,67 +287,136 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
 "#;
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("GBuffer Shader"), source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(shader_source)),
+            label: Some("GBuffer Shader"),
+            source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(shader_source)),
         });
 
         let vp_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("GBuffer VP BGL"),
             entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0, visibility: wgpu::ShaderStages::VERTEX,
-                ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None },
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
                 count: None,
             }],
         });
 
         let obj_size = std::mem::size_of::<ObjectUniform>() as u64;
-        let obj_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("GBuffer Obj BGL"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0, visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: true, min_binding_size: Some(std::num::NonZeroU64::new(obj_size).unwrap()) },
-                count: None,
-            }],
-        });
+        let object_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("GBuffer Obj BGL"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: true,
+                        min_binding_size: Some(std::num::NonZeroU64::new(obj_size).unwrap()),
+                    },
+                    count: None,
+                }],
+            });
 
         let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("GBuffer PL"), bind_group_layouts: &[Some(&vp_bgl), Some(&obj_bgl)], immediate_size: 0,
+            label: Some("GBuffer PL"),
+            bind_group_layouts: &[Some(&vp_bgl), Some(&object_bind_group_layout)],
+            immediate_size: 0,
         });
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("GBuffer Pipeline"), layout: Some(&pl),
-            vertex: wgpu::VertexState { module: &shader, entry_point: Some("vs_main"), compilation_options: Default::default(), buffers: &[Vertex::desc(), InstanceData::instance_desc()] },
+            label: Some("GBuffer Pipeline"),
+            layout: Some(&pl),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_main"),
+                compilation_options: Default::default(),
+                buffers: &[Vertex::desc(), InstanceData::instance_desc()],
+            },
             fragment: Some(wgpu::FragmentState {
-                module: &shader, entry_point: Some("fs_main"), compilation_options: Default::default(),
+                module: &shader,
+                entry_point: Some("fs_main"),
+                compilation_options: Default::default(),
                 targets: &[
-                    Some(wgpu::ColorTargetState { format: wgpu::TextureFormat::Rgba16Float, blend: None, write_mask: wgpu::ColorWrites::ALL }),
-                    Some(wgpu::ColorTargetState { format: wgpu::TextureFormat::Rgba16Float, blend: None, write_mask: wgpu::ColorWrites::ALL }),
-                    Some(wgpu::ColorTargetState { format: wgpu::TextureFormat::Rgba8Unorm, blend: None, write_mask: wgpu::ColorWrites::ALL }),
-                    Some(wgpu::ColorTargetState { format: wgpu::TextureFormat::Rg8Unorm, blend: None, write_mask: wgpu::ColorWrites::ALL }),
+                    Some(wgpu::ColorTargetState {
+                        format: wgpu::TextureFormat::Rgba16Float,
+                        blend: None,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    }),
+                    Some(wgpu::ColorTargetState {
+                        format: wgpu::TextureFormat::Rgba16Float,
+                        blend: None,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    }),
+                    Some(wgpu::ColorTargetState {
+                        format: wgpu::TextureFormat::Rgba8Unorm,
+                        blend: None,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    }),
+                    Some(wgpu::ColorTargetState {
+                        format: wgpu::TextureFormat::Rg8Unorm,
+                        blend: None,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    }),
                 ],
             }),
-            primitive: wgpu::PrimitiveState { topology: wgpu::PrimitiveTopology::TriangleList, strip_index_format: None, front_face: wgpu::FrontFace::Ccw, cull_mode: Some(wgpu::Face::Back), polygon_mode: wgpu::PolygonMode::Fill, unclipped_depth: false, conservative: false },
-            depth_stencil: Some(wgpu::DepthStencilState { format: wgpu::TextureFormat::Depth32Float, depth_write_enabled: Some(true), depth_compare: Some(wgpu::CompareFunction::Less), stencil: wgpu::StencilState::default(), bias: wgpu::DepthBiasState::default() }),
-            multisample: wgpu::MultisampleState::default(), multiview_mask: None,
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: Some(wgpu::Face::Back),
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: wgpu::TextureFormat::Depth32Float,
+                depth_write_enabled: Some(true),
+                depth_compare: Some(wgpu::CompareFunction::Less),
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
+            }),
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
             cache: None,
         });
 
         let view_proj_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("GBuffer VP Buf"), size: std::mem::size_of::<ViewProjUniform>() as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false,
+            label: Some("GBuffer VP Buf"),
+            size: std::mem::size_of::<ViewProjUniform>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
         });
         let view_proj_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("GBuffer VP BG"), layout: &vp_bgl,
-            entries: &[wgpu::BindGroupEntry { binding: 0, resource: view_proj_buffer.as_entire_binding() }],
+            label: Some("GBuffer VP BG"),
+            layout: &vp_bgl,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: view_proj_buffer.as_entire_binding(),
+            }],
         });
 
-        let obj_buf_size = (MAX_BATCHES as u64) * obj_size;
+        let initial_object_capacity = 256usize;
         let object_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("GBuffer Obj Buf"), size: obj_buf_size,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false,
+            label: Some("GBuffer Obj Buf"),
+            size: (initial_object_capacity as u64) * obj_size,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
         });
         let object_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("GBuffer Obj BG"), layout: &obj_bgl,
-            entries: &[wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding { buffer: &object_buffer, offset: 0, size: Some(std::num::NonZeroU64::new(obj_size).unwrap()) }) }],
+            label: Some("GBuffer Obj BG"),
+            layout: &object_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                    buffer: &object_buffer,
+                    offset: 0,
+                    size: Some(std::num::NonZeroU64::new(obj_size).unwrap()),
+                }),
+            }],
         });
 
         let initial_instance_capacity = 256;
@@ -293,11 +429,23 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
 
         Self {
             device: device.clone(),
-            pipeline, view_proj_buffer, view_proj_bind_group, object_buffer, object_bind_group,
+            pipeline,
+            view_proj_buffer,
+            view_proj_bind_group,
+            object_buffer,
+            object_buffer_capacity: initial_object_capacity,
+            object_bind_group,
+            object_bind_group_layout,
             instance_buffer,
             instance_buffer_capacity: initial_instance_capacity,
-            pos_handle: None, normal_handle: None, albedo_handle: None, material_handle: None, depth_handle: None,
-            batches: Vec::new(), view: Mat4::IDENTITY, proj: Mat4::IDENTITY,
+            pos_handle: None,
+            normal_handle: None,
+            albedo_handle: None,
+            material_handle: None,
+            depth_handle: None,
+            batches: Arc::from([]),
+            view: Mat4::IDENTITY,
+            proj: Mat4::IDENTITY,
         }
     }
 }
@@ -308,34 +456,74 @@ mod tests {
 
     fn headless_device() -> wgpu::Device {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())).expect("need adapter");
-        let (device, _queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).expect("need device");
+        let adapter =
+            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+                .expect("need adapter");
+        let (device, _queue) =
+            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
+                .expect("need device");
         device
     }
 
-    #[test] fn signature_ok() {
+    #[test]
+    fn signature_ok() {
         let pass = GBufferPass::init(&headless_device());
         let sig = pass.signature();
         assert_eq!(sig.writes.len(), 5);
     }
 
-    #[test] fn resolve_ok() {
+    #[test]
+    fn resolve_ok() {
         let device = headless_device();
         let mut pass = GBufferPass::init(&device);
         let mut table = ResourceTable::new();
         for (type_id, name, fmt) in [
-            (std::any::TypeId::of::<GPosition>(), "gbuffer_position", wgpu::TextureFormat::Rgba16Float),
-            (std::any::TypeId::of::<GNormal>(), "gbuffer_normal", wgpu::TextureFormat::Rgba16Float),
-            (std::any::TypeId::of::<GAlbedo>(), "gbuffer_albedo", wgpu::TextureFormat::Rgba8Unorm),
-            (std::any::TypeId::of::<GMaterial>(), "gbuffer_material", wgpu::TextureFormat::Rg8Unorm),
-            (std::any::TypeId::of::<GDepth>(), "gbuffer_depth", wgpu::TextureFormat::Depth32Float),
+            (
+                std::any::TypeId::of::<GPosition>(),
+                "gbuffer_position",
+                wgpu::TextureFormat::Rgba16Float,
+            ),
+            (
+                std::any::TypeId::of::<GNormal>(),
+                "gbuffer_normal",
+                wgpu::TextureFormat::Rgba16Float,
+            ),
+            (
+                std::any::TypeId::of::<GAlbedo>(),
+                "gbuffer_albedo",
+                wgpu::TextureFormat::Rgba8Unorm,
+            ),
+            (
+                std::any::TypeId::of::<GMaterial>(),
+                "gbuffer_material",
+                wgpu::TextureFormat::Rg8Unorm,
+            ),
+            (
+                std::any::TypeId::of::<GDepth>(),
+                "gbuffer_depth",
+                wgpu::TextureFormat::Depth32Float,
+            ),
         ] {
             let tex = device.create_texture(&wgpu::TextureDescriptor {
-                label: Some(name), size: wgpu::Extent3d { width: 64, height: 64, depth_or_array_layers: 1 },
-                mip_level_count: 1, sample_count: 1, dimension: wgpu::TextureDimension::D2, format: fmt,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING, view_formats: &[],
+                label: Some(name),
+                size: wgpu::Extent3d {
+                    width: 64,
+                    height: 64,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: fmt,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
             });
-            table.allocate(type_id, name, tex.create_view(&wgpu::TextureViewDescriptor::default()));
+            table.allocate(
+                type_id,
+                name,
+                tex.create_view(&wgpu::TextureViewDescriptor::default()),
+            );
         }
         pass.resolve(&device, &table);
         assert!(pass.pos_handle.is_some());

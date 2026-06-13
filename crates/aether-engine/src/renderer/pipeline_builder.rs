@@ -17,11 +17,11 @@
 //! scheduler.execute_all(&mut encoder, &surface_view);
 //! ```
 
-use std::any::TypeId;
-use std::collections::{HashMap, HashSet, VecDeque};
 use crate::renderer::pass::{Pass, PassSignature};
 use crate::renderer::resource_table::ResourceTable;
 use crate::renderer::scheduler::Scheduler;
+use std::any::TypeId;
+use std::collections::{HashMap, HashSet, VecDeque};
 use tracing::debug;
 
 /// Builds a render pipeline from individual passes.
@@ -69,23 +69,23 @@ impl PipelineBuilder {
             sigs.push(pass.signature());
         }
 
-        // Build producer map and detect conflicts
+        // Build producer map and dependency edges. Multiple sequential writers
+        // to the same resource are allowed (e.g. GBufferPass + TerrainPass).
         let mut producer: HashMap<(TypeId, &str), usize> = HashMap::new();
+        let mut deps: Vec<Vec<usize>> = vec![Vec::new(); n];
         for (i, sig) in sigs.iter().enumerate() {
             for write_slot in &sig.writes {
                 let key = (write_slot.type_id, write_slot.name);
                 if let Some(&existing) = producer.get(&key) {
-                    panic!(
-                        "Resource conflict: '{}' written by pass {} and pass {}",
-                        write_slot.name, sigs[existing].name, sig.name,
-                    );
+                    if existing != i && !deps[i].contains(&existing) {
+                        deps[i].push(existing);
+                    }
                 }
                 producer.insert(key, i);
             }
         }
 
-        // Build dependency edges (deduplicated)
-        let mut deps: Vec<Vec<usize>> = vec![Vec::new(); n];
+        // Add read dependencies.
         for (i, sig) in sigs.iter().enumerate() {
             for read_slot in &sig.reads {
                 let key = (read_slot.type_id, read_slot.name);
@@ -131,7 +131,9 @@ impl PipelineBuilder {
                 .collect();
             panic!(
                 "Topo sort incomplete: visited {}/{} passes. Missing: {:?}",
-                order.len(), n, missing,
+                order.len(),
+                n,
+                missing,
             );
         }
 
@@ -153,9 +155,16 @@ impl PipelineBuilder {
                 let format = write_slot.format.expect("Write slot must have a format");
                 let tex_width = write_slot.width.unwrap_or(width);
                 let tex_height = write_slot.height.unwrap_or(height);
-                let texture = Self::create_transient_texture(device, format, tex_width, tex_height);
+                let layers = write_slot.layers.unwrap_or(1);
+                let texture =
+                    Self::create_transient_texture(device, format, tex_width, tex_height, layers);
                 let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-                resource_table.allocate(write_slot.type_id, write_slot.name, view);
+                resource_table.allocate_with_texture(
+                    write_slot.type_id,
+                    write_slot.name,
+                    texture,
+                    view,
+                );
             }
         }
 
@@ -172,7 +181,9 @@ impl PipelineBuilder {
     ///
     /// - If a pass reads a resource that no pass produces.
     /// - If a dependency cycle is detected.
-    /// - If two passes write to the same `(type, name)` resource.
+    ///
+    /// Multiple passes may write to the same `(type, name)` resource; they are
+    /// treated as sequential writers and ordered by registration order.
     pub fn build(mut self, device: &wgpu::Device, width: u32, height: u32) -> Scheduler {
         let order = compute_topological_order(&self.passes);
 
@@ -192,9 +203,17 @@ impl PipelineBuilder {
                     let format = write_slot.format.expect("Write slot must have format");
                     let tex_width = write_slot.width.unwrap_or(width);
                     let tex_height = write_slot.height.unwrap_or(height);
-                    let texture = Self::create_transient_texture(device, format, tex_width, tex_height);
+                    let layers = write_slot.layers.unwrap_or(1);
+                    let texture = Self::create_transient_texture(
+                        device, format, tex_width, tex_height, layers,
+                    );
                     let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-                    resource_table.allocate(write_slot.type_id, write_slot.name, view);
+                    resource_table.allocate_with_texture(
+                        write_slot.type_id,
+                        write_slot.name,
+                        texture,
+                        view,
+                    );
                 }
             }
         }
@@ -235,6 +254,7 @@ impl PipelineBuilder {
         format: wgpu::TextureFormat,
         width: u32,
         height: u32,
+        layers: u32,
     ) -> wgpu::Texture {
         let usage = wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING;
         device.create_texture(&wgpu::TextureDescriptor {
@@ -242,7 +262,7 @@ impl PipelineBuilder {
             size: wgpu::Extent3d {
                 width,
                 height,
-                depth_or_array_layers: 1,
+                depth_or_array_layers: layers,
             },
             mip_level_count: 1,
             sample_count: 1,
@@ -260,6 +280,7 @@ pub(crate) fn compute_topological_order(passes: &[Box<dyn Pass>]) -> Vec<usize> 
 
     let mut producer: HashMap<(std::any::TypeId, &str), usize> = HashMap::new();
     let mut consumers: Vec<HashSet<usize>> = vec![HashSet::new(); n];
+    let mut deps: Vec<Vec<usize>> = vec![Vec::new(); n];
 
     for (i, pass) in passes.iter().enumerate() {
         let sig = pass.signature();
@@ -267,17 +288,17 @@ pub(crate) fn compute_topological_order(passes: &[Box<dyn Pass>]) -> Vec<usize> 
         for write_slot in &sig.writes {
             let key = (write_slot.type_id, write_slot.name);
             if let Some(&existing) = producer.get(&key) {
-                panic!(
-                    "Resource conflict: '{}' (type {:?}) written by both '{}' and '{}'",
-                    write_slot.name, write_slot.type_id,
-                    passes[existing].name(), sig.name,
-                );
+                // Allow multiple sequential writers to the same resource (e.g.
+                // GBufferPass and TerrainPass both write to GPosition). The
+                // earlier writer becomes a dependency of the later one.
+                if existing != i && !deps[i].contains(&existing) {
+                    deps[i].push(existing);
+                    consumers[existing].insert(i);
+                }
             }
             producer.insert(key, i);
         }
     }
-
-    let mut deps: Vec<Vec<usize>> = vec![Vec::new(); n];
 
     for (i, pass) in passes.iter().enumerate() {
         let sig = pass.signature();
@@ -322,7 +343,10 @@ pub(crate) fn compute_topological_order(passes: &[Box<dyn Pass>]) -> Vec<usize> 
             .filter(|i| in_degree[*i] > 0)
             .map(|i| passes[i].name())
             .collect();
-        panic!("Dependency cycle detected involving passes: {:?}", cycle_nodes);
+        panic!(
+            "Dependency cycle detected involving passes: {:?}",
+            cycle_nodes
+        );
     }
 
     debug!(
@@ -371,7 +395,11 @@ fn dfs_ref(node: usize, deps: &[Vec<usize>], color: &mut [CycleColor], sigs: &[P
 }
 
 #[derive(Clone, Copy, PartialEq)]
-enum CycleColor { White, Gray, Black }
+enum CycleColor {
+    White,
+    Gray,
+    Black,
+}
 
 fn dfs(node: usize, deps: &[Vec<usize>], color: &mut [CycleColor], passes: &[Box<dyn Pass>]) {
     color[node] = CycleColor::Gray;
@@ -379,7 +407,9 @@ fn dfs(node: usize, deps: &[Vec<usize>], color: &mut [CycleColor], passes: &[Box
         if color[dep] == CycleColor::Gray {
             panic!(
                 "Dependency cycle: '{}' depends on '{}' which depends back on '{}'",
-                passes[node].name(), passes[dep].name(), passes[node].name(),
+                passes[node].name(),
+                passes[dep].name(),
+                passes[node].name(),
             );
         }
         if color[dep] == CycleColor::White {

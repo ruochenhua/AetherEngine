@@ -2,7 +2,7 @@ use super::Asset;
 use std::path::Path;
 
 /// CPU-side texture data.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CpuTexture {
     /// Raw pixel data.
     pub data: Vec<u8>,

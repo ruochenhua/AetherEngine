@@ -6,14 +6,17 @@
 //! Created by the Scheduler during `build()` and passed to each pass
 //! during `resolve()` and `execute()`.
 
-use std::any::TypeId;
 use crate::renderer::pass::ResHandle;
 use crate::renderer::resource::ResourceTag;
+use std::any::TypeId;
 
 /// Table of transient resources shared between passes.
 pub struct ResourceTable {
     /// Texture views indexed by handle index.
     views: Vec<wgpu::TextureView>,
+    /// Owning textures indexed by handle index. `None` for external resources
+    /// such as the swapchain.
+    textures: Vec<Option<wgpu::Texture>>,
     /// Mapping from (TypeId, name) → index into views.
     mapping: Vec<(TypeId, &'static str)>,
 }
@@ -23,11 +26,13 @@ impl ResourceTable {
     pub(crate) fn new() -> Self {
         Self {
             views: Vec::new(),
+            textures: Vec::new(),
             mapping: Vec::new(),
         }
     }
 
     /// Allocate a new resource and return its handle.
+    #[allow(dead_code)]
     pub(crate) fn allocate(
         &mut self,
         type_id: TypeId,
@@ -37,6 +42,22 @@ impl ResourceTable {
         let index = self.views.len();
         self.mapping.push((type_id, name));
         self.views.push(view);
+        self.textures.push(None);
+        index
+    }
+
+    /// Allocate a new resource with its owning texture and return its handle.
+    pub(crate) fn allocate_with_texture(
+        &mut self,
+        type_id: TypeId,
+        name: &'static str,
+        texture: wgpu::Texture,
+        view: wgpu::TextureView,
+    ) -> usize {
+        let index = self.views.len();
+        self.mapping.push((type_id, name));
+        self.views.push(view);
+        self.textures.push(Some(texture));
         index
     }
 
@@ -59,13 +80,21 @@ impl ResourceTable {
             "Resource '{}' with type {:?} not found in ResourceTable. Available: {:?}",
             name,
             type_id,
-            self.mapping.iter().map(|(tid, n)| (tid, n)).collect::<Vec<_>>(),
+            self.mapping
+                .iter()
+                .map(|(tid, n)| (tid, n))
+                .collect::<Vec<_>>(),
         );
     }
 
     /// Get a texture view by handle.
     pub fn get<T: ResourceTag>(&self, handle: ResHandle<T>) -> &wgpu::TextureView {
         &self.views[handle.index]
+    }
+
+    /// Get the owning texture by handle, if the resource table owns it.
+    pub fn texture<T: ResourceTag>(&self, handle: ResHandle<T>) -> Option<&wgpu::Texture> {
+        self.textures.get(handle.index).and_then(|t| t.as_ref())
     }
 
     /// Number of entries in the table.
@@ -86,7 +115,10 @@ impl ResourceTable {
                 return;
             }
         }
-        panic!("Resource '{}' with type {:?} not found for update", name, type_id);
+        panic!(
+            "Resource '{}' with type {:?} not found for update",
+            name, type_id
+        );
     }
 }
 
@@ -102,7 +134,11 @@ pub(crate) struct ResourceEntry {
 impl ResourceEntry {
     #[allow(dead_code)]
     pub fn new(type_id: TypeId, name: &'static str, format: wgpu::TextureFormat) -> Self {
-        Self { type_id, name, format }
+        Self {
+            type_id,
+            name,
+            format,
+        }
     }
 }
 
@@ -113,18 +149,19 @@ mod tests {
 
     fn headless_device() -> wgpu::Device {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter = pollster::block_on(
-            instance.request_adapter(&wgpu::RequestAdapterOptions::default()),
-        )
-        .expect("need adapter");
-        let (device, _queue) = pollster::block_on(
-            adapter.request_device(&wgpu::DeviceDescriptor::default()),
-        )
-        .expect("need device");
+        let adapter =
+            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+                .expect("need adapter");
+        let (device, _queue) =
+            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
+                .expect("need device");
         device
     }
 
-    fn create_texture_view(device: &wgpu::Device, format: wgpu::TextureFormat) -> wgpu::TextureView {
+    fn create_texture_view(
+        device: &wgpu::Device,
+        format: wgpu::TextureFormat,
+    ) -> wgpu::TextureView {
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("test texture"),
             size: wgpu::Extent3d {
