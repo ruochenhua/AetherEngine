@@ -35,3 +35,5 @@ What are the trade-offs?
 - ADR-0007: SSAO Implementation Pitfalls
 - ADR-0008: ECS World + Extract Phase for Rendering and Editing
 - ADR-0009: Git Worktree + Change Manifest + Merge Skill
+- ADR-0010: Terrain Architecture for Phase 5
+- ADR-0011: Deferred + Transparent Forward Hybrid Pipeline

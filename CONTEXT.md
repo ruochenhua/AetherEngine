@@ -29,6 +29,15 @@ Rust + wgpu 现代渲染引擎，KongEngine 的精神续作。目标：从 Defer
 | **FlyCam** | UE 风格自由飞行相机：`Alt+左键`环顾，WASD 移动，滚轮调速 |
 | **Picking** | CPU 端通过 camera ray 与 ECS World 中物体的 AABB 做相交检测，返回选中的 Entity |
 | **Gizmo** | 变换操作器（平移/旋转/缩放），通过 DebugLinePass 渲染，左键拖拽直接修改 Transform |
+| **Terrain** | 地形渲染系统。A 级 = 单高度图 displacement；B 级 = 可漫游地形 + LOD + 视锥裁剪；C 级 = 大世界观 + tile streaming + 虚拟纹理。Phase 5 目标为 B 级 |
+| **TerrainSource** | 地形高度数据来源抽象。至少支持 `Heightmap(path)` 和 `Procedural(seed, params)` 两种模式，未来可扩展为 `RuntimeGenerated` |
+| **TerrainGeometry** | 地形几何生成策略。Phase 5 使用 Chunked LOD；长期目标为 Compute Tessellation + Indirect Draw |
+| **TerrainPass** | 可选的渲染 Pass。当 Scene 配置了 Terrain 时注册到管线，输出 GBuffer 数据供 LightingPass 复用 |
+| **Pipeline Rebuild** | Scheduler 的重建机制。窗口大小变化、场景切换、或启用/禁用可选 Pass（如 TerrainPass）时触发 |
+| **Terrain Entity** | Scene 中代表地形整体的一个 ECS entity，携带 `Terrain` component。Editor Hierarchy 中显示为单一可折叠节点；具体的 chunks 由 TerrainPass 内部管理 |
+| **Atmosphere** | 大气渲染系统。Phase 5 使用解析模型（Preetham/Hosek-Wilkie）替代静态 skybox 背景，并输出 sun/sky 颜色供光照使用；IBL 仍复用配置的 HDR cubemap。长期目标为物理大气散射（Bruneton/Nishita LUT） |
+| **WaterPass** | 透明 Forward Pass。在 Deferred 不透明管线之后渲染水面，支持 Gerstner 波浪、SSR 反射、屏幕空间折射 |
+| **CloudPass** | 独立体积云 Pass。使用预生成 3D noise texture + 半分辨率 ray marching + bilateral upsample；Phase 5 仅做装饰性天空云，不投射阴影 |
 | **Worktree** | git worktree 机制：一个 issue = 一个 worktree。每个 worktree 有独立的 `.aether-changes.yml` |
 | **aether-merge** | 基于 change manifest 的结构化合并编排 skill。见 `.claude/skills/aether-merge/SKILL.md` |
 | **冲突等级** | L0 无重叠 → L1 同文件不同函数 → L2 签名变更 → L3 同函数体冲突 |

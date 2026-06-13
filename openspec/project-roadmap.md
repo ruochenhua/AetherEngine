@@ -94,17 +94,31 @@
 | GPU Instancing（per-batch instanced draw） | ✅ 已完成 | P2 |
 | SSAO View-Space 修复 + Bilateral Blur | ✅ 已完成 | P2 |
 
+### Phase 4.5: 大场景前置基础设施 ✅
+
+**目标**：为地形渲染铺好最小必要的基础能力
+
+| 功能 | 状态 | 优先级 |
+|------|------|--------|
+| 场景格式扩展（RON `terrain` 字段 + TerrainSource 抽象） | ✅ 已完成 (#75) | P2 |
+| AABB / Bounding Volume 统一 | ✅ 已完成 (#76) | P2 |
+| 视锥裁剪（Frustum Culling） | ✅ 已完成 (#76) | P2 |
+| 地形材质 Splatting 基础 | ✅ 已完成 (#77) | P2 |
+
 ### Phase 5: 大场景渲染
 
 **目标**：地形、大气、水体、体积云
 
 | 功能 | 状态 | 优先级 |
 |------|------|--------|
-| 地形（高度图 + 曲面细分） | 🔲 待实现 | P3 |
-| 物理大气散射 | 🔲 待实现 | P3 |
-| 水体（Gerstner 波） | 🔲 待实现 | P3 |
-| 体积云（Ray marching） | 🔲 待实现 | P3 |
-| God Ray | 🔲 待实现 | P3 |
+| 地形（Chunked LOD + 可选 Pass + GBuffer 集成） | ✅ 已完成 (#78) | P3 |
+| 异步 Asset 加载 | ✅ 已完成 (#79) | P2 |
+| CSM 级联阴影 | ✅ 已完成 (#80) | P3 |
+| GPU Timer 性能面板 | ✅ 已完成 (#81) | P3 |
+| 物理大气散射 | ✅ 已完成 (#82) | P3 |
+| 水体（Gerstner 波） | 🔲 待实现 (#83) | P3 |
+| 体积云（Ray marching） | 🔲 待实现 (#84) | P3 |
+| God Ray | 🔲 待实现 (#85) | P3 |
 
 ### Phase 6: 光线追踪
 
