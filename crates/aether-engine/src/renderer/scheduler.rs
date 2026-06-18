@@ -140,12 +140,18 @@ impl Scheduler {
         }
     }
 
-    /// Toggle rendering features in the LightingPass.
+    /// Toggle rendering features in the LightingPass and SSRPass.
     pub fn set_feature_flags(&mut self, ssao: bool, shadow: bool, ibl: bool) {
         if let Some(lp) = self.pass_mut::<crate::renderer::passes::lighting::LightingPass>() {
             lp.set_ssao_enabled(ssao);
             lp.set_shadow_enabled(shadow);
             lp.set_ibl_enabled(ibl);
+        }
+        if let Some(ssao_p) = self.pass_mut::<crate::renderer::passes::ssao::SSAOPass>() {
+            ssao_p.set_enabled(ssao);
+        }
+        if let Some(ao_blur) = self.pass_mut::<crate::renderer::passes::ao_blur::AOBlurPass>() {
+            ao_blur.set_enabled(ssao);
         }
     }
 

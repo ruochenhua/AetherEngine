@@ -15,7 +15,8 @@ use wgpu::util::DeviceExt;
 
 /// Lighting Pass implementation.
 pub struct LightingPass {
-    pipeline: wgpu::RenderPipeline,
+    /// 8 pipeline variants indexed by bitmask: bit0=ssao, bit1=shadow, bit2=ibl.
+    pipelines: [wgpu::RenderPipeline; 8],
     uniform_buffer: wgpu::Buffer,
     quad_vertex_buffer: wgpu::Buffer,
     quad_vertex_count: u32,
@@ -43,12 +44,8 @@ pub struct LightingPass {
     ao_handle: Option<ResHandle<AOTextureBlurred>>,
     /// Debug visualization mode (set by Launcher, used in apply_frame).
     debug_mode: u32,
-    /// Feature toggle: SSAO enabled.
-    ssao_enabled: bool,
-    /// Feature toggle: shadow mapping enabled.
-    shadow_enabled: bool,
-    /// Feature toggle: IBL enabled.
-    ibl_enabled: bool,
+    /// Current pipeline variant bitmask: bit0=ssao, bit1=shadow, bit2=ibl.
+    current_key: u8,
 }
 
 impl Pass for LightingPass {
@@ -174,9 +171,6 @@ impl Pass for LightingPass {
         let mut uniforms = *frame.lighting;
         uniforms.camera_pos = frame.camera.position.into();
         uniforms.debug_mode = self.debug_mode;
-        uniforms.ssao_enabled = if self.ssao_enabled { 1 } else { 0 };
-        uniforms.shadow_enabled = if self.shadow_enabled { 1 } else { 0 };
-        uniforms.ibl_enabled = if self.ibl_enabled { 1 } else { 0 };
         uniforms.shadow_map_size = crate::renderer::passes::shadow::SHADOW_MAP_SIZE as f32;
 
         let cascades = crate::renderer::passes::shadow::compute_cascades(frame, &light_dir);
@@ -224,7 +218,7 @@ impl Pass for LightingPass {
             multiview_mask: None,
         });
 
-        pass.set_pipeline(&self.pipeline);
+        pass.set_pipeline(&self.pipelines[self.current_key as usize]);
         pass.set_bind_group(0, texture_bg, &[]);
         pass.set_bind_group(1, &self.uniform_bind_group, &[]);
         pass.set_bind_group(
@@ -278,6 +272,10 @@ fn vs_main(@location(0) position: vec2<f32>) -> VertexOutput {
     out.uv = vec2<f32>(position.x * 0.5 + 0.5, 0.5 - position.y * 0.5);
     return out;
 }
+
+override ssao_enabled: bool = true;
+override shadow_enabled: bool = true;
+override ibl_enabled: bool = true;
 
 struct DirectionalLight {
     direction: vec3<f32>,
@@ -420,8 +418,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let kD = (vec3<f32>(1.0) - kS) * (1.0 - metallic);
 
     // AO darkens both the constant ambient term and the IBL contribution.
-    let ao_raw = textureSample(ao_texture, gbuffer_sampler, in.uv).r;
-    let ao = select(1.0, ao_raw, uniforms.ssao_enabled != 0u);
+    // When ssao_enabled=false, the override compiler eliminates the texture sample.
+    var ao: f32 = 1.0;
+    if (ssao_enabled) {
+        ao = textureSample(ao_texture, gbuffer_sampler, in.uv).r;
+    }
     let ambient = albedo * uniforms.ambient_intensity * ao;
     let radiance = uniforms.light.color * uniforms.light.intensity;
     let diffuse_direct = kD * albedo / PI * NdotL * radiance;
@@ -429,76 +430,66 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     let lit_color = ambient + diffuse_direct + specular_direct;
 
-    // Shadow: transform world_pos to light space, sample shadow map with
-    // slope-scale depth bias (OpenGL Tutorial 16 approach):
-    //   bias = base * tan(acos(NdotL)) = base * sqrt(1-NdotL²) / NdotL
-    // Grazing angles get more bias; front-facing gets less. Clamped to avoid
-    // peter panning on flat surfaces.
-    //
-    // We also apply a small world-space normal offset before projecting to
-    // light space. This shifts the sampling position slightly along the
-    // surface normal, which effectively moves receiver surfaces toward the
-    // occluder in light-space and eliminates the gap (peter-panning)
-    // without needing excessive depth bias.
-    // CSM: select cascade based on view-space depth along the camera ray.
-    let view_depth = dot(world_pos - uniforms.camera_pos, view_dir);
-    var cascade_index: u32 = 0u;
-    for (var i: u32 = 0u; i < uniforms.cascade_count; i = i + 1u) {
-        if (view_depth < uniforms.cascade_splits[i]) {
-            cascade_index = i;
-            break;
-        }
-    }
-
-    let normal_offset = 0.03;
-    let shadow_sample_pos = world_pos + N * normal_offset;
-    let light_clip = uniforms.cascade_view_projs[cascade_index] * vec4<f32>(shadow_sample_pos, 1.0);
-    var visibility: f32 = 1.0;
-    if (light_clip.w > 0.0) {
-        let light_ndc = light_clip.xyz / light_clip.w;
-        let uv = vec2<f32>(light_ndc.x * 0.5 + 0.5, 0.5 - light_ndc.y * 0.5);
-        // Bounds check: only sample shadow map when NDC is inside [0,1] cube.
-        // Outside the frustum we assume fully lit (visibility = 1.0).
-        let in_bounds = all(uv >= vec2<f32>(0.0)) && all(uv <= vec2<f32>(1.0))
-                     && light_ndc.z >= 0.0 && light_ndc.z <= 1.0;
-        if (in_bounds) {
-            // Slope-scale bias: tan(acos(NdotL)) = sin(theta)/cos(theta)
-            let cos_theta = saturate(NdotL);
-            let sin_theta = sqrt(1.0 - cos_theta * cos_theta);
-            let slope_bias = uniforms.shadow_normal_bias * sin_theta / max(cos_theta, 0.001);
-            let bias = min(slope_bias, uniforms.shadow_normal_bias * 5.0);
-            let ref_depth = light_ndc.z - bias;
-            // PCF 3x3
-            let texel_size = 1.0 / uniforms.shadow_map_size;
-            visibility = 0.0;
-            for (var x: i32 = -1; x <= 1; x = x + 1) {
-                for (var y: i32 = -1; y <= 1; y = y + 1) {
-                    let offset = vec2<f32>(f32(x) * texel_size, f32(y) * texel_size);
-                    visibility = visibility + textureSampleCompare(
-                        shadow_depth, shadow_sampler, uv + offset, i32(cascade_index), ref_depth
-                    );
-                }
+    // Shadow: when shadow_enabled=false, the override compiler eliminates
+    // the entire cascade selection + PCF 3x3 loop.
+    var shadow_factor: f32 = 1.0;
+    if (shadow_enabled) {
+        let view_depth = dot(world_pos - uniforms.camera_pos, view_dir);
+        var cascade_index: u32 = 0u;
+        for (var i: u32 = 0u; i < uniforms.cascade_count; i = i + 1u) {
+            if (view_depth < uniforms.cascade_splits[i]) {
+                cascade_index = i;
+                break;
             }
-            visibility = visibility / 9.0;
         }
+
+        let normal_offset = 0.03;
+        let shadow_sample_pos = world_pos + N * normal_offset;
+        let light_clip = uniforms.cascade_view_projs[cascade_index] * vec4<f32>(shadow_sample_pos, 1.0);
+        var visibility: f32 = 1.0;
+        if (light_clip.w > 0.0) {
+            let light_ndc = light_clip.xyz / light_clip.w;
+            let uv = vec2<f32>(light_ndc.x * 0.5 + 0.5, 0.5 - light_ndc.y * 0.5);
+            let in_bounds = all(uv >= vec2<f32>(0.0)) && all(uv <= vec2<f32>(1.0))
+                         && light_ndc.z >= 0.0 && light_ndc.z <= 1.0;
+            if (in_bounds) {
+                let cos_theta = saturate(NdotL);
+                let sin_theta = sqrt(1.0 - cos_theta * cos_theta);
+                let slope_bias = uniforms.shadow_normal_bias * sin_theta / max(cos_theta, 0.001);
+                let bias = min(slope_bias, uniforms.shadow_normal_bias * 5.0);
+                let ref_depth = light_ndc.z - bias;
+                let texel_size = 1.0 / uniforms.shadow_map_size;
+                visibility = 0.0;
+                for (var x: i32 = -1; x <= 1; x = x + 1) {
+                    for (var y: i32 = -1; y <= 1; y = y + 1) {
+                        let offset = vec2<f32>(f32(x) * texel_size, f32(y) * texel_size);
+                        visibility = visibility + textureSampleCompare(
+                            shadow_depth, shadow_sampler, uv + offset, i32(cascade_index), ref_depth
+                        );
+                    }
+                }
+                visibility = visibility / 9.0;
+            }
+        }
+        shadow_factor = mix(0.3, 1.0, visibility);
     }
-    let shadow_factor = select(1.0, mix(0.3, 1.0, visibility), uniforms.shadow_enabled != 0u);
     let direct_light = lit_color * shadow_factor;
 
     // IBL (Image-Based Lighting) — uses same F (Fresnel) and kD as direct light
     let R = reflect(-V, N);
 
-    // Diffuse IBL: sample irradiance cubemap
-    let irradiance = textureSample(irradiance_map, ibl_sampler, N).rgb;
-    let diffuse_ibl = kD * albedo * irradiance;
+    // When ibl_enabled=false, the override compiler eliminates all cubemap samples.
+    var ibl_light: vec3<f32> = vec3(0.0);
+    if (ibl_enabled) {
+        let irradiance = textureSample(irradiance_map, ibl_sampler, N).rgb;
+        let diffuse_ibl = kD * albedo * irradiance;
 
-    // Specular IBL: sample prefiltered cubemap + BRDF LUT
-    let mip_level = roughness * 4.0; // 5 mips, mip 4 = roughness 1.0
-    let prefiltered_color = textureSampleLevel(prefiltered_map, ibl_sampler, vec3<f32>(R.x, -R.y, R.z), mip_level).rgb;
-    let env_brdf = textureSample(brdf_lut, ibl_sampler, vec2<f32>(NdotV, roughness)).rg;
-    let specular_ibl = prefiltered_color * (F * env_brdf.r + env_brdf.g);
-
-    let ibl_light = select(vec3<f32>(0.0), diffuse_ibl + specular_ibl, uniforms.ibl_enabled != 0u);
+        let mip_level = roughness * 4.0;
+        let prefiltered_color = textureSampleLevel(prefiltered_map, ibl_sampler, vec3<f32>(R.x, -R.y, R.z), mip_level).rgb;
+        let env_brdf = textureSample(brdf_lut, ibl_sampler, vec2<f32>(NdotV, roughness)).rg;
+        let specular_ibl = prefiltered_color * (F * env_brdf.r + env_brdf.g);
+        ibl_light = diffuse_ibl + specular_ibl;
+    }
 
     let final_color = direct_light + ibl_light * ao;
 
@@ -718,47 +709,65 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             immediate_size: 0,
         });
 
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Lighting Pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                compilation_options: Default::default(),
-                buffers: &[wgpu::VertexBufferLayout {
-                    array_stride: std::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
-                    step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &[wgpu::VertexAttribute {
-                        offset: 0,
-                        shader_location: 0,
-                        format: wgpu::VertexFormat::Float32x2,
-                    }],
-                }],
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: output_format,
-                    blend: None,
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: None,
-                polygon_mode: wgpu::PolygonMode::Fill,
-                unclipped_depth: false,
-                conservative: false,
-            },
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview_mask: None,
-            cache: None,
-        });
+        // Generate 8 pipeline variants for all combinations of ssao/shadow/ibl.
+        let mut pipelines: Vec<wgpu::RenderPipeline> = Vec::with_capacity(8);
+        for ssao_on in [false, true] {
+            for shadow_on in [false, true] {
+                for ibl_on in [false, true] {
+                    let constant_entries: [(&str, f64); 3] = [
+                        ("ssao_enabled", if ssao_on { 1.0 } else { 0.0 }),
+                        ("shadow_enabled", if shadow_on { 1.0 } else { 0.0 }),
+                        ("ibl_enabled", if ibl_on { 1.0 } else { 0.0 }),
+                    ];
+                    let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                        label: Some(&format!("Lighting Pipeline (ssao={}, shadow={}, ibl={})", ssao_on, shadow_on, ibl_on)),
+                        layout: Some(&pipeline_layout),
+                        vertex: wgpu::VertexState {
+                            module: &shader,
+                            entry_point: Some("vs_main"),
+                            compilation_options: Default::default(),
+                            buffers: &[wgpu::VertexBufferLayout {
+                                array_stride: std::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
+                                step_mode: wgpu::VertexStepMode::Vertex,
+                                attributes: &[wgpu::VertexAttribute {
+                                    offset: 0,
+                                    shader_location: 0,
+                                    format: wgpu::VertexFormat::Float32x2,
+                                }],
+                            }],
+                        },
+                        fragment: Some(wgpu::FragmentState {
+                            module: &shader,
+                            entry_point: Some("fs_main"),
+                            compilation_options: wgpu::PipelineCompilationOptions {
+                                constants: &constant_entries,
+                                zero_initialize_workgroup_memory: true,
+                            },
+                            targets: &[Some(wgpu::ColorTargetState {
+                                format: output_format,
+                                blend: None,
+                                write_mask: wgpu::ColorWrites::ALL,
+                            })],
+                        }),
+                        primitive: wgpu::PrimitiveState {
+                            topology: wgpu::PrimitiveTopology::TriangleList,
+                            strip_index_format: None,
+                            front_face: wgpu::FrontFace::Ccw,
+                            cull_mode: None,
+                            polygon_mode: wgpu::PolygonMode::Fill,
+                            unclipped_depth: false,
+                            conservative: false,
+                        },
+                        depth_stencil: None,
+                        multisample: wgpu::MultisampleState::default(),
+                        multiview_mask: None,
+                        cache: None,
+                    });
+                    pipelines.push(pipeline);
+                }
+            }
+        }
+        let pipelines: [wgpu::RenderPipeline; 8] = pipelines.try_into().expect("expected 8 pipelines");
 
         let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Lighting Uniform Buffer"),
@@ -793,7 +802,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         });
 
         Self {
-            pipeline,
+            pipelines,
             uniform_buffer,
             quad_vertex_buffer,
             quad_vertex_count: 6,
@@ -836,9 +845,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                 ],
             }),
             debug_mode: 0,
-            ssao_enabled: true,
-            shadow_enabled: true,
-            ibl_enabled: true,
+            current_key: 0b111,
         }
     }
 
@@ -853,18 +860,18 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         self.debug_mode = mode;
     }
 
-    /// Toggle SSAO in the lighting shader.
+    /// Toggle SSAO in the lighting shader (bit 0).
     pub fn set_ssao_enabled(&mut self, enabled: bool) {
-        self.ssao_enabled = enabled;
+        if enabled { self.current_key |= 0b001; } else { self.current_key &= !0b001; }
     }
 
-    /// Toggle shadow mapping in the lighting shader.
+    /// Toggle shadow mapping in the lighting shader (bit 1).
     pub fn set_shadow_enabled(&mut self, enabled: bool) {
-        self.shadow_enabled = enabled;
+        if enabled { self.current_key |= 0b010; } else { self.current_key &= !0b010; }
     }
 
-    /// Toggle IBL in the lighting shader.
+    /// Toggle IBL in the lighting shader (bit 2).
     pub fn set_ibl_enabled(&mut self, enabled: bool) {
-        self.ibl_enabled = enabled;
+        if enabled { self.current_key |= 0b100; } else { self.current_key &= !0b100; }
     }
 }

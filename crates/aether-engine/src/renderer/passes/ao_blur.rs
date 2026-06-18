@@ -41,6 +41,7 @@ pub struct AOBlurPass {
     screen_size: [f32; 2],
     half_width: u32,
     half_height: u32,
+    enabled: bool,
 }
 
 impl Pass for AOBlurPass {
@@ -120,6 +121,10 @@ impl Pass for AOBlurPass {
             .write_buffer(&self.params_buffer, 0, bytemuck::cast_slice(&[p]));
     }
 
+    fn should_run(&self, _frame: &RenderFrame) -> bool {
+        self.enabled
+    }
+
     fn execute(
         &self,
         encoder: &mut wgpu::CommandEncoder,
@@ -161,6 +166,11 @@ impl Pass for AOBlurPass {
 }
 
 impl AOBlurPass {
+    /// Enable or disable the AO blur pass.
+    pub fn set_enabled(&mut self, enabled: bool) {
+        self.enabled = enabled;
+    }
+
     /// Update screen dimensions (called on init and resize).
     pub fn set_screen_size(&mut self, width: u32, height: u32) {
         self.screen_size = [width as f32, height as f32];
@@ -390,6 +400,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             screen_size: [1024.0, 768.0],
             half_width: 512,
             half_height: 384,
+            enabled: true,
         }
     }
 }

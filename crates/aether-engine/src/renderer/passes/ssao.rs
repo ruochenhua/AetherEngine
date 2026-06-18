@@ -66,6 +66,7 @@ pub struct SSAOPass {
     radius: f32,
     bias: f32,
     intensity: f32,
+    enabled: bool,
 }
 
 impl Pass for SSAOPass {
@@ -144,6 +145,10 @@ impl Pass for SSAOPass {
         frame
             .queue
             .write_buffer(&self.frame_buffer, 0, bytemuck::cast_slice(&[uniforms]));
+    }
+
+    fn should_run(&self, _frame: &RenderFrame) -> bool {
+        self.enabled
     }
 
     fn execute(
@@ -469,7 +474,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             radius: 0.5,
             bias: 0.025,
             intensity: 1.5,
+            enabled: true,
         }
+    }
+
+    /// Enable or disable the SSAO pass.
+    pub fn set_enabled(&mut self, enabled: bool) {
+        self.enabled = enabled;
     }
 
     /// Set SSAO sample radius (world-space units). The shader scales it by the
