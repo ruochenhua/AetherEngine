@@ -38,7 +38,8 @@ struct SSRSettings {
 
 /// SSR pass state.
 pub struct SSRPass {
-    pipeline: wgpu::RenderPipeline,
+    trace_pipeline: wgpu::RenderPipeline,
+    upsample_pipeline: wgpu::RenderPipeline,
     quad_vertex_buffer: wgpu::Buffer,
     quad_vertex_count: u32,
     settings_buffer: wgpu::Buffer,
@@ -58,6 +59,8 @@ pub struct SSRPass {
     ssr_debug_mode: u32,
     ssr_enabled: u32,
     screen_size: [f32; 2],
+    trace_width: u32,
+    trace_height: u32,
 }
 
 impl Pass for SSRPass {
@@ -72,6 +75,7 @@ impl Pass for SSRPass {
             .read::<GMaterial>("gbuffer_material")
             .read::<GDepth>("gbuffer_depth")
             .read::<SceneColor>("scene_color")
+            .write_sized::<SsrTraceResult>("ssr_trace", wgpu::TextureFormat::Rgba16Float, self.trace_width.max(1), self.trace_height.max(1))
             .write::<ReflectionTexture>("reflection", wgpu::TextureFormat::Rgba16Float)
     }
 
@@ -91,6 +95,7 @@ impl Pass for SSRPass {
         let material_view = resources.get(self.material_handle.unwrap());
         let depth_view = resources.get(self.depth_handle.unwrap());
         let scene_color_view = resources.get(self.scene_color_handle.unwrap());
+        let trace_view = resources.get(resources.handle::<SsrTraceResult>("ssr_trace"));
 
         self.texture_bind_group = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("SSR Texture Bind Group"),
@@ -119,6 +124,10 @@ impl Pass for SSRPass {
                 wgpu::BindGroupEntry {
                     binding: 5,
                     resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 6,
+                    resource: wgpu::BindingResource::TextureView(trace_view),
                 },
             ],
         }));
@@ -163,12 +172,14 @@ impl Pass for SSRPass {
             .texture_bind_group
             .as_ref()
             .expect("SSR: resolve not called");
-        let reflection_view = resources.get(resources.handle::<ReflectionTexture>("reflection"));
+        let ssr_trace_view = resources.get(resources.handle::<SsrTraceResult>("ssr_trace"));
 
-        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("SSR Pass"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: reflection_view,
+        // Stage 1: Trace at half resolution
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("SSR Trace (Half-Res)"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: ssr_trace_view,
                 depth_slice: None,
                 resolve_target: None,
                 ops: wgpu::Operations {
@@ -181,11 +192,38 @@ impl Pass for SSRPass {
             timestamp_writes: None,
             occlusion_query_set: None,
         });
-        pass.set_pipeline(&self.pipeline);
-        pass.set_bind_group(0, texture_bg, &[]);
-        pass.set_bind_group(1, &self.settings_bind_group, &[]);
-        pass.set_vertex_buffer(0, self.quad_vertex_buffer.slice(..));
-        pass.draw(0..self.quad_vertex_count, 0..1);
+            pass.set_pipeline(&self.trace_pipeline);
+            pass.set_bind_group(0, texture_bg, &[]);
+            pass.set_bind_group(1, &self.settings_bind_group, &[]);
+            pass.set_vertex_buffer(0, self.quad_vertex_buffer.slice(..));
+            pass.draw(0..self.quad_vertex_count, 0..1);
+        }
+
+        // Stage 2: Bilateral upsample from half-res to full-res
+        let reflection_view = resources.get(resources.handle::<ReflectionTexture>("reflection"));
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("SSR Upsample (Full-Res)"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: reflection_view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                multiview_mask: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+            pass.set_pipeline(&self.upsample_pipeline);
+            pass.set_bind_group(0, texture_bg, &[]);
+            pass.set_bind_group(1, &self.settings_bind_group, &[]);
+            pass.set_vertex_buffer(0, self.quad_vertex_buffer.slice(..));
+            pass.draw(0..self.quad_vertex_count, 0..1);
+        }
     }
 
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
@@ -677,6 +715,16 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 6,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
             ],
         });
 
@@ -694,14 +742,15 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             }],
         });
 
+        // Shared pipeline layout (both trace and upsample use the same bind groups)
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("SSR Pipeline Layout"),
             bind_group_layouts: &[Some(&texture_bgl), Some(&settings_bgl)],
             immediate_size: 0,
         });
 
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("SSR Pipeline"),
+        let trace_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("SSR Trace (Half-Res)"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
@@ -719,6 +768,108 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
+                entry_point: Some("fs_main"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: wgpu::TextureFormat::Rgba16Float,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: None,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+
+        // ── Upsample shader + pipeline ──────────────────────────
+        let upsample_source = r#"
+@group(0) @binding(3) var gbuffer_depth: texture_2d<f32>;
+@group(0) @binding(4) var scene_color: texture_2d<f32>;
+@group(0) @binding(5) var tex_sampler: sampler;
+@group(0) @binding(6) var ssr_trace: texture_2d<f32>;
+
+@group(1) @binding(0) var<uniform> settings: SSRSettings;
+
+struct VSOutput {
+    @builtin(position) clip_position: vec4<f32>,
+    @location(0) uv: vec2<f32>,
+};
+
+@vertex
+fn vs_main(@location(0) pos: vec2<f32>) -> VSOutput {
+    var out: VSOutput;
+    out.clip_position = vec4<f32>(pos, 0.0, 1.0);
+    out.uv = vec2<f32>(pos.x * 0.5 + 0.5, 0.5 - pos.y * 0.5);
+    return out;
+}
+
+fn bilateral_weight(depth_p: f32, depth_q: f32, center_dist: f32) -> f32 {
+    let depth_diff = abs(depth_p - depth_q);
+    let depth_w = exp(-depth_diff * 20.0);
+    let spatial_w = exp(-center_dist * 2.0);
+    return depth_w * spatial_w;
+}
+
+@fragment
+fn fs_main(in: VSOutput) -> @location(0) vec4<f32> {
+    let uv = in.uv;
+    let pixel_size = vec2<f32>(1.0) / settings.screen_size;
+    let trace_size = vec2<f32>(0.5) / settings.screen_size;
+    let depth_center = textureSample(gbuffer_depth, tex_sampler, uv).r;
+
+    // 5-tap cross bilateral upsample
+    var total: vec4<f32> = vec4<f32>(0.0);
+    var sum_weights: f32 = 0.0;
+
+    for (var dy = -1; dy <= 1; dy++) {
+        for (var dx = -1; dx <= 1; dx++) {
+            let offset = vec2<f32>(f32(dx), f32(dy));
+            let tap_uv = uv + offset * trace_size;
+            let tap_depth = textureSample(gbuffer_depth, tex_sampler, clamp(tap_uv, vec2<f32>(0.0), vec2<f32>(1.0))).r;
+            let w = bilateral_weight(depth_center, tap_depth, length(offset));
+            let trace_sample = textureSampleLevel(ssr_trace, tex_sampler, tap_uv, 0.0);
+            total += trace_sample * w;
+            sum_weights += w;
+        }
+    }
+
+    let result = total / max(sum_weights, 0.001);
+    return result;
+}
+"#;
+        let upsample_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("SSR Upsample Shader"),
+            source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(upsample_source)),
+        });
+        let upsample_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("SSR Upsample"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &upsample_shader,
+                entry_point: Some("vs_main"),
+                compilation_options: Default::default(),
+                buffers: &[wgpu::VertexBufferLayout {
+                    array_stride: std::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &[wgpu::VertexAttribute {
+                        offset: 0,
+                        shader_location: 0,
+                        format: wgpu::VertexFormat::Float32x2,
+                    }],
+                }],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &upsample_shader,
                 entry_point: Some("fs_main"),
                 compilation_options: Default::default(),
                 targets: &[Some(wgpu::ColorTargetState {
@@ -780,7 +931,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         });
 
         Self {
-            pipeline,
+            trace_pipeline,
+            upsample_pipeline,
             quad_vertex_buffer,
             quad_vertex_count: 6,
             settings_buffer,
@@ -797,6 +949,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             ssr_debug_mode: 0,
             ssr_enabled: 1,
             screen_size: [1280.0, 720.0],
+            trace_width: 640,
+            trace_height: 360,
         }
     }
 
@@ -813,6 +967,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     /// Update screen dimensions.
     pub fn set_screen_size(&mut self, width: u32, height: u32) {
         self.screen_size = [width as f32, height as f32];
+        self.trace_width = width / 2;
+        self.trace_height = height / 2;
     }
 }
 
