@@ -152,7 +152,7 @@ impl Pass for SSRPass {
             min_roughness: 0.08,
             max_roughness: 0.6,
             edge_fade_start: 0.0,
-            edge_fade_end: 0.1,
+            edge_fade_end: 0.25,
             ssr_debug_mode: self.ssr_debug_mode,
             ssr_enabled: self.ssr_enabled,
             _pad2: 0,
@@ -598,13 +598,18 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let hit_uv = result.yz;
     let step_norm = result.w;
 
-    // Reject self-intersections: if the hit point is too close in screen-space,
-    // it's likely the same surface (or adjacent pixel) and should be discarded.
-    // World-space threshold fails for distant surfaces (adjacent pixels can be >1.5m apart),
-    // so we use screen-space distance which is uniform regardless of depth.
+    // Reject self-intersections using depth threshold.
+    // If the hit point depth is close to the starting pixel depth,
+    // it's likely the same surface, not a valid reflection.
     if (hit > 0.5) {
-        let screen_dist_px = length(hit_uv - uv) * min(settings.screen_size.x, settings.screen_size.y);
-        if (screen_dist_px < 12.0) {
+        let full_res = vec2<i32>(settings.screen_size * 2.0);
+        let hit_px = vec2<i32>(hit_uv * settings.screen_size * 2.0);
+        let hit_px_clamped = clamp(hit_px, vec2<i32>(0), full_res - vec2<i32>(1));
+        let orig_px = vec2<i32>(uv * settings.screen_size * 2.0);
+        let orig_px_clamped = clamp(orig_px, vec2<i32>(0), full_res - vec2<i32>(1));
+        let hit_depth = textureLoad(gbuffer_depth, hit_px_clamped, 0).r;
+        let orig_depth = textureLoad(gbuffer_depth, orig_px_clamped, 0).r;
+        if (abs(hit_depth - orig_depth) < 0.001) {
             hit = 0.0;
         }
     }
