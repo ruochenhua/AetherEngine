@@ -35,6 +35,9 @@ struct SSRSettings {
     ssr_enabled: u32,
     frame_index: u32,
     _pad2: u32,
+    _pad3: u32,
+    _pad4: u32,
+    _pad5: u32,
 }
 
 /// SSR pass state.
@@ -49,13 +52,15 @@ pub struct SSRPass {
     #[allow(dead_code)]
     settings_bind_group_layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
+    dummy_texture_view: wgpu::TextureView,
     // Handles populated by resolve
     pos_handle: Option<ResHandle<GPosition>>,
     normal_handle: Option<ResHandle<GNormal>>,
     material_handle: Option<ResHandle<GMaterial>>,
     depth_handle: Option<ResHandle<GDepth>>,
     scene_color_handle: Option<ResHandle<SceneColor>>,
-    texture_bind_group: Option<wgpu::BindGroup>,
+    trace_bind_group: Option<wgpu::BindGroup>,
+    upsample_bind_group: Option<wgpu::BindGroup>,
     // Per-frame / mutable
     ssr_debug_mode: u32,
     ssr_enabled: u32,
@@ -99,8 +104,45 @@ impl Pass for SSRPass {
         let scene_color_view = resources.get(self.scene_color_handle.unwrap());
         let trace_view = resources.get(resources.handle::<SsrTraceResult>("ssr_trace"));
 
-        self.texture_bind_group = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("SSR Texture Bind Group"),
+        // Trace bind group: binds a 1x1 dummy at binding 6 (layout requires 7 bindings)
+        // to avoid conflict with SsrTraceResult being used as COLOR_TARGET in this pass
+        self.trace_bind_group = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("SSR Trace Bind Group"),
+            layout: &self.texture_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(pos_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(norm_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(material_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::TextureView(depth_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: wgpu::BindingResource::TextureView(scene_color_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 6,
+                    resource: wgpu::BindingResource::TextureView(&self.dummy_texture_view),
+                },
+            ],
+        }));
+        // Upsample bind group: includes SsrTraceResult for reading
+        self.upsample_bind_group = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("SSR Upsample Bind Group"),
             layout: &self.texture_bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
@@ -159,6 +201,9 @@ impl Pass for SSRPass {
             ssr_enabled: self.ssr_enabled,
             frame_index: self.frame_index,
             _pad2: 0,
+            _pad3: 0,
+            _pad4: 0,
+            _pad5: 0,
         };
         frame
             .queue
@@ -171,13 +216,13 @@ impl Pass for SSRPass {
         resources: &ResourceTable,
         _sv: &wgpu::TextureView,
     ) {
-        let texture_bg = self
-            .texture_bind_group
-            .as_ref()
-            .expect("SSR: resolve not called");
         let ssr_trace_view = resources.get(resources.handle::<SsrTraceResult>("ssr_trace"));
 
-        // Stage 1: Trace at half resolution
+        // Stage 1: Trace at half resolution (uses trace_bind_group WITHOUT SsrTraceResult)
+        let trace_bg = self
+            .trace_bind_group
+            .as_ref()
+            .expect("SSR: trace resolve not called");
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("SSR Trace (Half-Res)"),
@@ -196,13 +241,18 @@ impl Pass for SSRPass {
             occlusion_query_set: None,
         });
             pass.set_pipeline(&self.trace_pipeline);
-            pass.set_bind_group(0, texture_bg, &[]);
+            pass.set_bind_group(0, trace_bg, &[]);
             pass.set_bind_group(1, &self.settings_bind_group, &[]);
             pass.set_vertex_buffer(0, self.quad_vertex_buffer.slice(..));
             pass.draw(0..self.quad_vertex_count, 0..1);
         }
 
-        // Stage 2: Bilateral upsample from half-res to full-res
+        // Stage 2: Bilateral upsample (uses upsample_bind_group WITH SsrTraceResult)
+        let up_bg = self
+            .upsample_bind_group
+            .as_ref()
+            .expect("SSR: upsample resolve not called");
+        let reflection_view = resources.get(resources.handle::<ReflectionTexture>("reflection"));
         let reflection_view = resources.get(resources.handle::<ReflectionTexture>("reflection"));
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -222,7 +272,7 @@ impl Pass for SSRPass {
                 occlusion_query_set: None,
             });
             pass.set_pipeline(&self.upsample_pipeline);
-            pass.set_bind_group(0, texture_bg, &[]);
+            pass.set_bind_group(0, up_bg, &[]);
             pass.set_bind_group(1, &self.settings_bind_group, &[]);
             pass.set_vertex_buffer(0, self.quad_vertex_buffer.slice(..));
             pass.draw(0..self.quad_vertex_count, 0..1);
@@ -269,6 +319,9 @@ struct SSRSettings {
     ssr_enabled: u32,
     frame_index: u32,
     _pad2: u32,
+    _pad3: u32,
+    _pad4: u32,
+    _pad5: u32,
 };
 
 @group(0) @binding(0) var gbuffer_position: texture_2d<f32>;
@@ -821,6 +874,9 @@ struct SSRSettings {
     ssr_enabled: u32,
     frame_index: u32,
     _pad2: u32,
+    _pad3: u32,
+    _pad4: u32,
+    _pad5: u32,
 };
 
 @group(0) @binding(3) var gbuffer_depth: texture_2d<f32>;
@@ -964,6 +1020,18 @@ fn fs_main(in: VSOutput) -> @location(0) vec4<f32> {
             ..Default::default()
         });
 
+        let dummy_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("SSR Dummy 1x1"),
+            size: wgpu::Extent3d { width: 1, height: 1, depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba16Float,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        let dummy_texture_view = dummy_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
         Self {
             trace_pipeline,
             upsample_pipeline,
@@ -974,12 +1042,14 @@ fn fs_main(in: VSOutput) -> @location(0) vec4<f32> {
             texture_bind_group_layout: texture_bgl,
             settings_bind_group_layout: settings_bgl,
             sampler,
+            dummy_texture_view,
             pos_handle: None,
             normal_handle: None,
             material_handle: None,
             depth_handle: None,
             scene_color_handle: None,
-            texture_bind_group: None,
+            trace_bind_group: None,
+            upsample_bind_group: None,
             ssr_debug_mode: 0,
             ssr_enabled: 1,
             frame_index: 0,
