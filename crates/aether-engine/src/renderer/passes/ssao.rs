@@ -36,11 +36,12 @@ struct SSAOParams {
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct SSAOFrameUniforms {
-    params: SSAOParams,  // offset 0,   32 bytes
-    proj: [[f32; 4]; 4], // offset 32,  64 bytes (mat4x4 = 4 × vec4)
-    view: [[f32; 4]; 4], // offset 96,  64 bytes
+    params: SSAOParams,     // offset 0,   32 bytes
+    proj: [[f32; 4]; 4],    // offset 32,  64 bytes
+    inv_proj: [[f32; 4]; 4], // offset 96,  64 bytes
+    view: [[f32; 4]; 4],    // offset 160, 64 bytes
 }
-// Total: 160 bytes, aligned to 16
+// Total: 224 bytes, aligned to 16
 
 /// SSAO pass state.
 pub struct SSAOPass {
@@ -49,7 +50,7 @@ pub struct SSAOPass {
     quad_vertex_count: u32,
     frame_buffer: wgpu::Buffer,
     frame_bind_group: wgpu::BindGroup,
-    pos_handle: Option<ResHandle<GPosition>>,
+    depth_handle: Option<ResHandle<GDepth>>,
     normal_handle: Option<ResHandle<GNormal>>,
     texture_bind_group: Option<wgpu::BindGroup>,
     #[allow(dead_code)]
@@ -76,7 +77,7 @@ impl Pass for SSAOPass {
 
     fn signature(&self) -> PassSignature {
         PassSignature::new("SSAO")
-            .read::<GPosition>("gbuffer_position")
+            .read::<GDepth>("gbuffer_depth")
             .read::<GNormal>("gbuffer_normal")
             .write_sized::<AOTexture>(
                 "ao",
@@ -91,7 +92,7 @@ impl Pass for SSAOPass {
     }
 
     fn resolve(&mut self, device: &wgpu::Device, resources: &ResourceTable) {
-        self.pos_handle = Some(resources.handle::<GPosition>("gbuffer_position"));
+        self.depth_handle = Some(resources.handle::<GDepth>("gbuffer_depth"));
         self.normal_handle = Some(resources.handle::<GNormal>("gbuffer_normal"));
 
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -101,7 +102,7 @@ impl Pass for SSAOPass {
             ..Default::default()
         });
 
-        let pos_view = resources.get(self.pos_handle.unwrap());
+        let depth_view = resources.get(self.depth_handle.unwrap());
         let norm_view = resources.get(self.normal_handle.unwrap());
 
         self.texture_bind_group = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -110,7 +111,7 @@ impl Pass for SSAOPass {
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::TextureView(pos_view),
+                    resource: wgpu::BindingResource::TextureView(depth_view),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
@@ -130,6 +131,8 @@ impl Pass for SSAOPass {
         self.view = view;
         self.proj = proj;
 
+        let inv_proj = proj.inverse();
+
         let uniforms = SSAOFrameUniforms {
             params: SSAOParams {
                 radius: self.radius,
@@ -140,6 +143,7 @@ impl Pass for SSAOPass {
                 _pad1: [0.0; 2],
             },
             proj: proj.to_cols_array_2d(),
+            inv_proj: inv_proj.to_cols_array_2d(),
             view: view.to_cols_array_2d(),
         };
         frame
@@ -223,13 +227,14 @@ struct SSAOParams {
     _pad1: vec2<f32>,
 };
 
-@group(0) @binding(0) var gbuffer_position: texture_2d<f32>;
+@group(0) @binding(0) var gbuffer_depth: texture_2d<f32>;
 @group(0) @binding(1) var gbuffer_normal: texture_2d<f32>;
 @group(0) @binding(2) var gbuffer_sampler: sampler;
 
 struct FrameUniforms {
     params: SSAOParams,
     proj_mat: mat4x4<f32>,
+    inv_proj_mat: mat4x4<f32>,
     view_mat: mat4x4<f32>,
 };
 
@@ -243,7 +248,6 @@ fn hash2(p: vec2<f32>) -> vec2<f32> {
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let uv = in.uv;
-    let pos_sample = textureSample(gbuffer_position, gbuffer_sampler, uv);
     let norm_sample = textureSample(gbuffer_normal, gbuffer_sampler, uv);
 
     // Sky check: GBuffer normal is (0,0,0) after clear
@@ -251,13 +255,16 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         return vec4<f32>(1.0, 0.0, 0.0, 0.0);
     }
 
-    let world_pos = pos_sample.xyz;
-    let world_N = normalize(norm_sample.xyz * 2.0 - 1.0);
-
-    // Transform to VIEW space (per LearnOpenGL: all SSAO math in view space)
-    let view_pos4 = frame.view_mat * vec4<f32>(world_pos, 1.0);
-    let view_pos = view_pos4.xyz;
+    // Reconstruct view-space position from depth + UV
+    let depth_sample = textureSample(gbuffer_depth, gbuffer_sampler, uv).r;
+    let clip_uv = vec2<f32>(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
+    let clip_pos = vec4<f32>(clip_uv.x, clip_uv.y, depth_sample, 1.0);
+    let view_pos4 = frame.inv_proj_mat * clip_pos;
+    let view_pos = view_pos4.xyz / view_pos4.w;
     let frag_view_z = view_pos.z;
+
+    // Normal: read from GBuffer, transform to view space
+    let world_N = normalize(norm_sample.xyz * 2.0 - 1.0);
     let view_N4 = frame.view_mat * vec4<f32>(world_N, 0.0);
     let view_N = normalize(view_N4.xyz);
 
@@ -301,8 +308,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let sc = frame.proj_mat * vec4<f32>(sv, 1.0);
         let suv = vec2<f32>(sc.x / sc.w * 0.5 + 0.5, -sc.y / sc.w * 0.5 + 0.5);
         if (suv.x >= 0.0 && suv.x <= 1.0 && suv.y >= 0.0 && suv.y <= 1.0) {
-            let occ_world = textureSample(gbuffer_position, gbuffer_sampler, suv);
-            let occ_view_z = (frame.view_mat * vec4<f32>(occ_world.xyz, 1.0)).z;
+            let occ_depth = textureSample(gbuffer_depth, gbuffer_sampler, suv).r;
+            let occ_clip = vec4<f32>(suv.x * 2.0 - 1.0, 1.0 - suv.y * 2.0, occ_depth, 1.0);
+            let occ_view = frame.inv_proj_mat * occ_clip;
+            let occ_view_z = occ_view.z / occ_view.w;
             if (occ_view_z >= sv.z + view_bias) {
                 let z_delta = abs(frag_view_z - occ_view_z);
                 // Range falloff: attenuate occlusion when the occluder is farther
@@ -461,7 +470,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             quad_vertex_count: 6,
             frame_buffer,
             frame_bind_group: frame_bg,
-            pos_handle: None,
+            depth_handle: None,
             normal_handle: None,
             texture_bind_group: None,
             texture_bind_group_layout: texture_bgl,
