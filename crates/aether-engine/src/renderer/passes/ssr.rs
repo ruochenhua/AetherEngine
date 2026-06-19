@@ -802,6 +802,27 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
         // ── Upsample shader + pipeline ──────────────────────────
         let upsample_source = r#"
+struct SSRSettings {
+    camera_pos: vec3<f32>,
+    _pad0: f32,
+    view_proj: mat4x4<f32>,
+    screen_size: vec2<f32>,
+    _pad1: vec2<f32>,
+    max_distance: f32,
+    linear_steps: f32,
+    thickness: f32,
+    step_exponent: f32,
+    jitter_amount: f32,
+    min_roughness: f32,
+    max_roughness: f32,
+    edge_fade_start: f32,
+    edge_fade_end: f32,
+    ssr_debug_mode: u32,
+    ssr_enabled: u32,
+    frame_index: u32,
+    _pad2: u32,
+};
+
 @group(0) @binding(3) var gbuffer_depth: texture_2d<f32>;
 @group(0) @binding(4) var scene_color: texture_2d<f32>;
 @group(0) @binding(5) var tex_sampler: sampler;
