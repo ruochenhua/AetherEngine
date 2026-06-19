@@ -7,6 +7,7 @@ use aether_engine::renderer::{
     gizmo::{build_transform_gizmo, selected_entity_transform},
 };
 use std::sync::Arc;
+use std::time::Instant;
 use tracing::{error, info};
 
 /// Save a GPU screenshot buffer to a PNG file on disk.
@@ -55,6 +56,12 @@ pub(crate) fn frame(
     should_screenshot: bool,
     dt: f32,
 ) {
+    let frame_start = Instant::now();
+
+    // Frame counter for SSR temporal jitter (stays 0 under --freeze-time)
+    let frame_index = if app.freeze_time { 0u32 } else { app.frame_counter };
+    app.frame_counter = app.frame_counter.wrapping_add(1);
+
     let ctx = app.ctx.as_mut().unwrap();
     let scheduler = app.scheduler.as_mut().unwrap();
     let egui_renderer = app.egui_renderer.as_mut().unwrap();
@@ -67,6 +74,7 @@ pub(crate) fn frame(
     }
 
     // Acquire surface
+    let t_acquire_0 = Instant::now();
     let output = match ctx.get_current_texture() {
         wgpu::CurrentSurfaceTexture::Success(o) => o,
         wgpu::CurrentSurfaceTexture::Suboptimal(o) => o,
@@ -84,6 +92,8 @@ pub(crate) fn frame(
             return;
         }
     };
+    let acquire_ms = t_acquire_0.elapsed().as_secs_f64() * 1000.0;
+
     let target_view = output
         .texture
         .create_view(&wgpu::TextureViewDescriptor::default());
@@ -93,6 +103,10 @@ pub(crate) fn frame(
         .create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("Encoder"),
         });
+
+    let mut extract_ms = 0.0;
+    let mut apply_ms = 0.0;
+    let mut execute_ms = 0.0;
 
     match &mut app.state {
         LauncherState::Menu => {
@@ -142,7 +156,9 @@ pub(crate) fn frame(
             }
 
             // Extract phase: ECS World → GPU-ready batches
+            let t_extract_0 = Instant::now();
             let batches = extract_render_batches(world);
+            let extract_ms = t_extract_0.elapsed().as_secs_f64() * 1000.0;
 
             // Transform gizmo: build dynamic debug lines for selected entity
             let gizmo_lines = if let Some((_, transform)) = selected_entity_transform(world) {
@@ -163,11 +179,13 @@ pub(crate) fn frame(
                 delta_time: dt,
                 world,
             };
+            let t_apply_0 = Instant::now();
             scheduler.set_feature_flags(app.ssao_enabled, app.shadow_enabled, app.ibl_enabled);
             scheduler.set_ssao_params(app.ssao_radius, app.ssao_bias, app.ssao_intensity);
             scheduler.set_debug_mode(app.debug_mode as u32);
             scheduler.set_ssr_debug_mode(app.ssr_debug_mode);
             scheduler.set_ssr_enabled(app.ssr_enabled);
+            scheduler.set_ssr_frame_index(frame_index);
             scheduler.set_tone_mapping_mode(app.tone_mapping_mode, &ctx.queue);
             scheduler.set_bloom_params(
                 app.bloom_enabled,
@@ -183,7 +201,11 @@ pub(crate) fn frame(
                 &ctx.queue,
             );
             scheduler.apply_frame_all(&frame);
+            let apply_ms = t_apply_0.elapsed().as_secs_f64() * 1000.0;
+
+            let t_execute_0 = Instant::now();
             scheduler.execute_all(&mut encoder, &target_view, &frame, app.gpu_timer.as_mut());
+            execute_ms = t_execute_0.elapsed().as_secs_f64() * 1000.0;
         }
     }
 
@@ -250,9 +272,22 @@ pub(crate) fn frame(
         egui_renderer.render(&mut rp.forget_lifetime(), &paint_jobs, &screen_descriptor);
     }
 
+    let submit_time = frame_start.elapsed();
     ctx.queue.submit(std::iter::once(encoder.finish()));
+    let post_submit_time = frame_start.elapsed();
     output.present();
+    let frame_time = frame_start.elapsed();
     app.input.end_frame();
+
+    info!(
+        "frame_timing total_ms={:.2} acquire_ms={:.2} extract_ms={:.2} apply_ms={:.2} execute_ms={:.2} submit_to_present_ms={:.2}",
+        frame_time.as_secs_f64() * 1000.0,
+        acquire_ms,
+        extract_ms,
+        apply_ms,
+        execute_ms,
+        (post_submit_time - submit_time).as_secs_f64() * 1000.0,
+    );
 
     if should_screenshot {
         if let Some(buf) = app.screenshot_buffer.take() {

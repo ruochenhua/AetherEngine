@@ -119,6 +119,7 @@ pub(crate) struct App {
     pub(crate) no_gui_overlay: bool,
     pub(crate) exit_after_frames: Option<u32>,
     pub(crate) freeze_time: bool,
+    pub(crate) frame_counter: u32,
 }
 
 impl App {
@@ -208,6 +209,7 @@ impl App {
             no_gui_overlay,
             exit_after_frames,
             freeze_time,
+            frame_counter: 0,
         }
     }
 

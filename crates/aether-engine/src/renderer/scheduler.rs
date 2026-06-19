@@ -131,6 +131,13 @@ impl Scheduler {
         }
     }
 
+    /// Set the frame index for SSR temporal jitter.
+    pub fn set_ssr_frame_index(&mut self, index: u32) {
+        if let Some(ssr) = self.pass_mut::<crate::renderer::passes::ssr::SSRPass>() {
+            ssr.set_frame_index(index);
+        }
+    }
+
     /// Set SSAO parameters (radius, bias, intensity).
     pub fn set_ssao_params(&mut self, radius: f32, bias: f32, intensity: f32) {
         if let Some(ssao) = self.pass_mut::<crate::renderer::passes::ssao::SSAOPass>() {

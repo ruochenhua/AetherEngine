@@ -33,6 +33,7 @@ struct SSRSettings {
     edge_fade_end: f32,
     ssr_debug_mode: u32,
     ssr_enabled: u32,
+    frame_index: u32,
     _pad2: u32,
 }
 
@@ -58,6 +59,7 @@ pub struct SSRPass {
     // Per-frame / mutable
     ssr_debug_mode: u32,
     ssr_enabled: u32,
+    frame_index: u32,
     screen_size: [f32; 2],
     trace_width: u32,
     trace_height: u32,
@@ -155,6 +157,7 @@ impl Pass for SSRPass {
             edge_fade_end: 0.25,
             ssr_debug_mode: self.ssr_debug_mode,
             ssr_enabled: self.ssr_enabled,
+            frame_index: self.frame_index,
             _pad2: 0,
         };
         frame
@@ -264,6 +267,7 @@ struct SSRSettings {
     edge_fade_end: f32,
     ssr_debug_mode: u32,
     ssr_enabled: u32,
+    frame_index: u32,
     _pad2: u32,
 };
 
@@ -293,8 +297,8 @@ fn pcg2d(v: vec2<u32>) -> vec2<u32> {
 }
 
 // Generate pseudo-random vec2 in [0,1] from screen pixel coord
-fn rand2d(uv: vec2<f32>) -> vec2<f32> {
-    let px = vec2<u32>(uv * settings.screen_size);
+fn rand2d(uv: vec2<f32>, frame: u32) -> vec2<f32> {
+    let px = vec2<u32>(uv * settings.screen_size) ^ vec2<u32>(frame, frame * 3u);
     let h = pcg2d(px);
     return vec2<f32>(h) / 4294967295.0;
 }
@@ -434,7 +438,7 @@ fn ray_march(world_pos: vec3<f32>, rd: vec3<f32>, uv: vec2<f32>) -> vec4<f32> {
     var steps_taken = 0.0;
 
     let dims = vec2<i32>(settings.screen_size);
-    let jitter_val = settings.jitter_amount * (rand2d(uv).x - 0.5);
+    let jitter_val = settings.jitter_amount * (rand2d(uv, settings.frame_index).x - 0.5);
 
     for (var i = 1; i <= sample_count; i++) {
         let raw_t = (f32(i) + jitter_val) / f32(sample_count);
@@ -953,6 +957,7 @@ fn fs_main(in: VSOutput) -> @location(0) vec4<f32> {
             texture_bind_group: None,
             ssr_debug_mode: 0,
             ssr_enabled: 1,
+            frame_index: 0,
             screen_size: [1280.0, 720.0],
             trace_width: 640,
             trace_height: 360,
@@ -962,6 +967,11 @@ fn fs_main(in: VSOutput) -> @location(0) vec4<f32> {
     /// Set SSR debug visualization mode.
     pub fn set_debug_mode(&mut self, mode: u32) {
         self.ssr_debug_mode = mode;
+    }
+
+    /// Set the frame index for deterministic per-frame jitter.
+    pub fn set_frame_index(&mut self, index: u32) {
+        self.frame_index = index;
     }
 
     /// Enable or disable SSR.
