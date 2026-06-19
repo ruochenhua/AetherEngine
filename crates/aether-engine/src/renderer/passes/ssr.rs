@@ -386,7 +386,7 @@ fn ray_march(world_pos: vec3<f32>, rd: vec3<f32>, uv: vec2<f32>) -> vec4<f32> {
     let pixel_dist = max(abs(screen_diff.x), abs(screen_diff.y));
     // One sample per pixel for best quality (can reduce to *0.5 for performance)
     var sample_count = i32(pixel_dist);
-    sample_count = min(sample_count, 64);
+    sample_count = min(sample_count, 32);
     sample_count = max(sample_count, 2);
 
     var last_screen = start_screen;
@@ -436,7 +436,7 @@ fn ray_march(world_pos: vec3<f32>, rd: vec3<f32>, uv: vec2<f32>) -> vec4<f32> {
             var s0 = last_screen;
             var s1 = current_screen;
 
-            for (var b = 0; b < 8; b++) {
+            for (var b = 0; b < 4; b++) {
                 let tm = (t0 + t1) * 0.5;
                 let sm = start_screen + screen_diff * tm;
                 let spx = vec2<i32>(sm.xy);
