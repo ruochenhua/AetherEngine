@@ -853,21 +853,25 @@ fn bilateral_weight(depth_p: f32, depth_q: f32, center_dist: f32) -> f32 {
 @fragment
 fn fs_main(in: VSOutput) -> @location(0) vec4<f32> {
     let uv = in.uv;
-    let pixel_size = vec2<f32>(1.0) / settings.screen_size;
-    let trace_size = vec2<f32>(0.5) / settings.screen_size;
-    let depth_center = textureSample(gbuffer_depth, tex_sampler, uv).r;
+    let dims = vec2<i32>(settings.screen_size);
+    let center_px = vec2<i32>(uv * settings.screen_size);
+    let center_px_clamped = clamp(center_px, vec2<i32>(0), dims - vec2<i32>(1));
+    let depth_center = textureLoad(gbuffer_depth, center_px_clamped, 0).r;
 
-    // 5-tap cross bilateral upsample
+    // 3x3 bilateral upsample using textureLoad for depth (non-filterable)
     var total: vec4<f32> = vec4<f32>(0.0);
     var sum_weights: f32 = 0.0;
 
     for (var dy = -1; dy <= 1; dy++) {
         for (var dx = -1; dx <= 1; dx++) {
-            let offset = vec2<f32>(f32(dx), f32(dy));
-            let tap_uv = uv + offset * trace_size;
-            let tap_depth = textureSample(gbuffer_depth, tex_sampler, clamp(tap_uv, vec2<f32>(0.0), vec2<f32>(1.0))).r;
-            let w = bilateral_weight(depth_center, tap_depth, length(offset));
-            let trace_sample = textureSampleLevel(ssr_trace, tex_sampler, tap_uv, 0.0);
+            let tap_px = center_px + vec2<i32>(dx, dy);
+            let tap_px_clamped = clamp(tap_px, vec2<i32>(0), dims - vec2<i32>(1));
+            let tap_depth = textureLoad(gbuffer_depth, tap_px_clamped, 0).r;
+            let offset_len = sqrt(f32(dx * dx + dy * dy));
+            let w = bilateral_weight(depth_center, tap_depth, offset_len);
+            // Trace texture at half resolution: convert full-res pixel to trace UV
+            let trace_uv = vec2<f32>(tap_px_clamped) / settings.screen_size;
+            let trace_sample = textureSampleLevel(ssr_trace, tex_sampler, trace_uv, 0.0);
             total += trace_sample * w;
             sum_weights += w;
         }
@@ -1030,10 +1034,10 @@ mod tests {
         let sig = SSRPass::new(&device).signature();
         assert_eq!(sig.name, "SSR");
         assert_eq!(sig.reads.len(), 5);
-        assert_eq!(sig.writes.len(), 1);
+        assert_eq!(sig.writes.len(), 2);
         assert!(
-            sig.writes[0].type_id == TypeId::of::<ReflectionTexture>()
-                && sig.writes[0].name == "reflection"
+            sig.writes[1].type_id == TypeId::of::<ReflectionTexture>()
+                && sig.writes[1].name == "reflection"
         );
     }
 

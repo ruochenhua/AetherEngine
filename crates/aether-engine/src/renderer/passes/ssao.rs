@@ -227,7 +227,7 @@ struct SSAOParams {
     _pad1: vec2<f32>,
 };
 
-@group(0) @binding(0) var gbuffer_depth: texture_2d<f32>;
+@group(0) @binding(0) var gbuffer_depth: texture_depth_2d;
 @group(0) @binding(1) var gbuffer_normal: texture_2d<f32>;
 @group(0) @binding(2) var gbuffer_sampler: sampler;
 
@@ -256,7 +256,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
 
     // Reconstruct view-space position from depth + UV
-    let depth_sample = textureSample(gbuffer_depth, gbuffer_sampler, uv).r;
+    let depth_sample = textureSample(gbuffer_depth, gbuffer_sampler, uv);
     let clip_uv = vec2<f32>(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
     let clip_pos = vec4<f32>(clip_uv.x, clip_uv.y, depth_sample, 1.0);
     let view_pos4 = frame.inv_proj_mat * clip_pos;
@@ -308,7 +308,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let sc = frame.proj_mat * vec4<f32>(sv, 1.0);
         let suv = vec2<f32>(sc.x / sc.w * 0.5 + 0.5, -sc.y / sc.w * 0.5 + 0.5);
         if (suv.x >= 0.0 && suv.x <= 1.0 && suv.y >= 0.0 && suv.y <= 1.0) {
-            let occ_depth = textureSample(gbuffer_depth, gbuffer_sampler, suv).r;
+            let occ_depth = textureSample(gbuffer_depth, gbuffer_sampler, suv);
             let occ_clip = vec4<f32>(suv.x * 2.0 - 1.0, 1.0 - suv.y * 2.0, occ_depth, 1.0);
             let occ_view = frame.inv_proj_mat * occ_clip;
             let occ_view_z = occ_view.z / occ_view.w;
@@ -347,7 +347,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                     binding: 0,
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        sample_type: wgpu::TextureSampleType::Depth,
                         view_dimension: wgpu::TextureViewDimension::D2,
                         multisampled: false,
                     },
