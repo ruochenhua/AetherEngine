@@ -218,7 +218,14 @@ impl Pass for LightingPass {
             multiview_mask: None,
         });
 
-        pass.set_pipeline(&self.pipelines[self.current_key as usize]);
+        // Bitmask: bit0=ssao(weight1), bit1=shadow(weight2), bit2=ibl(weight4).
+        // Pipeline vec index: ssao*4 + shadow*2 + ibl*1 (from loop order).
+        // Convert: ssao (bit0→weight4), shadow (bit1→weight2), ibl (bit2→weight1).
+        let key = self.current_key;
+        let idx = ((key & 1) << 2)       // bit0 (ssao) → weight 4
+                | (key & 2)               // bit1 (shadow) → weight 2
+                | ((key >> 2) & 1);       // bit2 (ibl) → weight 1
+        pass.set_pipeline(&self.pipelines[idx as usize]);
         pass.set_bind_group(0, texture_bg, &[]);
         pass.set_bind_group(1, &self.uniform_bind_group, &[]);
         pass.set_bind_group(
