@@ -1,0 +1,61 @@
+SceneDescription(
+    name: "SSR Base",
+    camera: (
+        position: (0.0, 2.5, 6.0),
+        yaw: -1.57,
+        pitch: -0.15,
+        speed: 5.0,
+        fov: 70.0,
+    ),
+    lights: [
+        (
+            light_type: Directional,
+            direction: (0.2, -1.0, 0.3),
+            color: (1.0, 0.95, 0.9),
+            intensity: 1.5,
+        ),
+    ],
+    ambient: 0.05,
+    objects: [
+        (
+            name: "BackWall",
+            mesh: Builtin("plane"),
+            transform: (
+                translation: (0.0, 2.0, -3.0),
+                rotation: (0.707, 0.0, 0.0, 0.707),
+                scale: (6.0, 1.0, 4.0),
+            ),
+            material: (
+                albedo: (0.85, 0.85, 0.9, 1.0),
+                roughness: 0.05,
+                metallic: 1.0,
+            ),
+        ),
+        (
+            name: "Floor",
+            mesh: Builtin("plane"),
+            transform: (
+                translation: (0.0, 0.0, 0.0),
+                scale: (8.0, 1.0, 8.0),
+            ),
+            material: (
+                albedo: (0.25, 0.25, 0.28, 1.0),
+                roughness: 0.1,
+                metallic: 0.9,
+            ),
+        ),
+        (
+            name: "RedSphere",
+            mesh: Builtin("sphere"),
+            transform: (
+                translation: (-1.5, 1.0, -1.5),
+                scale: (0.8, 0.8, 0.8),
+            ),
+            material: (
+                albedo: (0.9, 0.15, 0.15, 1.0),
+                roughness: 0.2,
+                metallic: 0.3,
+            ),
+        ),
+    ],
+)

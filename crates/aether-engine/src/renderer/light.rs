@@ -54,6 +54,8 @@ pub struct LightingUniforms {
     pub cascade_splits: [f32; 4],
     /// Number of active cascades.
     pub cascade_count: u32,
+    /// Padding to align inv_view_proj at WGSL mat4x4 alignment (offset 352).
+    pub _pad_cascade: [u32; 3],
     /// Inverse view-projection matrix for skybox view-ray reconstruction.
     pub inv_view_proj: [[f32; 4]; 4],
     /// Feature toggle: SSAO enabled (0 = off, 1 = on).
@@ -79,6 +81,7 @@ impl Default for LightingUniforms {
             cascade_view_projs: [[[0.0; 4]; 4]; 4],
             cascade_splits: [0.0; 4],
             cascade_count: 4,
+            _pad_cascade: [0; 3],
             inv_view_proj: [[0.0; 4]; 4],
             ssao_enabled: 1,
             shadow_enabled: 1,

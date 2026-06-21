@@ -1,0 +1,343 @@
+[job 10 started · pid 15992 · running (no ready signal yet)]
+warning: unused variable: `reflection_view`
+   --> crates/aether-engine/src/renderer/passes/ssr.rs:255:13
+    |
+255 |         let reflection_view = resources.get(resources.handle::<ReflectionTexture>("reflection"));
+    |             ^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_reflection_view`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: missing documentation for an enum
+  --> crates/aether-engine/src/renderer/resource.rs:64:1
+   |
+64 | pub enum SsrTraceResult {}
+   | ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+note: the lint level is defined here
+  --> crates/aether-engine/src/lib.rs:11:9
+   |
+11 | #![warn(missing_docs)]
+   |         ^^^^^^^^^^^^
+
+warning: `aether-engine` (lib) generated 2 warnings (run `cargo fix --lib -p aether-engine` to apply 1 suggestion)
+warning: variable does not need to be mutable
+   --> crates/aether-launcher/src/app/render.rs:107:9
+    |
+107 |     let mut extract_ms = 0.0;
+    |         ----^^^^^^^^^^
+    |         |
+    |         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> crates/aether-launcher/src/app/render.rs:108:9
+    |
+108 |     let mut apply_ms = 0.0;
+    |         ----^^^^^^^^
+    |         |
+    |         help: remove this `mut`
+
+warning: unused variable: `extract_ms`
+   --> crates/aether-launcher/src/app/render.rs:161:17
+    |
+161 |             let extract_ms = t_extract_0.elapsed().as_secs_f64() * 1000.0;
+    |                 ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_extract_ms`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `apply_ms`
+   --> crates/aether-launcher/src/app/render.rs:204:17
+    |
+204 |             let apply_ms = t_apply_0.elapsed().as_secs_f64() * 1000.0;
+    |                 ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_apply_ms`
+
+warning: `aether-launcher` (bin "aether-launcher") generated 4 warnings (run `cargo fix --bin "aether-launcher" -p aether-launcher` to apply 4 suggestions)
+    Finished `release` profile [optimized] target(s) in 0.39s
+     Running `/Users/ruochenhua/.cargo/aether-target/release/aether-launcher`
+[2m2026-06-19T02:45:47.323328Z[0m [32m INFO[0m [2maether_launcher::app[0m[2m:[0m Aether Engine Launcher starting...
+[2m2026-06-19T02:45:47.473695Z[0m [32m INFO[0m [2maether_engine::renderer::context[0m[2m:[0m GPU Adapter: Intel(R) Iris(TM) Plus Graphics 650 (Metal)
+[2m2026-06-19T02:45:47.480097Z[0m [33m WARN[0m [2megui_wgpu::renderer[0m[2m:[0m Detected a linear (sRGBA aware) framebuffer Bgra8UnormSrgb. egui prefers Rgba8Unorm or Bgra8Unorm
+[2m2026-06-19T02:45:47.654494Z[0m [32m INFO[0m [2maether_launcher::app[0m[2m:[0m GPU timer initialized: supported=false
+[2m2026-06-19T02:45:47.654704Z[0m [32m INFO[0m [2maether_launcher::app[0m[2m:[0m Discovered 20 scenes
+[2m2026-06-19T02:45:48.065012Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=8.12 acquire_ms=1.00 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=3.82
+[2m2026-06-19T02:45:48.123674Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=57.43 acquire_ms=15.39 extract_ms=0.00 apply_ms=0.00 execute_ms=0.06 submit_to_present_ms=1.16
+[2m2026-06-19T02:45:48.135263Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=10.16 acquire_ms=4.43 extract_ms=0.00 apply_ms=0.00 execute_ms=0.05 submit_to_present_ms=4.77
+[2m2026-06-19T02:45:48.144422Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=8.39 acquire_ms=2.34 extract_ms=0.00 apply_ms=0.00 execute_ms=0.07 submit_to_present_ms=5.29
+[2m2026-06-19T02:45:48.163883Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=18.63 acquire_ms=2.40 extract_ms=0.00 apply_ms=0.00 execute_ms=0.05 submit_to_present_ms=8.80
+[2m2026-06-19T02:45:48.200351Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.65 acquire_ms=14.12 extract_ms=0.00 apply_ms=0.00 execute_ms=0.05 submit_to_present_ms=20.25
+[2m2026-06-19T02:45:48.308069Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=106.50 acquire_ms=85.95 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=19.58
+[2m2026-06-19T02:45:48.327332Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=18.53 acquire_ms=15.23 extract_ms=0.00 apply_ms=0.00 execute_ms=0.07 submit_to_present_ms=2.54
+[2m2026-06-19T02:45:48.363830Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.55 acquire_ms=31.31 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=3.34
+[2m2026-06-19T02:45:48.399950Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.57 acquire_ms=31.19 extract_ms=0.00 apply_ms=0.00 execute_ms=0.07 submit_to_present_ms=3.49
+[2m2026-06-19T02:45:48.437900Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.76 acquire_ms=32.95 extract_ms=0.00 apply_ms=0.00 execute_ms=0.05 submit_to_present_ms=3.33
+[2m2026-06-19T02:45:48.474998Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.49 acquire_ms=31.68 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=3.80
+[2m2026-06-19T02:45:48.512825Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.58 acquire_ms=32.25 extract_ms=0.00 apply_ms=0.00 execute_ms=0.07 submit_to_present_ms=3.53
+[2m2026-06-19T02:45:48.548191Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.64 acquire_ms=31.26 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=2.55
+[2m2026-06-19T02:45:48.584877Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.47 acquire_ms=32.61 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=2.13
+[2m2026-06-19T02:45:48.621270Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.61 acquire_ms=32.21 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=2.39
+[2m2026-06-19T02:45:48.659574Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=37.02 acquire_ms=32.30 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=3.82
+[2m2026-06-19T02:45:48.694927Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.59 acquire_ms=31.39 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=2.28
+[2m2026-06-19T02:45:48.733947Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=37.68 acquire_ms=32.01 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=4.69
+[2m2026-06-19T02:45:48.769889Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.23 acquire_ms=31.90 extract_ms=0.00 apply_ms=0.00 execute_ms=0.07 submit_to_present_ms=2.62
+[2m2026-06-19T02:45:48.805920Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.76 acquire_ms=31.74 extract_ms=0.00 apply_ms=0.00 execute_ms=0.10 submit_to_present_ms=2.06
+[2m2026-06-19T02:45:48.843308Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.86 acquire_ms=34.37 extract_ms=0.00 apply_ms=0.00 execute_ms=0.07 submit_to_present_ms=1.83
+[2m2026-06-19T02:45:48.884572Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=40.52 acquire_ms=36.76 extract_ms=0.00 apply_ms=0.00 execute_ms=0.07 submit_to_present_ms=2.06
+[2m2026-06-19T02:45:48.918626Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.39 acquire_ms=29.18 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.44
+[2m2026-06-19T02:45:48.954414Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.61 acquire_ms=30.10 extract_ms=0.00 apply_ms=0.00 execute_ms=0.12 submit_to_present_ms=3.34
+[2m2026-06-19T02:45:48.990078Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.86 acquire_ms=30.69 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.38
+[2m2026-06-19T02:45:49.025201Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.41 acquire_ms=29.37 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.24
+[2m2026-06-19T02:45:49.059877Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.67 acquire_ms=30.86 extract_ms=0.00 apply_ms=0.00 execute_ms=0.06 submit_to_present_ms=2.24
+[2m2026-06-19T02:45:49.097069Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.37 acquire_ms=31.70 extract_ms=0.00 apply_ms=0.00 execute_ms=0.12 submit_to_present_ms=3.50
+[2m2026-06-19T02:45:49.132233Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.36 acquire_ms=31.44 extract_ms=0.00 apply_ms=0.00 execute_ms=0.11 submit_to_present_ms=1.79
+[2m2026-06-19T02:45:49.170363Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=37.33 acquire_ms=33.46 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.12
+[2m2026-06-19T02:45:49.205938Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.83 acquire_ms=30.63 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.43
+[2m2026-06-19T02:45:49.240487Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=32.88 acquire_ms=29.09 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.03
+[2m2026-06-19T02:45:49.274875Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.33 acquire_ms=30.55 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=1.80
+[2m2026-06-19T02:45:49.311407Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.77 acquire_ms=32.88 extract_ms=0.00 apply_ms=0.00 execute_ms=0.07 submit_to_present_ms=1.99
+[2m2026-06-19T02:45:49.347954Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.94 acquire_ms=32.16 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.99
+[2m2026-06-19T02:45:49.383734Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.11 acquire_ms=29.99 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=3.35
+[2m2026-06-19T02:45:49.417135Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=32.32 acquire_ms=29.72 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=1.73
+[2m2026-06-19T02:45:49.453891Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.96 acquire_ms=33.33 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=1.70
+[2m2026-06-19T02:45:49.491464Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=37.06 acquire_ms=33.20 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.06
+[2m2026-06-19T02:45:49.526835Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.75 acquire_ms=30.05 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.95
+[2m2026-06-19T02:45:49.560482Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=32.59 acquire_ms=29.93 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=1.82
+[2m2026-06-19T02:45:49.597256Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.99 acquire_ms=33.60 extract_ms=0.00 apply_ms=0.00 execute_ms=0.07 submit_to_present_ms=1.69
+[2m2026-06-19T02:45:49.634269Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.43 acquire_ms=32.53 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.94
+[2m2026-06-19T02:45:49.669481Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.54 acquire_ms=29.61 extract_ms=0.00 apply_ms=0.00 execute_ms=0.10 submit_to_present_ms=3.08
+[2m2026-06-19T02:45:49.704162Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.63 acquire_ms=30.60 extract_ms=0.00 apply_ms=0.00 execute_ms=0.10 submit_to_present_ms=2.19
+[2m2026-06-19T02:45:49.740417Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.32 acquire_ms=32.65 extract_ms=0.00 apply_ms=0.00 execute_ms=0.05 submit_to_present_ms=2.10
+[2m2026-06-19T02:45:49.777117Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.09 acquire_ms=32.43 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.94
+[2m2026-06-19T02:45:49.812121Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.34 acquire_ms=29.48 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.02
+[2m2026-06-19T02:45:49.847888Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.74 acquire_ms=30.37 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=3.55
+[2m2026-06-19T02:45:49.882147Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=32.99 acquire_ms=30.55 extract_ms=0.00 apply_ms=0.00 execute_ms=0.07 submit_to_present_ms=1.75
+[2m2026-06-19T02:45:49.919279Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.59 acquire_ms=32.66 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.96
+[2m2026-06-19T02:45:49.954632Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.69 acquire_ms=29.94 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.93
+[2m2026-06-19T02:45:49.990585Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.91 acquire_ms=30.88 extract_ms=0.00 apply_ms=0.00 execute_ms=0.17 submit_to_present_ms=2.95
+[2m2026-06-19T02:45:50.024675Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=32.98 acquire_ms=30.52 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=1.76
+[2m2026-06-19T02:45:50.061767Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.54 acquire_ms=32.63 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.12
+[2m2026-06-19T02:45:50.097252Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.35 acquire_ms=30.27 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.28
+[2m2026-06-19T02:45:50.130824Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=32.56 acquire_ms=30.21 extract_ms=0.00 apply_ms=0.00 execute_ms=0.06 submit_to_present_ms=1.74
+[2m2026-06-19T02:45:50.166769Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.02 acquire_ms=32.24 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=1.84
+[2m2026-06-19T02:45:50.203331Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.05 acquire_ms=33.39 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=1.61
+[2m2026-06-19T02:45:50.241131Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=37.04 acquire_ms=33.05 extract_ms=0.00 apply_ms=0.00 execute_ms=0.17 submit_to_present_ms=2.88
+[2m2026-06-19T02:45:50.276345Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.17 acquire_ms=30.72 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.67
+[2m2026-06-19T02:45:50.311088Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.59 acquire_ms=30.38 extract_ms=0.00 apply_ms=0.00 execute_ms=0.10 submit_to_present_ms=2.35
+[2m2026-06-19T02:45:50.346990Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.28 acquire_ms=32.46 extract_ms=0.00 apply_ms=0.00 execute_ms=0.07 submit_to_present_ms=1.82
+[2m2026-06-19T02:45:50.384186Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.40 acquire_ms=32.69 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.95
+[2m2026-06-19T02:45:50.419563Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.33 acquire_ms=30.38 extract_ms=0.00 apply_ms=0.00 execute_ms=0.17 submit_to_present_ms=2.87
+[2m2026-06-19T02:45:50.454819Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.60 acquire_ms=29.78 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.87
+[2m2026-06-19T02:45:50.489660Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.07 acquire_ms=31.30 extract_ms=0.00 apply_ms=0.00 execute_ms=0.11 submit_to_present_ms=1.65
+[2m2026-06-19T02:45:50.527286Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.83 acquire_ms=32.91 extract_ms=0.00 apply_ms=0.00 execute_ms=0.17 submit_to_present_ms=2.75
+[2m2026-06-19T02:45:50.562339Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.97 acquire_ms=30.23 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.93
+[2m2026-06-19T02:45:50.597543Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.52 acquire_ms=29.82 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.96
+[2m2026-06-19T02:45:50.632261Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.65 acquire_ms=30.55 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=2.13
+[2m2026-06-19T02:45:50.669493Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.44 acquire_ms=32.51 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.94
+[2m2026-06-19T02:45:50.704057Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.50 acquire_ms=30.50 extract_ms=0.00 apply_ms=0.00 execute_ms=0.13 submit_to_present_ms=1.99
+[2m2026-06-19T02:45:50.739863Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.86 acquire_ms=30.97 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.07
+[2m2026-06-19T02:45:50.774253Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.34 acquire_ms=30.51 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=1.69
+[2m2026-06-19T02:45:50.811132Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.09 acquire_ms=33.07 extract_ms=0.00 apply_ms=0.00 execute_ms=0.07 submit_to_present_ms=2.18
+[2m2026-06-19T02:45:50.847104Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.26 acquire_ms=31.64 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=2.89
+[2m2026-06-19T02:45:50.882630Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.85 acquire_ms=29.72 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.86
+[2m2026-06-19T02:45:50.916604Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=32.89 acquire_ms=30.35 extract_ms=0.00 apply_ms=0.00 execute_ms=0.07 submit_to_present_ms=1.86
+[2m2026-06-19T02:45:50.952443Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.08 acquire_ms=32.22 extract_ms=0.00 apply_ms=0.00 execute_ms=0.06 submit_to_present_ms=2.09
+[2m2026-06-19T02:45:50.989641Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.68 acquire_ms=32.89 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.92
+[2m2026-06-19T02:45:51.024883Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.53 acquire_ms=29.57 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.79
+[2m2026-06-19T02:45:51.058627Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=32.71 acquire_ms=30.06 extract_ms=0.00 apply_ms=0.00 execute_ms=0.12 submit_to_present_ms=1.71
+[2m2026-06-19T02:45:51.095175Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.75 acquire_ms=33.16 extract_ms=0.00 apply_ms=0.00 execute_ms=0.06 submit_to_present_ms=1.74
+[2m2026-06-19T02:45:51.132264Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.48 acquire_ms=33.52 extract_ms=0.00 apply_ms=0.00 execute_ms=0.07 submit_to_present_ms=2.34
+[2m2026-06-19T02:45:51.167233Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.99 acquire_ms=31.55 extract_ms=0.00 apply_ms=0.00 execute_ms=0.06 submit_to_present_ms=1.69
+[2m2026-06-19T02:45:51.203965Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.21 acquire_ms=33.19 extract_ms=0.00 apply_ms=0.00 execute_ms=0.11 submit_to_present_ms=2.20
+[2m2026-06-19T02:45:51.240120Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.36 acquire_ms=32.64 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=1.77
+[2m2026-06-19T02:45:51.277787Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=37.12 acquire_ms=33.31 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.03
+[2m2026-06-19T02:45:51.313033Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.57 acquire_ms=29.59 extract_ms=0.00 apply_ms=0.00 execute_ms=0.17 submit_to_present_ms=2.86
+[2m2026-06-19T02:45:51.348410Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.33 acquire_ms=30.28 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.19
+[2m2026-06-19T02:45:51.383209Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.54 acquire_ms=30.71 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=1.63
+[2m2026-06-19T02:45:51.420670Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.93 acquire_ms=33.11 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.02
+[2m2026-06-19T02:45:51.455946Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.68 acquire_ms=29.89 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.99
+[2m2026-06-19T02:45:51.491315Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.62 acquire_ms=30.84 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.05
+[2m2026-06-19T02:45:51.525482Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=32.52 acquire_ms=30.12 extract_ms=0.00 apply_ms=0.00 execute_ms=0.07 submit_to_present_ms=1.71
+[2m2026-06-19T02:45:51.561216Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.16 acquire_ms=32.40 extract_ms=0.00 apply_ms=0.00 execute_ms=0.07 submit_to_present_ms=2.03
+[2m2026-06-19T02:45:51.598148Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.02 acquire_ms=32.09 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.20
+[2m2026-06-19T02:45:51.632978Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.77 acquire_ms=30.07 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.95
+[2m2026-06-19T02:45:51.667119Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=32.49 acquire_ms=29.73 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=1.81
+[2m2026-06-19T02:45:51.704444Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.79 acquire_ms=32.94 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.90
+[2m2026-06-19T02:45:51.740628Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.54 acquire_ms=30.49 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.26
+[2m2026-06-19T02:45:51.775667Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.99 acquire_ms=29.85 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.34
+[2m2026-06-19T02:45:51.809406Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=32.09 acquire_ms=29.02 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=1.57
+[2m2026-06-19T02:45:51.846043Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.08 acquire_ms=33.04 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.06
+[2m2026-06-19T02:45:51.883230Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.40 acquire_ms=32.40 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.17
+[2m2026-06-19T02:45:51.918414Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.15 acquire_ms=30.34 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.05
+[2m2026-06-19T02:45:51.952694Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=32.50 acquire_ms=29.76 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=1.79
+[2m2026-06-19T02:45:51.989745Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.51 acquire_ms=33.60 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=1.64
+[2m2026-06-19T02:45:52.027080Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.56 acquire_ms=32.63 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.14
+[2m2026-06-19T02:45:52.062636Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.54 acquire_ms=30.61 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.15
+[2m2026-06-19T02:45:52.096604Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=32.16 acquire_ms=29.27 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=1.99
+[2m2026-06-19T02:45:52.132772Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.53 acquire_ms=32.64 extract_ms=0.00 apply_ms=0.00 execute_ms=0.06 submit_to_present_ms=1.74
+[2m2026-06-19T02:45:52.169479Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.91 acquire_ms=33.26 extract_ms=0.00 apply_ms=0.00 execute_ms=0.11 submit_to_present_ms=1.59
+[2m2026-06-19T02:45:52.207205Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=37.21 acquire_ms=33.16 extract_ms=0.00 apply_ms=0.00 execute_ms=0.13 submit_to_present_ms=2.69
+[2m2026-06-19T02:45:52.241666Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=32.76 acquire_ms=29.77 extract_ms=0.00 apply_ms=0.00 execute_ms=0.11 submit_to_present_ms=2.11
+[2m2026-06-19T02:45:52.277845Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.57 acquire_ms=33.28 extract_ms=0.00 apply_ms=0.00 execute_ms=0.05 submit_to_present_ms=1.76
+[2m2026-06-19T02:45:52.314937Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.30 acquire_ms=32.39 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.96
+[2m2026-06-19T02:45:52.350009Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.04 acquire_ms=30.32 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=2.96
+[2m2026-06-19T02:45:52.385594Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.93 acquire_ms=30.21 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.94
+[2m2026-06-19T02:45:52.421289Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.93 acquire_ms=31.50 extract_ms=0.00 apply_ms=0.00 execute_ms=0.11 submit_to_present_ms=2.22
+[2m2026-06-19T02:45:52.458599Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.53 acquire_ms=32.66 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.02
+[2m2026-06-19T02:45:52.493605Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.95 acquire_ms=30.19 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.94
+[2m2026-06-19T02:45:52.529087Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.83 acquire_ms=30.06 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.96
+[2m2026-06-19T02:45:52.563195Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.04 acquire_ms=30.49 extract_ms=0.00 apply_ms=0.00 execute_ms=0.07 submit_to_present_ms=1.88
+[2m2026-06-19T02:45:52.599856Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.51 acquire_ms=32.02 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.52
+[2m2026-06-19T02:45:52.634934Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.35 acquire_ms=30.69 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.91
+[2m2026-06-19T02:45:52.670202Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.07 acquire_ms=29.29 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.98
+[2m2026-06-19T02:45:52.704144Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=32.83 acquire_ms=29.95 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=1.72
+[2m2026-06-19T02:45:52.742051Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=37.12 acquire_ms=33.31 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.03
+[2m2026-06-19T02:45:52.777625Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.46 acquire_ms=30.55 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.07
+[2m2026-06-19T02:45:52.813327Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.05 acquire_ms=29.81 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.42
+[2m2026-06-19T02:45:52.846822Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=32.46 acquire_ms=29.73 extract_ms=0.00 apply_ms=0.00 execute_ms=0.07 submit_to_present_ms=2.05
+[2m2026-06-19T02:45:52.884292Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.48 acquire_ms=33.15 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=2.65
+[2m2026-06-19T02:45:52.920351Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.45 acquire_ms=31.37 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.18
+[2m2026-06-19T02:45:52.955402Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.39 acquire_ms=29.61 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.98
+[2m2026-06-19T02:45:52.989333Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=32.77 acquire_ms=30.11 extract_ms=0.00 apply_ms=0.00 execute_ms=0.07 submit_to_present_ms=1.79
+[2m2026-06-19T02:45:53.026321Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.21 acquire_ms=33.37 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=1.89
+[2m2026-06-19T02:45:53.063466Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.63 acquire_ms=32.98 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.86
+[2m2026-06-19T02:45:53.098488Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.33 acquire_ms=29.60 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.96
+[2m2026-06-19T02:45:53.133212Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.68 acquire_ms=30.74 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=2.04
+[2m2026-06-19T02:45:53.169454Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.36 acquire_ms=32.58 extract_ms=0.00 apply_ms=0.00 execute_ms=0.10 submit_to_present_ms=1.78
+[2m2026-06-19T02:45:53.206327Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.33 acquire_ms=34.00 extract_ms=0.00 apply_ms=0.00 execute_ms=0.07 submit_to_present_ms=1.71
+[2m2026-06-19T02:45:53.243901Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.82 acquire_ms=32.79 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.24
+[2m2026-06-19T02:45:53.278220Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.24 acquire_ms=30.74 extract_ms=0.00 apply_ms=0.00 execute_ms=0.06 submit_to_present_ms=1.90
+[2m2026-06-19T02:45:53.314349Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.33 acquire_ms=32.94 extract_ms=0.00 apply_ms=0.00 execute_ms=0.07 submit_to_present_ms=1.73
+[2m2026-06-19T02:45:53.350470Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.62 acquire_ms=32.43 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.34
+[2m2026-06-19T02:45:53.386992Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.60 acquire_ms=31.69 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.05
+[2m2026-06-19T02:45:53.422507Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.45 acquire_ms=30.36 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.36
+[2m2026-06-19T02:45:53.456999Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.28 acquire_ms=30.85 extract_ms=0.00 apply_ms=0.00 execute_ms=0.07 submit_to_present_ms=1.72
+[2m2026-06-19T02:45:53.494299Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.76 acquire_ms=32.56 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.31
+[2m2026-06-19T02:45:53.531236Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.07 acquire_ms=30.36 extract_ms=0.00 apply_ms=0.00 execute_ms=0.13 submit_to_present_ms=3.57
+[2m2026-06-19T02:45:53.564435Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=31.78 acquire_ms=29.20 extract_ms=0.00 apply_ms=0.00 execute_ms=0.06 submit_to_present_ms=1.91
+[2m2026-06-19T02:45:53.600371Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.97 acquire_ms=32.21 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=1.74
+[2m2026-06-19T02:45:53.637554Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.65 acquire_ms=32.98 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.88
+[2m2026-06-19T02:45:53.673235Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.01 acquire_ms=30.14 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.07
+[2m2026-06-19T02:45:53.708381Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.10 acquire_ms=30.38 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.92
+[2m2026-06-19T02:45:53.743680Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.14 acquire_ms=31.78 extract_ms=0.00 apply_ms=0.00 execute_ms=0.07 submit_to_present_ms=1.70
+[2m2026-06-19T02:45:53.780755Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.54 acquire_ms=32.88 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.78
+[2m2026-06-19T02:45:53.816144Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.74 acquire_ms=29.97 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.94
+[2m2026-06-19T02:45:53.851625Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.46 acquire_ms=30.68 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.97
+[2m2026-06-19T02:45:53.886572Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.36 acquire_ms=30.40 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.11
+[2m2026-06-19T02:45:53.922763Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.64 acquire_ms=31.98 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.91
+[2m2026-06-19T02:45:53.958144Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.77 acquire_ms=30.12 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=2.93
+[2m2026-06-19T02:45:53.993848Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.60 acquire_ms=30.73 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.11
+[2m2026-06-19T02:45:54.028029Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=32.54 acquire_ms=29.60 extract_ms=0.00 apply_ms=0.00 execute_ms=0.06 submit_to_present_ms=1.81
+[2m2026-06-19T02:45:54.064277Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.72 acquire_ms=32.76 extract_ms=0.00 apply_ms=0.00 execute_ms=0.07 submit_to_present_ms=1.82
+[2m2026-06-19T02:45:54.100828Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.63 acquire_ms=31.96 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.90
+[2m2026-06-19T02:45:54.135925Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.03 acquire_ms=30.30 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.97
+[2m2026-06-19T02:45:54.169801Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=32.22 acquire_ms=29.15 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=2.07
+[2m2026-06-19T02:45:54.206352Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.94 acquire_ms=33.08 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=1.88
+[2m2026-06-19T02:45:54.243993Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.75 acquire_ms=32.82 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.81
+[2m2026-06-19T02:45:54.279633Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.78 acquire_ms=30.62 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.82
+[2m2026-06-19T02:45:54.312756Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=31.46 acquire_ms=28.58 extract_ms=0.00 apply_ms=0.00 execute_ms=0.11 submit_to_present_ms=1.75
+[2m2026-06-19T02:45:54.349247Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.96 acquire_ms=33.24 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=1.47
+[2m2026-06-19T02:45:54.387093Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=37.07 acquire_ms=33.08 extract_ms=0.00 apply_ms=0.00 execute_ms=0.10 submit_to_present_ms=2.86
+[2m2026-06-19T02:45:54.422343Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.22 acquire_ms=30.33 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.13
+[2m2026-06-19T02:45:54.456934Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=32.93 acquire_ms=29.65 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.41
+[2m2026-06-19T02:45:54.492882Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.41 acquire_ms=32.99 extract_ms=0.00 apply_ms=0.00 execute_ms=0.07 submit_to_present_ms=1.72
+[2m2026-06-19T02:45:54.530283Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.56 acquire_ms=32.54 extract_ms=0.00 apply_ms=0.00 execute_ms=0.17 submit_to_present_ms=2.79
+[2m2026-06-19T02:45:54.565237Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.88 acquire_ms=30.04 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.09
+[2m2026-06-19T02:45:54.600107Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.21 acquire_ms=29.51 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.86
+[2m2026-06-19T02:45:54.635098Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.24 acquire_ms=31.42 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=1.70
+[2m2026-06-19T02:45:54.672744Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.86 acquire_ms=32.92 extract_ms=0.00 apply_ms=0.00 execute_ms=0.17 submit_to_present_ms=2.70
+[2m2026-06-19T02:45:54.707711Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.90 acquire_ms=30.18 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.95
+[2m2026-06-19T02:45:54.743565Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.17 acquire_ms=29.83 extract_ms=0.00 apply_ms=0.00 execute_ms=0.18 submit_to_present_ms=2.76
+[2m2026-06-19T02:45:54.778211Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.59 acquire_ms=30.75 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.00
+[2m2026-06-19T02:45:54.814511Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.48 acquire_ms=31.86 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.88
+[2m2026-06-19T02:45:54.850306Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.74 acquire_ms=30.41 extract_ms=0.00 apply_ms=0.00 execute_ms=0.17 submit_to_present_ms=3.09
+[2m2026-06-19T02:45:54.884755Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=32.84 acquire_ms=29.15 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.93
+[2m2026-06-19T02:45:54.919028Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.21 acquire_ms=30.48 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=1.74
+[2m2026-06-19T02:45:54.956637Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.82 acquire_ms=33.06 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.83
+[2m2026-06-19T02:45:54.991898Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.23 acquire_ms=30.53 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.96
+[2m2026-06-19T02:45:55.027141Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.46 acquire_ms=29.55 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.09
+[2m2026-06-19T02:45:55.061338Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.14 acquire_ms=30.66 extract_ms=0.00 apply_ms=0.00 execute_ms=0.07 submit_to_present_ms=1.79
+[2m2026-06-19T02:45:55.098216Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.09 acquire_ms=32.35 extract_ms=0.00 apply_ms=0.00 execute_ms=0.13 submit_to_present_ms=2.60
+[2m2026-06-19T02:45:55.133806Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.84 acquire_ms=31.00 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.05
+[2m2026-06-19T02:45:55.169293Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.83 acquire_ms=29.85 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.02
+[2m2026-06-19T02:45:55.202984Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=32.62 acquire_ms=30.28 extract_ms=0.00 apply_ms=0.00 execute_ms=0.07 submit_to_present_ms=1.65
+[2m2026-06-19T02:45:55.239036Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.19 acquire_ms=32.45 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=1.78
+[2m2026-06-19T02:45:55.277732Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=38.05 acquire_ms=33.79 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.46
+[2m2026-06-19T02:45:55.312500Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.15 acquire_ms=29.46 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.93
+[2m2026-06-19T02:45:55.345796Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=32.23 acquire_ms=30.02 extract_ms=0.00 apply_ms=0.00 execute_ms=0.06 submit_to_present_ms=1.67
+[2m2026-06-19T02:45:55.382394Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.81 acquire_ms=33.14 extract_ms=0.00 apply_ms=0.00 execute_ms=0.06 submit_to_present_ms=1.44
+[2m2026-06-19T02:45:55.419622Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.70 acquire_ms=32.84 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.97
+[2m2026-06-19T02:45:55.454587Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.29 acquire_ms=29.51 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.01
+[2m2026-06-19T02:45:55.488773Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.14 acquire_ms=30.21 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=2.05
+[2m2026-06-19T02:45:55.525111Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.56 acquire_ms=33.18 extract_ms=0.00 apply_ms=0.00 execute_ms=0.07 submit_to_present_ms=1.69
+[2m2026-06-19T02:45:55.562355Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.73 acquire_ms=32.78 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.00
+[2m2026-06-19T02:45:55.597519Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.47 acquire_ms=29.70 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.97
+[2m2026-06-19T02:45:55.632874Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.32 acquire_ms=30.69 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.84
+[2m2026-06-19T02:45:55.667613Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.59 acquire_ms=30.82 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=1.85
+[2m2026-06-19T02:45:55.703605Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.47 acquire_ms=32.81 extract_ms=0.00 apply_ms=0.00 execute_ms=0.07 submit_to_present_ms=1.93
+[2m2026-06-19T02:45:55.739134Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.60 acquire_ms=32.10 extract_ms=0.00 apply_ms=0.00 execute_ms=0.06 submit_to_present_ms=1.87
+[2m2026-06-19T02:45:55.776173Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.51 acquire_ms=32.56 extract_ms=0.00 apply_ms=0.00 execute_ms=0.12 submit_to_present_ms=2.91
+[2m2026-06-19T02:45:55.810597Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.26 acquire_ms=30.52 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=1.79
+[2m2026-06-19T02:45:55.848262Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=37.11 acquire_ms=33.10 extract_ms=0.00 apply_ms=0.00 execute_ms=0.12 submit_to_present_ms=2.87
+[2m2026-06-19T02:45:55.883289Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.89 acquire_ms=30.00 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.96
+[2m2026-06-19T02:45:55.918479Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.16 acquire_ms=30.34 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.07
+[2m2026-06-19T02:45:55.953203Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.08 acquire_ms=30.34 extract_ms=0.00 apply_ms=0.00 execute_ms=0.05 submit_to_present_ms=2.21
+[2m2026-06-19T02:45:55.989839Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.12 acquire_ms=32.30 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.97
+[2m2026-06-19T02:45:56.025433Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.92 acquire_ms=29.70 extract_ms=0.00 apply_ms=0.00 execute_ms=0.10 submit_to_present_ms=2.90
+[2m2026-06-19T02:45:56.060462Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.99 acquire_ms=30.22 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.96
+[2m2026-06-19T02:45:56.094951Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=32.85 acquire_ms=30.14 extract_ms=0.00 apply_ms=0.00 execute_ms=0.07 submit_to_present_ms=1.81
+[2m2026-06-19T02:45:56.132805Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=37.32 acquire_ms=33.24 extract_ms=0.00 apply_ms=0.00 execute_ms=0.16 submit_to_present_ms=2.85
+[2m2026-06-19T02:45:56.167846Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.38 acquire_ms=29.58 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.94
+[2m2026-06-19T02:45:56.203094Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.52 acquire_ms=30.71 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.08
+[2m2026-06-19T02:45:56.237098Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=32.35 acquire_ms=29.97 extract_ms=0.00 apply_ms=0.00 execute_ms=0.07 submit_to_present_ms=1.68
+[2m2026-06-19T02:45:56.272969Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.34 acquire_ms=32.49 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=1.87
+[2m2026-06-19T02:45:56.310622Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.86 acquire_ms=32.85 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=3.23
+[2m2026-06-19T02:45:56.345616Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.93 acquire_ms=30.24 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.93
+[2m2026-06-19T02:45:56.380152Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=32.94 acquire_ms=30.10 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.08
+[2m2026-06-19T02:45:56.416913Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.19 acquire_ms=32.32 extract_ms=0.00 apply_ms=0.00 execute_ms=0.18 submit_to_present_ms=2.81
+[2m2026-06-19T02:45:56.452424Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.85 acquire_ms=29.93 extract_ms=0.00 apply_ms=0.00 execute_ms=0.17 submit_to_present_ms=2.75
+[2m2026-06-19T02:45:56.487307Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.83 acquire_ms=30.10 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.89
+[2m2026-06-19T02:45:56.521487Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=32.53 acquire_ms=30.28 extract_ms=0.00 apply_ms=0.00 execute_ms=0.05 submit_to_present_ms=1.74
+[2m2026-06-19T02:45:56.557981Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.97 acquire_ms=33.43 extract_ms=0.00 apply_ms=0.00 execute_ms=0.05 submit_to_present_ms=1.95
+[2m2026-06-19T02:45:56.595071Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.23 acquire_ms=32.17 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.25
+[2m2026-06-19T02:45:56.629996Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.89 acquire_ms=30.25 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=2.91
+[2m2026-06-19T02:45:56.664176Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=32.52 acquire_ms=29.61 extract_ms=0.00 apply_ms=0.00 execute_ms=0.07 submit_to_present_ms=2.23
+[2m2026-06-19T02:45:56.700191Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.38 acquire_ms=32.98 extract_ms=0.00 apply_ms=0.00 execute_ms=0.07 submit_to_present_ms=1.70
+[2m2026-06-19T02:45:56.737201Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.23 acquire_ms=32.38 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.98
+[2m2026-06-19T02:45:56.772433Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.19 acquire_ms=30.59 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.79
+[2m2026-06-19T02:45:56.807951Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.39 acquire_ms=30.66 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=2.93
+[2m2026-06-19T02:45:56.842471Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.47 acquire_ms=30.72 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=1.82
+[2m2026-06-19T02:45:56.880406Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=37.14 acquire_ms=32.69 extract_ms=0.00 apply_ms=0.00 execute_ms=0.17 submit_to_present_ms=3.10
+[2m2026-06-19T02:45:56.915183Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.66 acquire_ms=30.02 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.89
+[2m2026-06-19T02:45:56.950490Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.65 acquire_ms=29.89 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.86
+[2m2026-06-19T02:45:56.985229Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.01 acquire_ms=31.55 extract_ms=0.00 apply_ms=0.00 execute_ms=0.07 submit_to_present_ms=1.77
+[2m2026-06-19T02:45:57.022414Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.38 acquire_ms=32.61 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.95
+[2m2026-06-19T02:45:57.057989Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.51 acquire_ms=30.61 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.97
+[2m2026-06-19T02:45:57.093251Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.58 acquire_ms=29.81 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.00
+[2m2026-06-19T02:45:57.127322Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=32.98 acquire_ms=30.23 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=1.80
+[2m2026-06-19T02:45:57.164688Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.57 acquire_ms=32.61 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.16
+[2m2026-06-19T02:45:57.200115Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.32 acquire_ms=30.50 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.03
+[2m2026-06-19T02:45:57.235702Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.92 acquire_ms=29.99 extract_ms=0.00 apply_ms=0.00 execute_ms=0.17 submit_to_present_ms=2.76
+[2m2026-06-19T02:45:57.269873Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.14 acquire_ms=30.22 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=1.95
+[2m2026-06-19T02:45:57.306583Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.91 acquire_ms=32.78 extract_ms=0.00 apply_ms=0.00 execute_ms=0.10 submit_to_present_ms=2.14
+[2m2026-06-19T02:45:57.343405Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.26 acquire_ms=32.53 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.98
+[2m2026-06-19T02:45:57.378430Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.25 acquire_ms=29.51 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=2.96
+[2m2026-06-19T02:45:57.413530Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.08 acquire_ms=31.54 extract_ms=0.00 apply_ms=0.00 execute_ms=0.07 submit_to_present_ms=1.87
+[2m2026-06-19T02:45:57.448997Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.66 acquire_ms=31.80 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.03
+[2m2026-06-19T02:45:57.485883Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.25 acquire_ms=32.14 extract_ms=0.00 apply_ms=0.00 execute_ms=0.17 submit_to_present_ms=3.03
+[2m2026-06-19T02:45:57.521149Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.60 acquire_ms=29.69 extract_ms=0.00 apply_ms=0.00 execute_ms=0.16 submit_to_present_ms=2.80
+[2m2026-06-19T02:45:57.554642Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=32.43 acquire_ms=29.65 extract_ms=0.00 apply_ms=0.00 execute_ms=0.08 submit_to_present_ms=1.62
+[2m2026-06-19T02:45:57.591488Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.04 acquire_ms=33.60 extract_ms=0.00 apply_ms=0.00 execute_ms=0.06 submit_to_present_ms=1.85
+[2m2026-06-19T02:45:57.628615Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.59 acquire_ms=32.57 extract_ms=0.00 apply_ms=0.00 execute_ms=0.17 submit_to_present_ms=2.76
+[2m2026-06-19T02:45:57.663532Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.23 acquire_ms=29.57 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.90
+[2m2026-06-19T02:45:57.697400Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=32.83 acquire_ms=30.18 extract_ms=0.00 apply_ms=0.00 execute_ms=0.07 submit_to_present_ms=1.81
+[2m2026-06-19T02:45:57.733749Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.56 acquire_ms=33.07 extract_ms=0.00 apply_ms=0.00 execute_ms=0.07 submit_to_present_ms=1.65
+[2m2026-06-19T02:45:57.771431Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=37.16 acquire_ms=33.52 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.89
+[2m2026-06-19T02:45:57.806557Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.92 acquire_ms=30.19 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.93
+[2m2026-06-19T02:45:57.840672Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.07 acquire_ms=30.71 extract_ms=0.00 apply_ms=0.00 execute_ms=0.07 submit_to_present_ms=1.69
+[2m2026-06-19T02:45:57.876606Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.92 acquire_ms=32.85 extract_ms=0.00 apply_ms=0.00 execute_ms=0.05 submit_to_present_ms=1.57
+[2m2026-06-19T02:45:57.914355Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=37.20 acquire_ms=33.22 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=3.25
+[2m2026-06-19T02:45:57.949080Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=32.80 acquire_ms=29.02 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.95
+[2m2026-06-19T02:45:57.983823Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=33.71 acquire_ms=30.62 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.20
+[2m2026-06-19T02:45:58.020159Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=35.37 acquire_ms=32.97 extract_ms=0.00 apply_ms=0.00 execute_ms=0.07 submit_to_present_ms=1.74
+[2m2026-06-19T02:45:58.057012Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=36.29 acquire_ms=32.57 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.90
+[2m2026-06-19T02:45:58.093474Z[0m [32m INFO[0m [2maether_launcher::app::render[0m[2m:[0m frame_timing total_ms=34.80 acquire_ms=30.35 extract_ms=0.00 apply_ms=0.00 execute_ms=0.09 submit_to_present_ms=2.80

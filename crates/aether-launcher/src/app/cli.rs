@@ -9,6 +9,7 @@ pub(crate) struct CliArgs {
     pub(crate) no_gui_overlay: bool,
     pub(crate) debug_mode: Option<i32>,
     pub(crate) freeze_time: bool,
+    pub(crate) ssr_enabled: bool,
 }
 
 pub(crate) fn parse_args(args: &[String]) -> CliArgs {
@@ -19,6 +20,7 @@ pub(crate) fn parse_args(args: &[String]) -> CliArgs {
         no_gui_overlay: false,
         debug_mode: None,
         freeze_time: false,
+        ssr_enabled: false,
     };
     let mut i = 1;
     while i < args.len() {
@@ -52,6 +54,9 @@ pub(crate) fn parse_args(args: &[String]) -> CliArgs {
             }
             "--freeze-time" => {
                 cli.freeze_time = true;
+            }
+            "--ssr" => {
+                cli.ssr_enabled = true;
             }
             _ => {}
         }

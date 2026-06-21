@@ -6,11 +6,20 @@
 //!
 //! Pipeline: ... → SSRPass → GodRayPass → WaterPass → CompositePass → ...
 
+use crate::renderer::frame::RenderFrame;
 use crate::renderer::pass::{Pass, PassSignature, ResHandle};
 use crate::renderer::resource::*;
 use crate::renderer::resource_table::ResourceTable;
 use std::borrow::Cow;
 use wgpu::util::DeviceExt;
+
+/// Composite pass uniforms (std140 layout).
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct CompositeUniforms {
+    camera_pos: [f32; 3],
+    _pad0: f32,
+}
 
 /// Composite pass state.
 pub struct CompositePass {
@@ -22,9 +31,17 @@ pub struct CompositePass {
     water_color_handle: Option<ResHandle<WaterColor>>,
     cloud_color_handle: Option<ResHandle<CloudColor>>,
     god_ray_color_handle: Option<ResHandle<GodRayColor>>,
+    pos_handle: Option<ResHandle<GPosition>>,
+    normal_handle: Option<ResHandle<GNormal>>,
+    albedo_handle: Option<ResHandle<GAlbedo>>,
+    material_handle: Option<ResHandle<GMaterial>>,
     texture_bind_group: Option<wgpu::BindGroup>,
     #[allow(dead_code)]
     texture_bind_group_layout: wgpu::BindGroupLayout,
+    uniform_buffer: wgpu::Buffer,
+    uniform_bind_group: wgpu::BindGroup,
+    #[allow(dead_code)]
+    uniform_bind_group_layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
 }
 
@@ -40,6 +57,10 @@ impl Pass for CompositePass {
             .read::<WaterColor>("water_color")
             .read::<CloudColor>("cloud_color")
             .read::<GodRayColor>("god_ray_color")
+            .read::<GPosition>("gbuffer_position")
+            .read::<GNormal>("gbuffer_normal")
+            .read::<GAlbedo>("gbuffer_albedo")
+            .read::<GMaterial>("gbuffer_material")
             .write::<PostProcessInput>("post_process_input", wgpu::TextureFormat::Rgba16Float)
     }
 
@@ -53,12 +74,20 @@ impl Pass for CompositePass {
         self.water_color_handle = Some(resources.handle::<WaterColor>("water_color"));
         self.cloud_color_handle = Some(resources.handle::<CloudColor>("cloud_color"));
         self.god_ray_color_handle = Some(resources.handle::<GodRayColor>("god_ray_color"));
+        self.pos_handle = Some(resources.handle::<GPosition>("gbuffer_position"));
+        self.normal_handle = Some(resources.handle::<GNormal>("gbuffer_normal"));
+        self.albedo_handle = Some(resources.handle::<GAlbedo>("gbuffer_albedo"));
+        self.material_handle = Some(resources.handle::<GMaterial>("gbuffer_material"));
 
         let scene_color_view = resources.get(self.scene_color_handle.unwrap());
         let reflection_view = resources.get(self.reflection_handle.unwrap());
         let water_color_view = resources.get(self.water_color_handle.unwrap());
         let cloud_color_view = resources.get(self.cloud_color_handle.unwrap());
         let god_ray_color_view = resources.get(self.god_ray_color_handle.unwrap());
+        let pos_view = resources.get(self.pos_handle.unwrap());
+        let normal_view = resources.get(self.normal_handle.unwrap());
+        let albedo_view = resources.get(self.albedo_handle.unwrap());
+        let material_view = resources.get(self.material_handle.unwrap());
 
         self.texture_bind_group = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Composite Texture Bind Group"),
@@ -88,8 +117,34 @@ impl Pass for CompositePass {
                     binding: 5,
                     resource: wgpu::BindingResource::Sampler(&self.sampler),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 6,
+                    resource: wgpu::BindingResource::TextureView(pos_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 7,
+                    resource: wgpu::BindingResource::TextureView(normal_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 8,
+                    resource: wgpu::BindingResource::TextureView(albedo_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 9,
+                    resource: wgpu::BindingResource::TextureView(material_view),
+                },
             ],
         }));
+    }
+
+    fn apply_frame(&mut self, frame: &RenderFrame) {
+        let uniforms = CompositeUniforms {
+            camera_pos: frame.camera.position.into(),
+            _pad0: 0.0,
+        };
+        frame
+            .queue
+            .write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
     }
 
     fn execute(
@@ -123,6 +178,7 @@ impl Pass for CompositePass {
         });
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, texture_bg, &[]);
+        pass.set_bind_group(1, &self.uniform_bind_group, &[]);
         pass.set_vertex_buffer(0, self.quad_vertex_buffer.slice(..));
         pass.draw(0..self.quad_vertex_count, 0..1);
     }
@@ -154,6 +210,17 @@ fn vs_main(@location(0) pos: vec2<f32>) -> VertexOutput {
 @group(0) @binding(3) var cloud_color: texture_2d<f32>;
 @group(0) @binding(4) var god_ray_color: texture_2d<f32>;
 @group(0) @binding(5) var tex_sampler: sampler;
+@group(0) @binding(6) var gbuffer_position: texture_2d<f32>;
+@group(0) @binding(7) var gbuffer_normal: texture_2d<f32>;
+@group(0) @binding(8) var gbuffer_albedo: texture_2d<f32>;
+@group(0) @binding(9) var gbuffer_material: texture_2d<f32>;
+
+struct CompositeUniforms {
+    camera_pos: vec3<f32>,
+    _pad0: f32,
+};
+
+@group(1) @binding(0) var<uniform> uniforms: CompositeUniforms;
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
@@ -163,7 +230,31 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let water = textureSample(water_color, tex_sampler, uv);
     let cloud = textureSample(cloud_color, tex_sampler, uv);
     let god_ray = textureSample(god_ray_color, tex_sampler, uv);
-    let lit = scene.rgb + refl.rgb * refl.a;
+
+    // Decode G-Buffer to compute Fresnel reflectance.
+    let world_pos = textureSample(gbuffer_position, tex_sampler, uv).xyz;
+    let normal_sample = textureSample(gbuffer_normal, tex_sampler, uv);
+    let albedo = textureSample(gbuffer_albedo, tex_sampler, uv).rgb;
+    let material_sample = textureSample(gbuffer_material, tex_sampler, uv);
+
+    var lit: vec3<f32>;
+    if (normal_sample.r == 0.0 && normal_sample.g == 0.0 && normal_sample.b == 0.0) {
+        // Sky / background: bypass SSR blend.
+        lit = scene.rgb;
+    } else {
+        let N = normalize(normal_sample.xyz * 2.0 - 1.0);
+        let V = normalize(uniforms.camera_pos - world_pos);
+        let NdotV = max(dot(N, V), 0.0);
+        let roughness = material_sample.r;
+        let metallic = material_sample.g;
+        let F0 = mix(vec3<f32>(0.04), albedo, metallic);
+        let fresnel = F0 + (vec3<f32>(1.0) - F0) * pow(1.0 - NdotV, 5.0);
+        // Mask low-roughness surfaces: SSR pass already encodes roughness in refl.a,
+        // but re-apply here so non-reflective pixels are unchanged.
+        let reflectance = fresnel * refl.a;
+        lit = mix(scene.rgb, refl.rgb, reflectance);
+    }
+
     let with_clouds = mix(lit, cloud.rgb, cloud.a);
     let with_god_rays = with_clouds + god_ray.rgb;
     let final_color = mix(with_god_rays, water.rgb, water.a);
@@ -235,12 +326,66 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 6,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 7,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 8,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 9,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
             ],
+        });
+
+        let uniform_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Composite Uniform BGL"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
         });
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Composite Pipeline Layout"),
-            bind_group_layouts: &[Some(&texture_bgl)],
+            bind_group_layouts: &[Some(&texture_bgl), Some(&uniform_bgl)],
             immediate_size: 0,
         });
 
@@ -307,6 +452,22 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             ..Default::default()
         });
 
+        let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Composite Uniform Buffer"),
+            size: std::mem::size_of::<CompositeUniforms>() as wgpu::BufferAddress,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Composite Uniform BG"),
+            layout: &uniform_bgl,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: uniform_buffer.as_entire_binding(),
+            }],
+        });
+
         Self {
             pipeline,
             quad_vertex_buffer,
@@ -316,8 +477,15 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             water_color_handle: None,
             cloud_color_handle: None,
             god_ray_color_handle: None,
+            pos_handle: None,
+            normal_handle: None,
+            albedo_handle: None,
+            material_handle: None,
             texture_bind_group: None,
             texture_bind_group_layout: texture_bgl,
+            uniform_buffer,
+            uniform_bind_group,
+            uniform_bind_group_layout: uniform_bgl,
             sampler,
         }
     }
@@ -342,7 +510,7 @@ mod tests {
         let device = headless_device();
         let sig = CompositePass::new(&device, wgpu::TextureFormat::Bgra8UnormSrgb).signature();
         assert_eq!(sig.name, "Composite");
-        assert_eq!(sig.reads.len(), 5);
+        assert_eq!(sig.reads.len(), 9);
         assert_eq!(sig.writes.len(), 1);
     }
 

@@ -133,6 +133,7 @@ impl SceneLoader {
             cascade_view_projs: [[[0.0; 4]; 4]; 4],
             cascade_splits: [0.0; 4],
             cascade_count: 4,
+            _pad_cascade: [0; 3],
             inv_view_proj: [[0.0; 4]; 4],
             ssao_enabled: 1,
             shadow_enabled: 1,

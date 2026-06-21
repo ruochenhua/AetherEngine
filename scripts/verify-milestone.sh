@@ -44,6 +44,12 @@ OVERALL_PASS=true
 for entry in "${SCENES[@]}"; do
     read -r scene_file out_name frames debug_mode <<< "$entry"
 
+    # 07_ssr_debug needs SSR enabled so reflection improvements are verified.
+    ssr_flag=""
+    if [[ "$out_name" == "07_ssr_debug" ]]; then
+        ssr_flag="--ssr"
+    fi
+
     echo "▶ Testing: $out_name (scene=$scene_file, frames=$frames, debug=$debug_mode)"
 
     cargo run --bin aether-launcher --quiet -- \
@@ -52,7 +58,8 @@ for entry in "${SCENES[@]}"; do
         --exit-after-frames "$frames" \
         --no-gui-overlay \
         --freeze-time \
-        --debug-mode "$debug_mode" 2>/dev/null || {
+        --debug-mode "$debug_mode" \
+        $ssr_flag 2>/dev/null || {
         echo "  ❌ Launcher failed for $out_name"
         echo "| $out_name | $debug_mode | $frames | N/A | N/A | N/A | ❌ CRASH |" >> "$REPORT_FILE"
         OVERALL_PASS=false

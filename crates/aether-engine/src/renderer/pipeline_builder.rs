@@ -256,7 +256,10 @@ impl PipelineBuilder {
         height: u32,
         layers: u32,
     ) -> wgpu::Texture {
-        let usage = wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING;
+        let usage = wgpu::TextureUsages::RENDER_ATTACHMENT
+            | wgpu::TextureUsages::TEXTURE_BINDING
+            | wgpu::TextureUsages::COPY_SRC
+            | wgpu::TextureUsages::COPY_DST;
         device.create_texture(&wgpu::TextureDescriptor {
             label: Some("transient"),
             size: wgpu::Extent3d {

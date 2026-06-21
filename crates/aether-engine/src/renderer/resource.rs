@@ -64,6 +64,8 @@ impl ResourceTag for AOTextureBlurred {}
 pub enum SsrTraceResult {}
 impl ResourceTag for SsrTraceResult {}
 
+
+
 /// Irradiance cubemap (Rgba16Float, 32×32 per face).
 pub enum IrradianceMap {}
 impl ResourceTag for IrradianceMap {}
