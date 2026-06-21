@@ -530,6 +530,22 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     } else if (uniforms.debug_mode == 14u) {
         // SSAO only visualization
         output_color = vec3<f32>(ao);
+    } else if (uniforms.debug_mode == 15u) {
+        // CSM cascade visualization: color-coded by cascade index
+        let cascade_depth = dot(world_pos - uniforms.camera_pos, view_dir);
+        var ci: u32 = uniforms.cascade_count - 1u;
+        for (var j: u32 = 0u; j < uniforms.cascade_count; j = j + 1u) {
+            if (cascade_depth < uniforms.cascade_splits[j]) {
+                ci = j;
+                break;
+            }
+        }
+        // Color code: 0=red, 1=green, 2=blue, 3=yellow, 4+=magenta
+        let c_norm = f32(ci) / f32(uniforms.cascade_count - 1u);
+        if (ci == 0u) { output_color = vec3<f32>(1.0, 0.2, 0.2); }
+        else if (ci == 1u) { output_color = vec3<f32>(0.2, 1.0, 0.2); }
+        else if (ci == 2u) { output_color = vec3<f32>(0.2, 0.5, 1.0); }
+        else { output_color = vec3<f32>(1.0, 1.0, 0.2); }
     } else {
         output_color = final_color;
     }

@@ -63,6 +63,9 @@ pub(crate) fn process_debug_hotkeys(app: &mut App) {
     if app.input.key_pressed(KeyCode::F6) {
         app.ssr_debug_mode = (app.ssr_debug_mode + 1) % 10;
     }
+    if app.input.key_pressed(KeyCode::F7) {
+        app.debug_mode = 15;
+    }
 }
 
 /// Update the fly camera, picking and gizmo interaction for the current frame.

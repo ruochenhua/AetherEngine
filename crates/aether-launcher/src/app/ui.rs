@@ -262,8 +262,9 @@ pub(crate) fn render(
                                         "EnvFix(F3)",
                                         "VDir(F4)",
                                         "SSAO(F5)",
+                                        "CSM(F7)",
                                     ];
-                                    let mode_idx = debug_mode.clamp(0, 14) as usize;
+                                    let mode_idx = debug_mode.clamp(0, 15) as usize;
                                     ui.label(format!(
                                         "Debug: [{}] {}",
                                         mode_idx, mode_names[mode_idx]
