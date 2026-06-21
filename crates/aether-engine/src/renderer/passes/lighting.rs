@@ -442,7 +442,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var shadow_factor: f32 = 1.0;
     if (shadow_enabled) {
         let view_depth = dot(world_pos - uniforms.camera_pos, view_dir);
-        var cascade_index: u32 = 0u;
+        // Default to last cascade for objects beyond the final split.
+        var cascade_index: u32 = uniforms.cascade_count - 1u;
         for (var i: u32 = 0u; i < uniforms.cascade_count; i = i + 1u) {
             if (view_depth < uniforms.cascade_splits[i]) {
                 cascade_index = i;
