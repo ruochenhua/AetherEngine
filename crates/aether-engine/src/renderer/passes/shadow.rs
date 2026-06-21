@@ -25,7 +25,7 @@ use std::sync::Arc;
 /// Number of cascades.
 pub const CASCADE_COUNT: usize = 3;
 /// Fixed resolution for each cascade depth map.
-pub const SHADOW_MAP_SIZE: u32 = 2048;
+pub const SHADOW_MAP_SIZE: u32 = 4096;
 
 /// Per-cascade light-space matrix.
 #[repr(C)]
@@ -402,7 +402,7 @@ pub fn compute_cascades(frame: &RenderFrame, light_dir: &glam::Vec3) -> [Cascade
 
     let near = camera.near;
     let far = camera.far;
-    let splits = split_distances(near, far, CASCADE_COUNT, 0.5);
+    let splits = split_distances(near, far, CASCADE_COUNT, 0.75);
 
     let mut cascades = [Cascade {
         view_proj: Mat4::IDENTITY,
