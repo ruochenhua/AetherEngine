@@ -23,7 +23,7 @@ use glam::{Mat4, Vec4Swizzles};
 use std::sync::Arc;
 
 /// Number of cascades.
-pub const CASCADE_COUNT: usize = 3;
+pub const CASCADE_COUNT: usize = 4;
 /// Fixed resolution for each cascade depth map.
 pub const SHADOW_MAP_SIZE: u32 = 4096;
 
