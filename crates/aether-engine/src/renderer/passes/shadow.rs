@@ -366,10 +366,11 @@ fn frustum_corners(
     let inv_view_proj = (proj.mul_mat4(view)).inverse();
     let mut corners = [glam::Vec3::ZERO; 8];
     let mut i = 0;
-    // perspective_rh with z ∈ [0, 1] maps view distance d to
-    // z_ndc = far * (d - near) / (d * (far - near)).
+    // perspective_rh maps view distance d to NDC z ∈ [-1, 1]:
+    // z_ndc = (far+near)/(far-near) - 2*far*near/((far-near)*d)
     for d in [slice_near, slice_far] {
-        let z_ndc = cam_far * (d - cam_near) / (d * (cam_far - cam_near));
+        let z_ndc = (cam_far + cam_near) / (cam_far - cam_near)
+            - (2.0 * cam_far * cam_near) / ((cam_far - cam_near) * d);
         for y in [-1.0f32, 1.0] {
             for x in [-1.0f32, 1.0] {
                 let clip = glam::Vec4::new(x, y, z_ndc, 1.0);
