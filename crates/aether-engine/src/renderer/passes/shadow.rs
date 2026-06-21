@@ -450,15 +450,18 @@ fn compute_cascade(light_dir: &glam::Vec3, corners: &[glam::Vec3], split_depth: 
     let center = corners.iter().fold(glam::Vec3::ZERO, |a, b| a + *b) / corners.len() as f32;
     let radius = corners.iter().map(|c| (*c - center).length()).fold(0.0, f32::max);
 
-    // Expand margins to avoid edge clipping and include shadow casters.
-    let margin_x = (max_ls.x - min_ls.x) * 0.1;
-    let margin_y = (max_ls.y - min_ls.y) * 0.1;
-    min_ls.x -= margin_x; max_ls.x += margin_x;
-    min_ls.y -= margin_y; max_ls.y += margin_y;
     // Extend depth: push near-z back to capture potential occluders behind the frustum.
     min_ls.z -= radius * 2.0;
-    // Push far-z forward a little for safety.
     max_ls.z += 1.0;
+
+    // Expand XY margins by 2 pixels to avoid edge clipping.
+    let texel_size = (max_ls.x - min_ls.x) / SHADOW_MAP_SIZE as f32;
+    min_ls.x -= texel_size * 2.0; max_ls.x += texel_size * 2.0;
+    min_ls.y -= texel_size * 2.0; max_ls.y += texel_size * 2.0;
+    // Snap to texel boundaries to prevent cascade seams.
+    let snap = |v: f32| (v / texel_size).floor() * texel_size;
+    min_ls.x = snap(min_ls.x); max_ls.x = snap(max_ls.x);
+    min_ls.y = snap(min_ls.y); max_ls.y = snap(max_ls.y);
 
     let proj = ortho_wgpu(min_ls.x, max_ls.x, min_ls.y, max_ls.y, min_ls.z, max_ls.z);
 
