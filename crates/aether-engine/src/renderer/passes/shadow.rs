@@ -435,7 +435,7 @@ fn compute_cascade(light_dir: &glam::Vec3, corners: &[glam::Vec3], split_depth: 
 
     // Light-space view: look along light_dir. Position at origin — only
     // the rotation matters for AABB computation.
-    let light_view = Mat4::look_at_rh(glam::Vec3::ZERO, -*light_dir, up);
+    let light_view = Mat4::look_at_rh(glam::Vec3::ZERO, *light_dir, up);
 
     // Transform frustum corners to light space and compute AABB.
     let mut min_ls = glam::Vec3::splat(f32::MAX);
