@@ -366,11 +366,10 @@ fn frustum_corners(
     let inv_view_proj = (proj.mul_mat4(view)).inverse();
     let mut corners = [glam::Vec3::ZERO; 8];
     let mut i = 0;
-    // perspective_rh maps view distance d to NDC z ∈ [-1, 1]:
-    // z_ndc = (far+near)/(far-near) - 2*far*near/((far-near)*d)
+    // perspective_rh with z ∈ [0, 1] maps view distance d to
+    // z_ndc = far * (d - near) / (d * (far - near)).
     for d in [slice_near, slice_far] {
-        let z_ndc = (cam_far + cam_near) / (cam_far - cam_near)
-            - (2.0 * cam_far * cam_near) / ((cam_far - cam_near) * d);
+        let z_ndc = cam_far * (d - cam_near) / (d * (cam_far - cam_near));
         for y in [-1.0f32, 1.0] {
             for x in [-1.0f32, 1.0] {
                 let clip = glam::Vec4::new(x, y, z_ndc, 1.0);
@@ -441,11 +440,11 @@ fn compute_cascade(light_dir: &glam::Vec3, corners: &[glam::Vec3], split_depth: 
     };
     let view = Mat4::look_at_rh(light_pos, center, up);
 
-    // Build a square orthographic projection covering the bounding sphere.
-    // Extend depth backwards to include potential shadow casters.
-    let half_size = radius + 1.0;
-    let near_z = -radius * 2.0;
-    let far_z = radius * 2.0;
+    // Build a square orthographic projection covering the bounding sphere
+    // with generous margins for off-center objects and shadow casters.
+    let half_size = radius * 2.0 + 2.0;
+    let near_z = -radius * 3.0;
+    let far_z = radius * 3.0;
     let proj = ortho_wgpu(-half_size, half_size, -half_size, half_size, near_z, far_z);
 
     Cascade {
