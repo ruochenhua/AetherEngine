@@ -426,29 +426,44 @@ pub fn compute_cascades(frame: &RenderFrame, light_dir: &glam::Vec3) -> [Cascade
 /// resulting orthographic cube, which avoids cracks between cascades and
 /// keeps the matrix numerically stable.
 fn compute_cascade(light_dir: &glam::Vec3, corners: &[glam::Vec3], split_depth: f32) -> Cascade {
-    let center = corners.iter().fold(glam::Vec3::ZERO, |a, b| a + *b) / corners.len() as f32;
-    let radius = corners
-        .iter()
-        .map(|c| (*c - center).length())
-        .fold(0.0f32, |a, b| a.max(b));
-
-    let light_pos = center - *light_dir * radius * 2.0;
+    // Pick 'up' vector orthogonal to light direction.
     let up = if light_dir.x.abs() < 0.001 && light_dir.z.abs() < 0.001 {
         glam::Vec3::X
     } else {
         glam::Vec3::Y
     };
-    let view = Mat4::look_at_rh(light_pos, center, up);
 
-    // Build a square orthographic projection covering the bounding sphere
-    // with generous margins for off-center objects and shadow casters.
-    let half_size = radius * 2.0 + 2.0;
-    let near_z = -radius * 3.0;
-    let far_z = radius * 3.0;
-    let proj = ortho_wgpu(-half_size, half_size, -half_size, half_size, near_z, far_z);
+    // Light-space view: look along light_dir. Position at origin — only
+    // the rotation matters for AABB computation.
+    let light_view = Mat4::look_at_rh(glam::Vec3::ZERO, -*light_dir, up);
+
+    // Transform frustum corners to light space and compute AABB.
+    let mut min_ls = glam::Vec3::splat(f32::MAX);
+    let mut max_ls = glam::Vec3::splat(f32::MIN);
+    for corner in corners {
+        let ls = light_view.transform_point3a(glam::Vec3A::from(*corner));
+        min_ls = min_ls.min(ls.into());
+        max_ls = max_ls.max(ls.into());
+    }
+
+    // Compute bounding sphere radius for depth extension.
+    let center = corners.iter().fold(glam::Vec3::ZERO, |a, b| a + *b) / corners.len() as f32;
+    let radius = corners.iter().map(|c| (*c - center).length()).fold(0.0, f32::max);
+
+    // Expand margins to avoid edge clipping and include shadow casters.
+    let margin_x = (max_ls.x - min_ls.x) * 0.1;
+    let margin_y = (max_ls.y - min_ls.y) * 0.1;
+    min_ls.x -= margin_x; max_ls.x += margin_x;
+    min_ls.y -= margin_y; max_ls.y += margin_y;
+    // Extend depth: push near-z back to capture potential occluders behind the frustum.
+    min_ls.z -= radius * 2.0;
+    // Push far-z forward a little for safety.
+    max_ls.z += 1.0;
+
+    let proj = ortho_wgpu(min_ls.x, max_ls.x, min_ls.y, max_ls.y, min_ls.z, max_ls.z);
 
     Cascade {
-        view_proj: proj * view,
+        view_proj: proj * light_view,
         split_depth,
     }
 }
