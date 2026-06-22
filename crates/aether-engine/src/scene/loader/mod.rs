@@ -135,6 +135,8 @@ impl SceneLoader {
             cascade_count: 4,
             _pad_cascade: [0; 3],
             inv_view_proj: [[0.0; 4]; 4],
+            camera_forward: [0.0, 0.0, -1.0],
+            _pad_cam: 0,
             ssao_enabled: 1,
             shadow_enabled: 1,
             ibl_enabled: 1,

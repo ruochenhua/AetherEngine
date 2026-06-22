@@ -170,6 +170,7 @@ impl Pass for LightingPass {
 
         let mut uniforms = *frame.lighting;
         uniforms.camera_pos = frame.camera.position.into();
+        uniforms.camera_forward = frame.camera.forward().to_array();
         uniforms.debug_mode = self.debug_mode;
         uniforms.shadow_map_size = crate::renderer::passes::shadow::SHADOW_MAP_SIZE as f32;
 
@@ -303,6 +304,8 @@ struct LightingUniforms {
     cascade_splits: vec4<f32>,
     cascade_count: u32,
     inv_view_proj: mat4x4<f32>,
+    camera_forward: vec3<f32>,
+    _pad_cam: u32,
     ssao_enabled: u32,
     shadow_enabled: u32,
     ibl_enabled: u32,
@@ -441,7 +444,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // the entire cascade selection + PCF 3x3 loop.
     var shadow_factor: f32 = 1.0;
     if (shadow_enabled) {
-        let view_depth = dot(world_pos - uniforms.camera_pos, view_dir);
+        let view_depth = dot(world_pos - uniforms.camera_pos, uniforms.camera_forward);
         // Default to last cascade for objects beyond the final split.
         var cascade_index: u32 = uniforms.cascade_count - 1u;
         for (var i: u32 = 0u; i < uniforms.cascade_count; i = i + 1u) {
@@ -532,7 +535,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         output_color = vec3<f32>(ao);
     } else if (uniforms.debug_mode == 15u) {
         // CSM cascade visualization: color-coded by cascade index
-        let cascade_depth = dot(world_pos - uniforms.camera_pos, view_dir);
+        let cascade_depth = dot(world_pos - uniforms.camera_pos, uniforms.camera_forward);
         var ci: u32 = uniforms.cascade_count - 1u;
         for (var j: u32 = 0u; j < uniforms.cascade_count; j = j + 1u) {
             if (cascade_depth < uniforms.cascade_splits[j]) {

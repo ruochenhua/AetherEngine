@@ -58,6 +58,10 @@ pub struct LightingUniforms {
     pub _pad_cascade: [u32; 3],
     /// Inverse view-projection matrix for skybox view-ray reconstruction.
     pub inv_view_proj: [[f32; 4]; 4],
+    /// Camera world-space forward direction (normalized).
+    pub camera_forward: [f32; 3],
+    /// Padding to align ssao_enabled after vec3 (WGSL vec3 stride = 16).
+    pub _pad_cam: u32,
     /// Feature toggle: SSAO enabled (0 = off, 1 = on).
     pub ssao_enabled: u32,
     /// Feature toggle: shadow mapping enabled (0 = off, 1 = on).
@@ -83,6 +87,8 @@ impl Default for LightingUniforms {
             cascade_count: 4,
             _pad_cascade: [0; 3],
             inv_view_proj: [[0.0; 4]; 4],
+            camera_forward: [0.0, 0.0, -1.0],
+            _pad_cam: 0,
             ssao_enabled: 1,
             shadow_enabled: 1,
             ibl_enabled: 1,

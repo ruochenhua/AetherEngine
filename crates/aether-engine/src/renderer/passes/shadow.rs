@@ -413,7 +413,7 @@ pub fn compute_cascades(frame: &RenderFrame, light_dir: &glam::Vec3) -> [Cascade
     for (i, split) in splits.iter().enumerate() {
         let cascade_far = *split;
         let corners = frustum_corners(&view, &proj, near, far, prev_far, cascade_far);
-        cascades[i] = compute_cascade(light_dir, &corners, cascade_far);
+        cascades[i] = compute_cascade(light_dir, &corners, cascade_far, far);
         prev_far = cascade_far;
     }
 
@@ -422,10 +422,11 @@ pub fn compute_cascades(frame: &RenderFrame, light_dir: &glam::Vec3) -> [Cascade
 
 /// Compute a single cascade matrix from world-space frustum corners.
 ///
-/// Uses a bounding-sphere fit: all corners are guaranteed to lie inside the
-/// resulting orthographic cube, which avoids cracks between cascades and
-/// keeps the matrix numerically stable.
-fn compute_cascade(light_dir: &glam::Vec3, corners: &[glam::Vec3], split_depth: f32) -> Cascade {
+/// All corners lie inside the resulting orthographic cube. The near/far
+/// planes are extended by `cam_far` to capture shadow casters far outside
+/// the cascade frustum — essential for low-angle directional lights.
+/// XY bounds are snapped to texel boundaries to prevent cascade seams.
+fn compute_cascade(light_dir: &glam::Vec3, corners: &[glam::Vec3], split_depth: f32, cam_far: f32) -> Cascade {
     // Pick 'up' vector orthogonal to light direction.
     let up = if light_dir.x.abs() < 0.001 && light_dir.z.abs() < 0.001 {
         glam::Vec3::X
@@ -446,13 +447,14 @@ fn compute_cascade(light_dir: &glam::Vec3, corners: &[glam::Vec3], split_depth: 
         max_ls = max_ls.max(ls.into());
     }
 
-    // Compute bounding sphere radius for depth extension.
-    let center = corners.iter().fold(glam::Vec3::ZERO, |a, b| a + *b) / corners.len() as f32;
-    let radius = corners.iter().map(|c| (*c - center).length()).fold(0.0, f32::max);
-
-    // Extend depth: push near-z back to capture potential occluders behind the frustum.
-    min_ls.z -= radius * 2.0;
-    max_ls.z += 1.0;
+    // Extend depth: push near-z back by the camera far plane to capture
+    // all potential occluders, even those far outside the cascade frustum.
+    // This is critical for low-angle directional lights where shadows can
+    // extend many times the cascade depth range.
+    // max_ls.z is extended by half the far plane to capture tall casters
+    // above the frustum that are closer to the light source.
+    min_ls.z -= cam_far;
+    max_ls.z += cam_far * 0.5;
 
     // Expand XY margins by 2 pixels to avoid edge clipping.
     let texel_size = (max_ls.x - min_ls.x) / SHADOW_MAP_SIZE as f32;
