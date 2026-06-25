@@ -64,12 +64,14 @@ impl ResourceTable {
     /// Get a ResHandle for a declared resource.
     ///
     /// Used by passes during `resolve()` to obtain handles for the resources
-    /// they declared in their signature.
+    /// they declared in their signature. The resource name is inferred from
+    /// `T::NAME`.
     ///
     /// # Panics
     ///
     /// Panics if no resource matches the given type and name.
-    pub fn handle<T: ResourceTag>(&self, name: &str) -> ResHandle<T> {
+    pub fn handle<T: ResourceTag>(&self) -> ResHandle<T> {
+        let name = T::NAME;
         let type_id = TypeId::of::<T>();
         for (i, &(tid, n)) in self.mapping.iter().enumerate() {
             if tid == type_id && n == name {
@@ -185,9 +187,9 @@ mod tests {
         let mut table = ResourceTable::new();
 
         let view = create_texture_view(&device, wgpu::TextureFormat::Rgba16Float);
-        let idx = table.allocate(TypeId::of::<GPosition>(), "gbuffer_position", view);
+        let idx = table.allocate(TypeId::of::<GPosition>(), GPosition::NAME, view);
 
-        let handle = table.handle::<GPosition>("gbuffer_position");
+        let handle = table.handle::<GPosition>();
         assert_eq!(handle.index, idx);
 
         // Verify we can get the view back
@@ -200,12 +202,12 @@ mod tests {
         let mut table = ResourceTable::new();
 
         let pos_view = create_texture_view(&device, wgpu::TextureFormat::Rgba16Float);
-        table.allocate(TypeId::of::<GPosition>(), "pos", pos_view);
+        table.allocate(TypeId::of::<GPosition>(), GPosition::NAME, pos_view);
 
-        let pos_handle: ResHandle<GPosition> = table.handle("pos");
+        let pos_handle: ResHandle<GPosition> = table.handle();
 
         // These would fail to compile:
-        // let _: ResHandle<GNormal> = table.handle::<GNormal>("pos"); // panic at runtime
+        // let _: ResHandle<GNormal> = table.handle::<GNormal>(); // panic at runtime
 
         // But getting via wrong type panics at runtime (valid design: typo in name, not type)
         // Getting via correct type succeeds
@@ -219,7 +221,7 @@ mod tests {
         let table = ResourceTable::new();
 
         // No resources allocated — handle lookup fails
-        let _: ResHandle<GPosition> = table.handle("nonexistent");
+        let _: ResHandle<GPosition> = table.handle();
     }
 
     #[test]
@@ -231,15 +233,15 @@ mod tests {
         let v2 = create_texture_view(&device, wgpu::TextureFormat::Rgba16Float);
         let v3 = create_texture_view(&device, wgpu::TextureFormat::R8Unorm);
 
-        table.allocate(TypeId::of::<GPosition>(), "pos", v1);
-        table.allocate(TypeId::of::<GNormal>(), "norm", v2);
-        table.allocate(TypeId::of::<AOTexture>(), "ao", v3);
+        table.allocate(TypeId::of::<GPosition>(), GPosition::NAME, v1);
+        table.allocate(TypeId::of::<GNormal>(), GNormal::NAME, v2);
+        table.allocate(TypeId::of::<AOTexture>(), AOTexture::NAME, v3);
 
         assert_eq!(table.len(), 3);
 
-        let pos_h: ResHandle<GPosition> = table.handle("pos");
-        let norm_h: ResHandle<GNormal> = table.handle("norm");
-        let ao_h: ResHandle<AOTexture> = table.handle("ao");
+        let pos_h: ResHandle<GPosition> = table.handle();
+        let norm_h: ResHandle<GNormal> = table.handle();
+        let ao_h: ResHandle<AOTexture> = table.handle();
 
         assert_ne!(pos_h.index, norm_h.index);
         assert_ne!(pos_h.index, ao_h.index);

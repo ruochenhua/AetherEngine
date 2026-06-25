@@ -7,10 +7,19 @@
 //! ## Example
 //!
 //! ```rust,ignore
+//! let ctx = InitContext {
+//!     device,
+//!     queue,
+//!     surface_format,
+//!     depth_format,
+//!     width,
+//!     height,
+//!     ibl_resources: Some(ibl),
+//! };
 //! let scheduler = PipelineBuilder::new()
-//!     .add_pass(GBufferPass::init(device))
-//!     .add_pass(LightingPass::new(device, surface_format))
-//!     .add_pass(DebugLinePass::new(device, surface_format, depth_format))
+//!     .add_pass(GBufferPass::init(&ctx))
+//!     .add_pass(LightingPass::init(&ctx))
+//!     .add_pass(DebugLinePass::init(&ctx))
 //!     .build(device, width, height);
 //!
 //! // Per frame:
@@ -21,8 +30,40 @@ use crate::renderer::pass::{Pass, PassSignature};
 use crate::renderer::resource_table::ResourceTable;
 use crate::renderer::scheduler::Scheduler;
 use std::any::TypeId;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
+use thiserror::Error;
 use tracing::debug;
+
+/// Errors that can occur while building a render pipeline.
+#[derive(Debug, Error)]
+pub enum PipelineBuildError {
+    /// A pass reads a resource that no pass produces.
+    #[error("missing producer: pass '{pass}' reads '{resource}' but no pass produces it")]
+    MissingProducer {
+        /// Name of the pass with the unresolved read.
+        pass: String,
+        /// Name of the resource that has no producer.
+        resource: String,
+    },
+
+    /// A dependency cycle was detected between passes.
+    #[error("dependency cycle detected involving passes: {passes:?}")]
+    DependencyCycle {
+        /// Names of the passes involved in the cycle.
+        passes: Vec<String>,
+    },
+
+    /// Topological sorting did not visit every pass.
+    #[error("topological sort incomplete: visited {visited}/{total} passes. missing: {missing:?}")]
+    TopologicalSortIncomplete {
+        /// Number of passes that were ordered.
+        visited: usize,
+        /// Total number of passes in the pipeline.
+        total: usize,
+        /// Names of the passes that were not ordered.
+        missing: Vec<String>,
+    },
+}
 
 /// Builds a render pipeline from individual passes.
 pub struct PipelineBuilder {
@@ -59,7 +100,7 @@ impl PipelineBuilder {
         device: &wgpu::Device,
         width: u32,
         height: u32,
-    ) -> ResourceTable {
+    ) -> Result<ResourceTable, PipelineBuildError> {
         let boxed: Vec<Box<dyn Pass>> = Vec::new(); // not needed for validation
 
         // Build signatures from the slice of pass references
@@ -96,46 +137,22 @@ impl PipelineBuilder {
                         }
                     }
                     None => {
-                        panic!(
-                            "Missing producer: pass '{}' reads '{}' but no pass produces it",
-                            sig.name, read_slot.name,
-                        );
+                        return Err(PipelineBuildError::MissingProducer {
+                            pass: sig.name.to_string(),
+                            resource: read_slot.name.to_string(),
+                        });
                     }
                 }
             }
         }
 
         // Detect cycles
-        detect_cycles_ref(&deps, n, &sigs);
+        if let Some(cycle) = detect_cycles_ref(&deps, n, &sigs) {
+            return Err(PipelineBuildError::DependencyCycle { passes: cycle });
+        }
 
         // Topological sort
-        let mut in_degree: Vec<usize> = deps.iter().map(|d| d.len()).collect();
-        let mut queue: VecDeque<usize> = (0..n).filter(|&i| in_degree[i] == 0).collect();
-        let mut order = Vec::with_capacity(n);
-        while let Some(node) = queue.pop_front() {
-            order.push(node);
-            // Find consumers
-            for (j, dep_list) in deps.iter().enumerate() {
-                if dep_list.contains(&node) {
-                    in_degree[j] -= 1;
-                    if in_degree[j] == 0 {
-                        queue.push_back(j);
-                    }
-                }
-            }
-        }
-        if order.len() != n {
-            let missing: Vec<&str> = (0..n)
-                .filter(|i| !order.contains(i))
-                .map(|i| sigs[i].name)
-                .collect();
-            panic!(
-                "Topo sort incomplete: visited {}/{} passes. Missing: {:?}",
-                order.len(),
-                n,
-                missing,
-            );
-        }
+        let order = topological_sort(&deps, n, |i| sigs[i].name.to_string())?;
 
         debug!(
             "Topological order: {:?}",
@@ -169,7 +186,7 @@ impl PipelineBuilder {
         }
 
         let _ = boxed;
-        resource_table
+        Ok(resource_table)
     }
 
     /// Build the scheduler.
@@ -184,8 +201,13 @@ impl PipelineBuilder {
     ///
     /// Multiple passes may write to the same `(type, name)` resource; they are
     /// treated as sequential writers and ordered by registration order.
-    pub fn build(mut self, device: &wgpu::Device, width: u32, height: u32) -> Scheduler {
-        let order = compute_topological_order(&self.passes);
+    pub fn build(
+        mut self,
+        device: &wgpu::Device,
+        width: u32,
+        height: u32,
+    ) -> Result<Scheduler, PipelineBuildError> {
+        let order = compute_topological_order(&self.passes)?;
 
         // Collect unique writes and allocate transient textures
         let mut resource_table = ResourceTable::new();
@@ -231,21 +253,15 @@ impl PipelineBuilder {
             );
         }
 
-        // Move DebugLine pass to the end so it renders after CompositePass
-        if let Some(idx) = ordered.iter().position(|p| p.name() == "DebugLine") {
-            let debug_pass = ordered.remove(idx);
-            ordered.push(debug_pass);
-        }
-
         // Resolve each pass with the resource table
         for pass in &mut ordered {
             pass.resolve(device, &resource_table);
         }
 
-        Scheduler {
+        Ok(Scheduler {
             passes: ordered,
             resource_table,
-        }
+        })
     }
 
     /// Create a transient texture for intermediate pass outputs.
@@ -278,11 +294,12 @@ impl PipelineBuilder {
 }
 
 /// Compute topological order of passes based on read/write signatures.
-pub(crate) fn compute_topological_order(passes: &[Box<dyn Pass>]) -> Vec<usize> {
+pub(crate) fn compute_topological_order(
+    passes: &[Box<dyn Pass>],
+) -> Result<Vec<usize>, PipelineBuildError> {
     let n = passes.len();
 
     let mut producer: HashMap<(std::any::TypeId, &str), usize> = HashMap::new();
-    let mut consumers: Vec<HashSet<usize>> = vec![HashSet::new(); n];
     let mut deps: Vec<Vec<usize>> = vec![Vec::new(); n];
 
     for (i, pass) in passes.iter().enumerate() {
@@ -296,7 +313,6 @@ pub(crate) fn compute_topological_order(passes: &[Box<dyn Pass>]) -> Vec<usize> 
                 // earlier writer becomes a dependency of the later one.
                 if existing != i && !deps[i].contains(&existing) {
                     deps[i].push(existing);
-                    consumers[existing].insert(i);
                 }
             }
             producer.insert(key, i);
@@ -311,22 +327,50 @@ pub(crate) fn compute_topological_order(passes: &[Box<dyn Pass>]) -> Vec<usize> 
                 Some(&producer_idx) => {
                     if producer_idx != i && !deps[i].contains(&producer_idx) {
                         deps[i].push(producer_idx);
-                        consumers[producer_idx].insert(i);
                     }
                 }
                 None => {
-                    panic!(
-                        "Missing producer: pass '{}' reads '{}' (type {:?}), but no pass produces it",
-                        sig.name, read_slot.name, read_slot.type_id,
-                    );
+                    return Err(PipelineBuildError::MissingProducer {
+                        pass: sig.name.to_string(),
+                        resource: read_slot.name.to_string(),
+                    });
                 }
             }
         }
     }
 
-    detect_cycles(&deps, n, passes);
+    if let Some(cycle) = detect_cycles(&deps, n, passes) {
+        return Err(PipelineBuildError::DependencyCycle { passes: cycle });
+    }
 
-    // Topological sort (Kahn's algorithm): in_degree[i] = number of passes i depends on
+    let order = topological_sort(&deps, n, |i| passes[i].name().to_string())?;
+
+    debug!(
+        "Topological order: {:?}",
+        order.iter().map(|&i| passes[i].name()).collect::<Vec<_>>()
+    );
+
+    Ok(order)
+}
+
+/// Kahn's topological sort.
+///
+/// `name` maps a node index to a human-readable pass name for error reporting.
+fn topological_sort<F>(
+    deps: &[Vec<usize>],
+    n: usize,
+    name: F,
+) -> Result<Vec<usize>, PipelineBuildError>
+where
+    F: Fn(usize) -> String,
+{
+    let mut consumers: Vec<Vec<usize>> = vec![Vec::new(); n];
+    for (i, deps_i) in deps.iter().enumerate() {
+        for &dep in deps_i {
+            consumers[dep].push(i);
+        }
+    }
+
     let mut in_degree: Vec<usize> = deps.iter().map(|d| d.len()).collect();
     let mut queue: VecDeque<usize> = (0..n).filter(|&i| in_degree[i] == 0).collect();
     let mut order = Vec::with_capacity(n);
@@ -342,59 +386,71 @@ pub(crate) fn compute_topological_order(passes: &[Box<dyn Pass>]) -> Vec<usize> 
     }
 
     if order.len() != n {
-        let cycle_nodes: Vec<&str> = (0..n)
-            .filter(|i| in_degree[*i] > 0)
-            .map(|i| passes[i].name())
-            .collect();
-        panic!(
-            "Dependency cycle detected involving passes: {:?}",
-            cycle_nodes
-        );
+        let missing: Vec<String> = (0..n).filter(|i| !order.contains(i)).map(name).collect();
+        return Err(PipelineBuildError::TopologicalSortIncomplete {
+            visited: order.len(),
+            total: n,
+            missing,
+        });
     }
 
-    debug!(
-        "Topological order: {:?}",
-        order.iter().map(|&i| passes[i].name()).collect::<Vec<_>>()
-    );
-
-    order
+    Ok(order)
 }
 
 /// Detect cycles in the dependency graph via DFS.
-fn detect_cycles(deps: &[Vec<usize>], n: usize, passes: &[Box<dyn Pass>]) {
+///
+/// Returns the list of pass names involved in a cycle, if any.
+fn detect_cycles(deps: &[Vec<usize>], n: usize, passes: &[Box<dyn Pass>]) -> Option<Vec<String>> {
     let mut color = vec![CycleColor::White; n];
 
     for i in 0..n {
         if color[i] == CycleColor::White {
-            dfs(i, deps, &mut color, passes);
+            if let Some(cycle) = dfs(i, deps, &mut color, passes) {
+                return Some(cycle);
+            }
         }
     }
+    None
 }
 
 /// Detect cycles using PassSignature references (for validate_and_allocate).
-fn detect_cycles_ref(deps: &[Vec<usize>], n: usize, sigs: &[PassSignature]) {
+///
+/// Returns the list of pass names involved in a cycle, if any.
+fn detect_cycles_ref(deps: &[Vec<usize>], n: usize, sigs: &[PassSignature]) -> Option<Vec<String>> {
     let mut color = vec![CycleColor::White; n];
     for i in 0..n {
         if color[i] == CycleColor::White {
-            dfs_ref(i, deps, &mut color, sigs);
+            if let Some(cycle) = dfs_ref(i, deps, &mut color, sigs) {
+                return Some(cycle);
+            }
         }
     }
+    None
 }
 
-fn dfs_ref(node: usize, deps: &[Vec<usize>], color: &mut [CycleColor], sigs: &[PassSignature]) {
+fn dfs_ref(
+    node: usize,
+    deps: &[Vec<usize>],
+    color: &mut [CycleColor],
+    sigs: &[PassSignature],
+) -> Option<Vec<String>> {
     color[node] = CycleColor::Gray;
     for &dep in &deps[node] {
         if color[dep] == CycleColor::Gray {
-            panic!(
-                "Dependency cycle: '{}' depends on '{}' which depends back on '{}'",
-                sigs[node].name, sigs[dep].name, sigs[node].name,
-            );
+            return Some(vec![
+                sigs[node].name.to_string(),
+                sigs[dep].name.to_string(),
+                sigs[node].name.to_string(),
+            ]);
         }
         if color[dep] == CycleColor::White {
-            dfs_ref(dep, deps, color, sigs);
+            if let Some(cycle) = dfs_ref(dep, deps, color, sigs) {
+                return Some(cycle);
+            }
         }
     }
     color[node] = CycleColor::Black;
+    None
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -404,20 +460,27 @@ enum CycleColor {
     Black,
 }
 
-fn dfs(node: usize, deps: &[Vec<usize>], color: &mut [CycleColor], passes: &[Box<dyn Pass>]) {
+fn dfs(
+    node: usize,
+    deps: &[Vec<usize>],
+    color: &mut [CycleColor],
+    passes: &[Box<dyn Pass>],
+) -> Option<Vec<String>> {
     color[node] = CycleColor::Gray;
     for &dep in &deps[node] {
         if color[dep] == CycleColor::Gray {
-            panic!(
-                "Dependency cycle: '{}' depends on '{}' which depends back on '{}'",
-                passes[node].name(),
-                passes[dep].name(),
-                passes[node].name(),
-            );
+            return Some(vec![
+                passes[node].name().to_string(),
+                passes[dep].name().to_string(),
+                passes[node].name().to_string(),
+            ]);
         }
         if color[dep] == CycleColor::White {
-            dfs(dep, deps, color, passes);
+            if let Some(cycle) = dfs(dep, deps, color, passes) {
+                return Some(cycle);
+            }
         }
     }
     color[node] = CycleColor::Black;
+    None
 }

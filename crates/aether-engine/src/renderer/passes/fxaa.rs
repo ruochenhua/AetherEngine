@@ -6,7 +6,8 @@
 //!
 //! Pipeline position: ToneMappingPass → FXAAPass → DebugLinePass
 
-use crate::renderer::pass::{Pass, PassSignature, ResHandle};
+use crate::renderer::frame::RenderFrame;
+use crate::renderer::pass::{InitContext, Pass, PassSignature, ResHandle};
 use crate::renderer::resource::*;
 use crate::renderer::resource_table::ResourceTable;
 use std::borrow::Cow;
@@ -48,6 +49,7 @@ pub struct FXAAPass {
     quality: FxaaQuality,
     edge_threshold: Option<f32>,
     enabled: bool,
+    surface_format: wgpu::TextureFormat,
 }
 
 impl Pass for FXAAPass {
@@ -56,15 +58,17 @@ impl Pass for FXAAPass {
     }
 
     fn signature(&self) -> PassSignature {
-        PassSignature::new("FXAA").read::<FxaaInput>("fxaa_input")
+        PassSignature::new("FXAA")
+            .read::<FxaaInput>()
+            .write::<Swapchain>(self.surface_format)
     }
 
-    fn init(device: &wgpu::Device) -> Self {
-        Self::new(device, wgpu::TextureFormat::Bgra8UnormSrgb)
+    fn init(ctx: &InitContext) -> Self {
+        Self::new(ctx.device, ctx.surface_format)
     }
 
     fn resolve(&mut self, device: &wgpu::Device, resources: &ResourceTable) {
-        self.input_handle = Some(resources.handle::<FxaaInput>("fxaa_input"));
+        self.input_handle = Some(resources.handle::<FxaaInput>());
         let input_view = resources.get(self.input_handle.unwrap());
 
         self.texture_bind_group = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -81,6 +85,13 @@ impl Pass for FXAAPass {
                 },
             ],
         }));
+    }
+
+    fn apply_frame(&mut self, frame: &RenderFrame) {
+        self.set_enabled(frame.config.fxaa_enabled);
+        self.set_quality(frame.config.fxaa_quality);
+        self.set_edge_threshold(frame.config.fxaa_edge_threshold);
+        self.update_uniforms_with_queue(frame.queue);
     }
 
     fn execute(
@@ -116,10 +127,6 @@ impl Pass for FXAAPass {
         pass.set_bind_group(1, &self.uniform_bind_group, &[]);
         pass.set_vertex_buffer(0, self.quad_vertex_buffer.slice(..));
         pass.draw(0..self.quad_vertex_count, 0..1);
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
     }
 }
 
@@ -436,6 +443,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             quality: FxaaQuality::default(),
             edge_threshold: None,
             enabled: true,
+            surface_format,
         }
     }
 
@@ -503,7 +511,7 @@ mod tests {
         let sig = pass.signature();
         assert_eq!(sig.name, "FXAA");
         assert_eq!(sig.reads.len(), 1);
-        assert_eq!(sig.writes.len(), 0);
+        assert_eq!(sig.writes.len(), 1);
     }
 
     #[test]

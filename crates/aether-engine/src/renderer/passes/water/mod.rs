@@ -1,0 +1,256 @@
+//! Water Pass — transparent forward water surface with Gerstner waves.
+//!
+//! Renders a large subdivided plane displaced by Gerstner waves on the GPU.
+//! The pass runs after SSR and before composite. It samples the lit scene
+//! color for refraction and the SSR reflection texture for reflections, then
+//! blends the result into a separate `WaterColor` overlay that the composite
+//! pass mixes over the opaque scene.
+
+use crate::asset::mesh::GpuMesh;
+use crate::renderer::frame::RenderFrame;
+use crate::renderer::pass::{InitContext, Pass, PassSignature, ResHandle};
+use crate::renderer::resource::{GDepth, ReflectionTexture, SceneColor, WaterColor};
+use crate::renderer::resource_table::ResourceTable;
+use std::sync::Arc;
+
+mod execute;
+mod pipeline;
+mod types;
+
+pub use types::WaterUniform;
+
+/// Water render pass.
+pub struct WaterPass {
+    pipeline: wgpu::RenderPipeline,
+    uniform_buffer: wgpu::Buffer,
+    uniform_bind_group: wgpu::BindGroup,
+    texture_bind_group: Option<wgpu::BindGroup>,
+    mesh: Arc<GpuMesh>,
+    scene_color_handle: Option<ResHandle<SceneColor>>,
+    reflection_handle: Option<ResHandle<ReflectionTexture>>,
+    depth_handle: Option<ResHandle<GDepth>>,
+    water_color_handle: Option<ResHandle<WaterColor>>,
+    has_water: bool,
+    time: f32,
+}
+
+impl Pass for WaterPass {
+    fn name(&self) -> &str {
+        "Water"
+    }
+
+    fn signature(&self) -> PassSignature {
+        PassSignature::new("Water")
+            .read::<SceneColor>()
+            .read::<ReflectionTexture>()
+            .read::<GDepth>()
+            .write::<WaterColor>(wgpu::TextureFormat::Rgba16Float)
+    }
+
+    fn init(ctx: &InitContext) -> Self {
+        Self::new(ctx.device)
+    }
+
+    fn resolve(&mut self, device: &wgpu::Device, resources: &ResourceTable) {
+        self.scene_color_handle = Some(resources.handle::<SceneColor>());
+        self.reflection_handle = Some(resources.handle::<ReflectionTexture>());
+        self.depth_handle = Some(resources.handle::<GDepth>());
+        self.water_color_handle = Some(resources.handle::<WaterColor>());
+
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("Water Sampler"),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            ..Default::default()
+        });
+
+        let texture_bind_group_layout = pipeline::create_texture_bind_group_layout(device);
+
+        self.texture_bind_group = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Water Texture Bind Group"),
+            layout: &texture_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(
+                        resources.get(self.scene_color_handle.unwrap()),
+                    ),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(
+                        resources.get(self.reflection_handle.unwrap()),
+                    ),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+            ],
+        }));
+    }
+
+    fn should_run(&self, _frame: &RenderFrame) -> bool {
+        self.has_water
+    }
+
+    fn apply_frame(&mut self, frame: &RenderFrame) {
+        if let Some(water) = frame.optional.water.clone() {
+            self.has_water = true;
+            self.time += frame.delta_time;
+
+            let proj = frame.camera.projection_matrix(frame.aspect);
+            let view = frame.camera.view_matrix();
+            let view_proj = proj * view;
+
+            let cfg = water.config;
+            let uniforms = WaterUniform {
+                view_proj,
+                camera_pos: frame.camera.position.extend(0.0),
+                water_color: glam::Vec4::from_array([
+                    cfg.water_color[0],
+                    cfg.water_color[1],
+                    cfg.water_color[2],
+                    1.0,
+                ]),
+                deep_color: glam::Vec4::from_array([
+                    cfg.deep_color[0],
+                    cfg.deep_color[1],
+                    cfg.deep_color[2],
+                    1.0,
+                ]),
+                wave_direction: glam::Vec2::from_array(cfg.wave_direction),
+                wave_amplitude: cfg.wave_amplitude,
+                wave_wavelength: cfg.wave_wavelength,
+                wave_speed: cfg.wave_speed,
+                wave_steepness: cfg.wave_steepness,
+                time: self.time,
+                level: cfg.level,
+                fresnel_power: cfg.fresnel_power,
+                refraction_scale: cfg.refraction_scale,
+                reflectivity: cfg.reflectivity,
+                _pad0: 0.0,
+                _pad1: 0.0,
+                _pad2: 0.0,
+                _pad3: 0.0,
+                _pad4: 0.0,
+                _pad5: 0.0,
+                _pad6: 0.0,
+                _pad7: 0.0,
+                _pad8: 0.0,
+            };
+            frame
+                .queue
+                .write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
+        } else {
+            self.has_water = false;
+        }
+    }
+
+    fn execute(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        resources: &ResourceTable,
+        _surface_view: &wgpu::TextureView,
+    ) {
+        execute::execute(self, encoder, resources, _surface_view);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ecs::components::Water;
+    use crate::ecs::World;
+    use crate::renderer::camera::FlyCamera;
+    use crate::renderer::extract::extract_optional_pass_data;
+    use crate::renderer::frame::FrameConfig;
+    use crate::renderer::light::LightingUniforms;
+    use crate::renderer::resource::ResourceTag;
+    use crate::scene::WaterConfig;
+
+    fn headless_device() -> (wgpu::Device, wgpu::Queue) {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        let adapter =
+            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+                .expect("need adapter");
+        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
+            .expect("need device")
+    }
+
+    fn init_ctx<'a>(device: &'a wgpu::Device, queue: &'a wgpu::Queue) -> InitContext<'a> {
+        InitContext {
+            device,
+            queue,
+            surface_format: wgpu::TextureFormat::Bgra8UnormSrgb,
+            depth_format: wgpu::TextureFormat::Depth32Float,
+            width: 64,
+            height: 64,
+            ibl_resources: None,
+        }
+    }
+
+    #[test]
+    fn water_pass_signature_reads_lit_scene_depth_and_reflection() {
+        let (device, queue) = headless_device();
+        let ctx = init_ctx(&device, &queue);
+        let pass = WaterPass::init(&ctx);
+        let sig = pass.signature();
+        assert_eq!(sig.name, "Water");
+        assert!(sig.reads.iter().any(|s| s.name == SceneColor::NAME));
+        assert!(sig.reads.iter().any(|s| s.name == GDepth::NAME));
+        assert!(sig.reads.iter().any(|s| s.name == ReflectionTexture::NAME));
+        assert_eq!(sig.writes.len(), 1);
+        assert_eq!(sig.writes[0].name, WaterColor::NAME);
+    }
+
+    #[test]
+    fn water_pass_skipped_without_component() {
+        let (device, queue) = headless_device();
+        let ctx = init_ctx(&device, &queue);
+        let pass = WaterPass::init(&ctx);
+        let world = World::new();
+        let optional = extract_optional_pass_data(&world);
+        let camera = FlyCamera::default();
+        let lighting = LightingUniforms::default();
+        let frame = RenderFrame {
+            batches: std::sync::Arc::from([]),
+            camera: &camera,
+            lighting: &lighting,
+            queue: &queue,
+            aspect: 1.0,
+            delta_time: 0.016,
+            config: &FrameConfig::default(),
+            optional: &optional,
+        };
+        assert!(!pass.should_run(&frame));
+    }
+
+    #[test]
+    fn water_pass_runs_when_component_present() {
+        let (device, queue) = headless_device();
+        let ctx = init_ctx(&device, &queue);
+        let mut pass = WaterPass::init(&ctx);
+        let mut world = World::new();
+        world.spawn((Water {
+            config: WaterConfig::default(),
+        },));
+        let optional = extract_optional_pass_data(&world);
+        let camera = FlyCamera::default();
+        let lighting = LightingUniforms::default();
+        let frame = RenderFrame {
+            batches: std::sync::Arc::from([]),
+            camera: &camera,
+            lighting: &lighting,
+            queue: &queue,
+            aspect: 1.0,
+            delta_time: 0.016,
+            config: &FrameConfig::default(),
+            optional: &optional,
+        };
+        pass.apply_frame(&frame);
+        assert!(pass.should_run(&frame));
+    }
+}

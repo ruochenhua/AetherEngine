@@ -5,7 +5,8 @@
 //!
 //! Reads `PostProcessInput` (Rgba16Float) and writes directly to swapchain.
 
-use crate::renderer::pass::{Pass, PassSignature, ResHandle};
+use crate::renderer::frame::RenderFrame;
+use crate::renderer::pass::{InitContext, Pass, PassSignature, ResHandle};
 use crate::renderer::resource::*;
 use crate::renderer::resource_table::ResourceTable;
 use std::borrow::Cow;
@@ -53,16 +54,16 @@ impl Pass for ToneMappingPass {
 
     fn signature(&self) -> PassSignature {
         PassSignature::new("ToneMapping")
-            .read::<BloomResult>("bloom_result")
-            .write::<FxaaInput>("fxaa_input", wgpu::TextureFormat::Bgra8UnormSrgb)
+            .read::<BloomResult>()
+            .write::<FxaaInput>(wgpu::TextureFormat::Bgra8UnormSrgb)
     }
 
-    fn init(device: &wgpu::Device) -> Self {
-        Self::new(device, wgpu::TextureFormat::Bgra8UnormSrgb)
+    fn init(ctx: &InitContext) -> Self {
+        Self::new(ctx.device, ctx.surface_format)
     }
 
     fn resolve(&mut self, device: &wgpu::Device, resources: &ResourceTable) {
-        self.input_handle = Some(resources.handle::<BloomResult>("bloom_result"));
+        self.input_handle = Some(resources.handle::<BloomResult>());
         let input_view = resources.get(self.input_handle.unwrap());
 
         self.texture_bind_group = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -81,6 +82,11 @@ impl Pass for ToneMappingPass {
         }));
     }
 
+    fn apply_frame(&mut self, frame: &RenderFrame) {
+        self.set_mode(frame.config.tone_mapping_mode);
+        self.update_uniforms(frame.queue);
+    }
+
     fn execute(
         &self,
         encoder: &mut wgpu::CommandEncoder,
@@ -91,7 +97,7 @@ impl Pass for ToneMappingPass {
             .texture_bind_group
             .as_ref()
             .expect("ToneMappingPass: resolve not called");
-        let fxaa_view = resources.get(resources.handle::<FxaaInput>("fxaa_input"));
+        let fxaa_view = resources.get(resources.handle::<FxaaInput>());
 
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Tone Mapping Pass"),
@@ -115,10 +121,6 @@ impl Pass for ToneMappingPass {
         pass.set_bind_group(1, &self.uniform_bind_group, &[]);
         pass.set_vertex_buffer(0, self.quad_vertex_buffer.slice(..));
         pass.draw(0..self.quad_vertex_count, 0..1);
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
     }
 }
 

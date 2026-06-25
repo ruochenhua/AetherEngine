@@ -16,7 +16,8 @@
 //!   7. Upsample    BloomMip0        → BloomTexture (add)
 //!   8. Composite   PostProcessInput + BloomTexture → BloomResult
 
-use crate::renderer::pass::{Pass, PassSignature, ResHandle};
+use crate::renderer::frame::RenderFrame;
+use crate::renderer::pass::{InitContext, Pass, PassSignature, ResHandle};
 use crate::renderer::resource::*;
 use crate::renderer::resource_table::ResourceTable;
 
@@ -101,17 +102,17 @@ impl Pass for BloomPass {
 
     fn signature(&self) -> PassSignature {
         PassSignature::new("Bloom")
-            .read::<PostProcessInput>("post_process_input")
-            .write::<BloomResult>("bloom_result", wgpu::TextureFormat::Rgba16Float)
+            .read::<PostProcessInput>()
+            .write::<BloomResult>(wgpu::TextureFormat::Rgba16Float)
     }
 
-    fn init(device: &wgpu::Device) -> Self {
-        Self::new(device, 1280, 720)
+    fn init(ctx: &InitContext) -> Self {
+        Self::new(ctx.device, ctx.width, ctx.height)
     }
 
     fn resolve(&mut self, device: &wgpu::Device, resources: &ResourceTable) {
-        self.input_handle = Some(resources.handle::<PostProcessInput>("post_process_input"));
-        self.result_handle = Some(resources.handle::<BloomResult>("bloom_result"));
+        self.input_handle = Some(resources.handle::<PostProcessInput>());
+        self.result_handle = Some(resources.handle::<BloomResult>());
 
         // Recreate intermediate textures at current screen size
         textures::create_intermediate_textures(self, device);
@@ -252,6 +253,14 @@ impl Pass for BloomPass {
         }));
     }
 
+    fn apply_frame(&mut self, frame: &RenderFrame) {
+        self.set_enabled(frame.config.bloom_enabled);
+        self.set_threshold(frame.config.bloom_threshold);
+        self.set_intensity(frame.config.bloom_intensity);
+        self.set_bloom_intensity(frame.config.bloom_composite_intensity);
+        self.update_uniforms(frame.queue);
+    }
+
     fn execute(
         &self,
         encoder: &mut wgpu::CommandEncoder,
@@ -259,10 +268,6 @@ impl Pass for BloomPass {
         surface_view: &wgpu::TextureView,
     ) {
         execute::execute(self, encoder, resources, surface_view);
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
     }
 }
 

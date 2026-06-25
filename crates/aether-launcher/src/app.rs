@@ -120,6 +120,10 @@ pub(crate) struct App {
     pub(crate) exit_after_frames: Option<u32>,
     pub(crate) freeze_time: bool,
     pub(crate) frame_counter: u32,
+    /// GPU adapter description, displayed in the editor overlay.
+    pub(crate) gpu_info: String,
+    /// Whether the GPU timer is supported, displayed in the editor overlay.
+    pub(crate) gpu_timer_supported: bool,
 }
 
 impl App {
@@ -210,6 +214,8 @@ impl App {
             exit_after_frames,
             freeze_time,
             frame_counter: 0,
+            gpu_info: String::new(),
+            gpu_timer_supported: false,
         }
     }
 
@@ -241,7 +247,7 @@ impl App {
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        surface_format: wgpu::TextureFormat,
+        output_format: wgpu::TextureFormat,
         width: u32,
         height: u32,
     ) {
@@ -257,22 +263,28 @@ impl App {
         if has_terrain == self.has_terrain_pipeline {
             return;
         }
-        let (scheduler, ibl_resources) = crate::pipeline::build_pipeline(
+        match crate::pipeline::build_pipeline(
             device,
             queue,
-            surface_format,
+            output_format,
             wgpu::TextureFormat::Depth32Float,
             width,
             height,
             has_terrain,
-        );
-        self.scheduler = Some(scheduler);
-        self.ibl_resources = Some(ibl_resources);
-        self.has_terrain_pipeline = has_terrain;
-        self.gpu_timer = aether_engine::renderer::gpu_timer::GpuTimer::new(
-            device,
-            &self.scheduler.as_ref().unwrap().pass_names(),
-        );
+        ) {
+            Ok((scheduler, ibl_resources)) => {
+                self.scheduler = Some(scheduler);
+                self.ibl_resources = Some(ibl_resources);
+                self.has_terrain_pipeline = has_terrain;
+                self.gpu_timer = aether_engine::renderer::gpu_timer::GpuTimer::new(
+                    device,
+                    &self.scheduler.as_ref().unwrap().pass_names(),
+                );
+            }
+            Err(err) => {
+                tracing::error!("Failed to rebuild render pipeline: {}", err);
+            }
+        }
     }
 }
 
@@ -292,7 +304,8 @@ impl ApplicationHandler for App {
                 .expect("Failed to create window"),
         );
 
-        let ctx = pollster::block_on(RenderContext::new(&window));
+        let ctx = pollster::block_on(RenderContext::new(window.clone()));
+        self.gpu_info = format!("{} ({:?})", ctx.adapter_info.name, ctx.adapter_info.backend);
 
         let viewport_id = self.egui_ctx.viewport_id();
         let egui_winit_state = egui_winit::State::new(
@@ -309,7 +322,7 @@ impl ApplicationHandler for App {
             egui_wgpu::RendererOptions::default(),
         );
 
-        let surface_format = ctx.surface_format();
+        let output_format = ctx.render_target_format();
         let depth_format = wgpu::TextureFormat::Depth32Float;
 
         // Build render pipeline via helper. Terrain presence is determined by
@@ -318,22 +331,20 @@ impl ApplicationHandler for App {
         let (scheduler, ibl_resources) = crate::pipeline::build_pipeline(
             &ctx.device,
             &ctx.queue,
-            surface_format,
+            output_format,
             depth_format,
             ctx.config.width,
             ctx.config.height,
             has_terrain,
-        );
+        )
+        .expect("Failed to build render pipeline");
         self.has_terrain_pipeline = has_terrain;
         self.ibl_resources = Some(ibl_resources);
 
         // Initialize GPU timer for the performance panel.
         self.gpu_timer =
             aether_engine::renderer::gpu_timer::GpuTimer::new(&ctx.device, &scheduler.pass_names());
-        info!(
-            "GPU timer initialized: supported={}",
-            self.gpu_timer.as_ref().is_some_and(|t| t.supported)
-        );
+        self.gpu_timer_supported = self.gpu_timer.as_ref().is_some_and(|t| t.supported);
 
         // Start with an empty scene (default camera + lighting + a default cube)
         let mut world = World::new();
@@ -344,8 +355,6 @@ impl ApplicationHandler for App {
 
         // Auto-open scene if --scene is provided
         scene::open_cli_scene(self, &ctx);
-
-        info!("Discovered {} scenes", self.scene_entries.len());
 
         self.window = Some(window);
         self.ctx = Some(ctx);
@@ -398,15 +407,12 @@ impl ApplicationHandler for App {
                 let ctx = self.ctx.as_mut().unwrap();
                 let scheduler = self.scheduler.as_mut().unwrap();
                 ctx.resize(size.width, size.height);
-                scheduler.set_bloom_screen_size(size.width, size.height);
-                scheduler.set_ssao_screen_size(size.width, size.height);
-                scheduler.set_ao_blur_screen_size(size.width, size.height);
-                scheduler.set_ssr_screen_size(size.width, size.height);
                 scheduler.rebuild(&ctx.device, size.width, size.height);
                 self.gpu_timer = aether_engine::renderer::gpu_timer::GpuTimer::new(
                     &ctx.device,
                     &scheduler.pass_names(),
                 );
+                self.gpu_timer_supported = self.gpu_timer.as_ref().is_some_and(|t| t.supported);
             }
             WindowEvent::RedrawRequested => {
                 // Reset per-frame egui pointer consumption flag.

@@ -7,7 +7,7 @@
 //! Pipeline: ... → SSRPass → GodRayPass → WaterPass → CompositePass → ...
 
 use crate::renderer::frame::RenderFrame;
-use crate::renderer::pass::{Pass, PassSignature, ResHandle};
+use crate::renderer::pass::{InitContext, Pass, PassSignature, ResHandle};
 use crate::renderer::resource::*;
 use crate::renderer::resource_table::ResourceTable;
 use std::borrow::Cow;
@@ -52,32 +52,32 @@ impl Pass for CompositePass {
 
     fn signature(&self) -> PassSignature {
         PassSignature::new("Composite")
-            .read::<SceneColor>("scene_color")
-            .read::<ReflectionTexture>("reflection")
-            .read::<WaterColor>("water_color")
-            .read::<CloudColor>("cloud_color")
-            .read::<GodRayColor>("god_ray_color")
-            .read::<GPosition>("gbuffer_position")
-            .read::<GNormal>("gbuffer_normal")
-            .read::<GAlbedo>("gbuffer_albedo")
-            .read::<GMaterial>("gbuffer_material")
-            .write::<PostProcessInput>("post_process_input", wgpu::TextureFormat::Rgba16Float)
+            .read::<SceneColor>()
+            .read::<ReflectionTexture>()
+            .read::<WaterColor>()
+            .read::<CloudColor>()
+            .read::<GodRayColor>()
+            .read::<GPosition>()
+            .read::<GNormal>()
+            .read::<GAlbedo>()
+            .read::<GMaterial>()
+            .write::<PostProcessInput>(wgpu::TextureFormat::Rgba16Float)
     }
 
-    fn init(device: &wgpu::Device) -> Self {
-        Self::new(device, wgpu::TextureFormat::Bgra8UnormSrgb)
+    fn init(ctx: &InitContext) -> Self {
+        Self::new(ctx.device, ctx.surface_format)
     }
 
     fn resolve(&mut self, device: &wgpu::Device, resources: &ResourceTable) {
-        self.scene_color_handle = Some(resources.handle::<SceneColor>("scene_color"));
-        self.reflection_handle = Some(resources.handle::<ReflectionTexture>("reflection"));
-        self.water_color_handle = Some(resources.handle::<WaterColor>("water_color"));
-        self.cloud_color_handle = Some(resources.handle::<CloudColor>("cloud_color"));
-        self.god_ray_color_handle = Some(resources.handle::<GodRayColor>("god_ray_color"));
-        self.pos_handle = Some(resources.handle::<GPosition>("gbuffer_position"));
-        self.normal_handle = Some(resources.handle::<GNormal>("gbuffer_normal"));
-        self.albedo_handle = Some(resources.handle::<GAlbedo>("gbuffer_albedo"));
-        self.material_handle = Some(resources.handle::<GMaterial>("gbuffer_material"));
+        self.scene_color_handle = Some(resources.handle::<SceneColor>());
+        self.reflection_handle = Some(resources.handle::<ReflectionTexture>());
+        self.water_color_handle = Some(resources.handle::<WaterColor>());
+        self.cloud_color_handle = Some(resources.handle::<CloudColor>());
+        self.god_ray_color_handle = Some(resources.handle::<GodRayColor>());
+        self.pos_handle = Some(resources.handle::<GPosition>());
+        self.normal_handle = Some(resources.handle::<GNormal>());
+        self.albedo_handle = Some(resources.handle::<GAlbedo>());
+        self.material_handle = Some(resources.handle::<GMaterial>());
 
         let scene_color_view = resources.get(self.scene_color_handle.unwrap());
         let reflection_view = resources.get(self.reflection_handle.unwrap());
@@ -157,8 +157,7 @@ impl Pass for CompositePass {
             .texture_bind_group
             .as_ref()
             .expect("Composite: resolve not called");
-        let post_process_view =
-            resources.get(resources.handle::<PostProcessInput>("post_process_input"));
+        let post_process_view = resources.get(resources.handle::<PostProcessInput>());
 
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Composite Pass"),
@@ -181,10 +180,6 @@ impl Pass for CompositePass {
         pass.set_bind_group(1, &self.uniform_bind_group, &[]);
         pass.set_vertex_buffer(0, self.quad_vertex_buffer.slice(..));
         pass.draw(0..self.quad_vertex_count, 0..1);
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
     }
 }
 

@@ -6,10 +6,8 @@
 //! `GodRayColor` overlay. The composite pass adds this overlay on top of the
 //! lit scene.
 
-use crate::ecs::components::GodRay;
-use crate::ecs::World;
 use crate::renderer::frame::RenderFrame;
-use crate::renderer::pass::{Pass, PassSignature, ResHandle};
+use crate::renderer::pass::{InitContext, Pass, PassSignature, ResHandle};
 use crate::renderer::resource::{GDepth, GodRayColor};
 use crate::renderer::resource_table::ResourceTable;
 use wgpu::util::DeviceExt;
@@ -69,17 +67,17 @@ impl Pass for GodRayPass {
 
     fn signature(&self) -> PassSignature {
         PassSignature::new("GodRay")
-            .read::<GDepth>("gbuffer_depth")
-            .write::<GodRayColor>("god_ray_color", wgpu::TextureFormat::Rgba16Float)
+            .read::<GDepth>()
+            .write::<GodRayColor>(wgpu::TextureFormat::Rgba16Float)
     }
 
-    fn init(device: &wgpu::Device) -> Self {
-        Self::new(device)
+    fn init(ctx: &InitContext) -> Self {
+        Self::new(ctx.device)
     }
 
     fn resolve(&mut self, device: &wgpu::Device, resources: &ResourceTable) {
-        self.depth_handle = Some(resources.handle::<GDepth>("gbuffer_depth"));
-        self.god_ray_color_handle = Some(resources.handle::<GodRayColor>("god_ray_color"));
+        self.depth_handle = Some(resources.handle::<GDepth>());
+        self.god_ray_color_handle = Some(resources.handle::<GodRayColor>());
 
         let depth_view = resources.get(self.depth_handle.unwrap());
 
@@ -99,7 +97,7 @@ impl Pass for GodRayPass {
 
     fn apply_frame(&mut self, frame: &RenderFrame) {
         self.has_god_ray = false;
-        if let Some(god_ray) = Self::read_god_ray(frame.world) {
+        if let Some(god_ray) = frame.optional.god_ray.clone() {
             self.has_god_ray = true;
             let proj = frame.camera.projection_matrix(frame.aspect);
             let view = frame.camera.view_matrix();
@@ -164,10 +162,6 @@ impl Pass for GodRayPass {
         pass.set_bind_group(1, texture_bg, &[]);
         pass.set_vertex_buffer(0, self.quad_vertex_buffer.slice(..));
         pass.draw(0..self.quad_vertex_count, 0..1);
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
     }
 }
 
@@ -372,15 +366,15 @@ fn fs_main(@builtin(position) frag_coord: vec4<f32>) -> @location(0) vec4<f32> {
             has_god_ray: false,
         }
     }
-
-    fn read_god_ray(world: &World) -> Option<GodRay> {
-        world.query::<&GodRay>().iter().next().cloned()
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ecs::components::GodRay;
+    use crate::ecs::World;
+    use crate::renderer::extract::extract_optional_pass_data;
+    use crate::renderer::frame::FrameConfig;
 
     fn headless_device() -> wgpu::Device {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
@@ -638,6 +632,7 @@ fn vs_main(@location(0) pos: vec2<f32>) -> @builtin(position) vec4<f32> {
         };
         let lighting = crate::renderer::light::LightingUniforms::default();
 
+        let optional = extract_optional_pass_data(&world);
         let frame = RenderFrame {
             batches: std::sync::Arc::from([]),
             camera: &camera,
@@ -645,7 +640,8 @@ fn vs_main(@location(0) pos: vec2<f32>) -> @builtin(position) vec4<f32> {
             queue: &queue,
             aspect: width as f32 / height as f32,
             delta_time: 0.016,
-            world: &world,
+            config: &FrameConfig::default(),
+            optional: &optional,
         };
         pass.apply_frame(&frame);
         assert!(pass.has_god_ray);

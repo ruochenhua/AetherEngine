@@ -2,6 +2,7 @@
 
 use aether_engine::renderer::{
     ibl::IblResources,
+    pass::{InitContext, Pass},
     passes::{
         ao_blur::AOBlurPass, atmosphere::AtmospherePass, bloom::BloomPass,
         composite::CompositePass, debug::DebugLinePass, fxaa::FXAAPass, gbuffer::GBufferPass,
@@ -9,7 +10,7 @@ use aether_engine::renderer::{
         ssr::SSRPass, terrain::TerrainPass, tone_mapping::ToneMappingPass,
         volumetric_cloud::VolumetricCloudPass, water::WaterPass,
     },
-    pipeline_builder::PipelineBuilder,
+    pipeline_builder::{PipelineBuildError, PipelineBuilder},
     scheduler::Scheduler,
 };
 use std::sync::Arc;
@@ -26,7 +27,7 @@ pub fn build_pipeline(
     width: u32,
     height: u32,
     has_terrain: bool,
-) -> (Scheduler, IblResources) {
+) -> Result<(Scheduler, IblResources), PipelineBuildError> {
     let ibl_resources = IblResources::generate(
         device,
         Some(queue),
@@ -36,39 +37,44 @@ pub fn build_pipeline(
         },
     );
 
-    let mut ssao = SSAOPass::new(device);
+    let ctx = InitContext {
+        device,
+        queue,
+        surface_format,
+        depth_format,
+        width,
+        height,
+        ibl_resources: Some(&ibl_resources),
+    };
+
+    let mut ssao = SSAOPass::init(&ctx);
     ssao.set_screen_size(width, height);
-    let mut ao_blur = AOBlurPass::new(device);
+    let mut ao_blur = AOBlurPass::init(&ctx);
     ao_blur.set_screen_size(width, height);
 
     let mut builder = PipelineBuilder::new()
-        .add_pass(ShadowPass::new(device))
-        .add_pass(GBufferPass::new(device));
+        .add_pass(ShadowPass::init(&ctx))
+        .add_pass(GBufferPass::init(&ctx));
     if has_terrain {
-        builder = builder.add_pass(TerrainPass::new(device));
+        builder = builder.add_pass(TerrainPass::init(&ctx));
     }
-    let mut scheduler = builder
+    let scheduler = builder
         .add_pass(ssao)
         .add_pass(ao_blur)
-        .add_pass(LightingPass::new_with_ibl(
-            device,
-            surface_format,
-            &ibl_resources,
-        ))
-        .add_pass(AtmospherePass::new(device))
-        .add_pass(VolumetricCloudPass::new(device, queue))
-        .add_pass(SSRPass::new(device))
-        .add_pass(GodRayPass::new(device))
-        .add_pass(WaterPass::new(device))
-        .add_pass(CompositePass::new(device, surface_format))
-        .add_pass(BloomPass::new(device, width, height))
-        .add_pass(ToneMappingPass::new(device, surface_format))
-        .add_pass(FXAAPass::new(device, surface_format))
-        .add_pass(DebugLinePass::new(device, surface_format, depth_format))
-        .build(device, width, height);
+        .add_pass(LightingPass::init(&ctx))
+        .add_pass(AtmospherePass::init(&ctx))
+        .add_pass(VolumetricCloudPass::init(&ctx))
+        .add_pass(SSRPass::init(&ctx))
+        .add_pass(GodRayPass::init(&ctx))
+        .add_pass(WaterPass::init(&ctx))
+        .add_pass(CompositePass::init(&ctx))
+        .add_pass(BloomPass::init(&ctx))
+        .add_pass(ToneMappingPass::init(&ctx))
+        .add_pass(FXAAPass::init(&ctx))
+        .add_pass(DebugLinePass::init(&ctx))
+        .build(device, width, height)?;
 
-    scheduler.set_ssr_screen_size(width, height);
-    (scheduler, ibl_resources)
+    Ok((scheduler, ibl_resources))
 }
 
 /// Spawn a default cube into the world for pickable content.

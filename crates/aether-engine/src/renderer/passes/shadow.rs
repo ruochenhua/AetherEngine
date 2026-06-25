@@ -16,7 +16,7 @@
 use crate::asset::mesh::{InstanceData, Vertex};
 use crate::renderer::extract::RenderBatch;
 use crate::renderer::frame::RenderFrame;
-use crate::renderer::pass::{Pass, PassSignature, ResHandle};
+use crate::renderer::pass::{InitContext, Pass, PassSignature, ResHandle};
 use crate::renderer::resource::*;
 use crate::renderer::resource_table::ResourceTable;
 use glam::{Mat4, Vec4Swizzles};
@@ -65,18 +65,17 @@ impl Pass for ShadowPass {
     }
     fn signature(&self) -> PassSignature {
         PassSignature::new("Shadow").write_array::<ShadowDepth>(
-            "shadow_depth",
             wgpu::TextureFormat::Depth32Float,
             SHADOW_MAP_SIZE,
             SHADOW_MAP_SIZE,
             CASCADE_COUNT as u32,
         )
     }
-    fn init(device: &wgpu::Device) -> Self {
-        Self::new(device)
+    fn init(ctx: &InitContext) -> Self {
+        Self::new(ctx.device)
     }
     fn resolve(&mut self, _device: &wgpu::Device, resources: &ResourceTable) {
-        self.shadow_depth_handle = Some(resources.handle::<ShadowDepth>("shadow_depth"));
+        self.shadow_depth_handle = Some(resources.handle::<ShadowDepth>());
         let texture = resources
             .texture(self.shadow_depth_handle.unwrap())
             .expect("ShadowDepth must own its texture");
@@ -189,9 +188,6 @@ impl Pass for ShadowPass {
                 instance_offset += batch.instances.len();
             }
         }
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
     }
 }
 
@@ -426,7 +422,12 @@ pub fn compute_cascades(frame: &RenderFrame, light_dir: &glam::Vec3) -> [Cascade
 /// planes are extended by `cam_far` to capture shadow casters far outside
 /// the cascade frustum — essential for low-angle directional lights.
 /// XY bounds are snapped to texel boundaries to prevent cascade seams.
-fn compute_cascade(light_dir: &glam::Vec3, corners: &[glam::Vec3], split_depth: f32, cam_far: f32) -> Cascade {
+fn compute_cascade(
+    light_dir: &glam::Vec3,
+    corners: &[glam::Vec3],
+    split_depth: f32,
+    cam_far: f32,
+) -> Cascade {
     // Pick 'up' vector orthogonal to light direction.
     let up = if light_dir.x.abs() < 0.001 && light_dir.z.abs() < 0.001 {
         glam::Vec3::X
@@ -458,12 +459,16 @@ fn compute_cascade(light_dir: &glam::Vec3, corners: &[glam::Vec3], split_depth: 
 
     // Expand XY margins by 2 pixels to avoid edge clipping.
     let texel_size = (max_ls.x - min_ls.x) / SHADOW_MAP_SIZE as f32;
-    min_ls.x -= texel_size * 2.0; max_ls.x += texel_size * 2.0;
-    min_ls.y -= texel_size * 2.0; max_ls.y += texel_size * 2.0;
+    min_ls.x -= texel_size * 2.0;
+    max_ls.x += texel_size * 2.0;
+    min_ls.y -= texel_size * 2.0;
+    max_ls.y += texel_size * 2.0;
     // Snap to texel boundaries to prevent cascade seams.
     let snap = |v: f32| (v / texel_size).floor() * texel_size;
-    min_ls.x = snap(min_ls.x); max_ls.x = snap(max_ls.x);
-    min_ls.y = snap(min_ls.y); max_ls.y = snap(max_ls.y);
+    min_ls.x = snap(min_ls.x);
+    max_ls.x = snap(max_ls.x);
+    min_ls.y = snap(min_ls.y);
+    max_ls.y = snap(max_ls.y);
 
     let proj = ortho_wgpu(min_ls.x, max_ls.x, min_ls.y, max_ls.y, min_ls.z, max_ls.z);
 
@@ -477,7 +482,7 @@ fn compute_cascade(light_dir: &glam::Vec3, corners: &[glam::Vec3], split_depth: 
 mod tests {
     use super::*;
     use crate::renderer::camera::FlyCamera;
-    use crate::renderer::frame::RenderFrame;
+    use crate::renderer::frame::{FrameConfig, RenderFrame};
     use crate::renderer::light::LightingUniforms;
 
     fn headless_queue() -> (wgpu::Device, wgpu::Queue) {
@@ -493,7 +498,8 @@ mod tests {
         camera: &'a FlyCamera,
         lighting: &'a LightingUniforms,
         queue: &'a wgpu::Queue,
-        world: &'a crate::ecs::World,
+        optional: &'a crate::renderer::extract::OptionalPassData,
+        config: &'a FrameConfig,
     ) -> RenderFrame<'a> {
         RenderFrame {
             camera,
@@ -502,7 +508,8 @@ mod tests {
             lighting,
             queue,
             delta_time: 0.0,
-            world,
+            config,
+            optional,
         }
     }
 
@@ -511,8 +518,9 @@ mod tests {
         let camera = FlyCamera::default();
         let lighting = LightingUniforms::default();
         let (device, queue) = headless_queue();
-        let world = crate::ecs::World::new();
-        let frame = build_frame(&camera, &lighting, &queue, &world);
+        let optional = crate::renderer::extract::OptionalPassData::default();
+        let config = FrameConfig::default();
+        let frame = build_frame(&camera, &lighting, &queue, &optional, &config);
         let light_dir = glam::Vec3::new(0.5, -1.0, 0.3).normalize();
         let cascades = compute_cascades(&frame, &light_dir);
         for cascade in &cascades {
@@ -542,8 +550,9 @@ mod tests {
         let camera = FlyCamera::default();
         let lighting = LightingUniforms::default();
         let (device, queue) = headless_queue();
-        let world = crate::ecs::World::new();
-        let frame = build_frame(&camera, &lighting, &queue, &world);
+        let optional = crate::renderer::extract::OptionalPassData::default();
+        let config = FrameConfig::default();
+        let frame = build_frame(&camera, &lighting, &queue, &optional, &config);
         let light_dir = glam::Vec3::new(-0.6, -1.0, -0.4).normalize();
         let cascades = compute_cascades(&frame, &light_dir);
 

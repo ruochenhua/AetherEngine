@@ -3,7 +3,6 @@
 use crate::asset::mesh::GpuMesh;
 use crate::asset::terrain_material::TerrainMaterial;
 use crate::ecs::components::Terrain;
-use crate::ecs::World;
 use crate::math::{Frustum, Mat4, Vec3};
 use crate::renderer::renderable::ViewProjUniform;
 use crate::terrain::{build_chunk_grid, cull_and_select_lod, height_function_from_source};
@@ -11,15 +10,10 @@ use std::sync::Arc;
 
 use super::{ChunkInstanceData, TerrainPass, TerrainUniform};
 
-pub(super) fn read_terrain(world: &World) -> Option<Terrain> {
-    world.query::<&Terrain>().iter().next().cloned()
-}
-
 impl TerrainPass {
     pub(super) fn update_terrain(
         &mut self,
         terrain: Terrain,
-        _world: &World,
         view: &Mat4,
         proj: &Mat4,
         queue: &wgpu::Queue,

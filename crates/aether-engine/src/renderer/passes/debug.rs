@@ -7,7 +7,7 @@
 //! Implements the `Pass` trait for type-safe scheduling.
 
 use crate::renderer::frame::RenderFrame;
-use crate::renderer::pass::{Pass, PassSignature, ResHandle};
+use crate::renderer::pass::{InitContext, Pass, PassSignature, ResHandle};
 use crate::renderer::resource::*;
 use crate::renderer::resource_table::ResourceTable;
 use wgpu::util::DeviceExt;
@@ -70,6 +70,9 @@ pub struct DebugLinePass {
     /// Pending dynamic vertices to upload next frame.
     pending_dynamic_lines: Vec<DebugVertex>,
 
+    /// Surface format used for the swapchain write declaration.
+    output_format: wgpu::TextureFormat,
+
     /// Resource handles (populated by resolve).
     depth_handle: Option<ResHandle<GDepth>>,
 }
@@ -80,22 +83,22 @@ impl Pass for DebugLinePass {
     }
 
     fn signature(&self) -> PassSignature {
-        PassSignature::new("DebugLine").read::<GDepth>("gbuffer_depth")
+        PassSignature::new("DebugLine")
+            .read::<GDepth>()
+            .write::<Swapchain>(self.output_format)
     }
 
-    fn init(device: &wgpu::Device) -> Self {
-        Self::new_inner(
-            device,
-            wgpu::TextureFormat::Bgra8UnormSrgb,
-            wgpu::TextureFormat::Depth32Float,
-        )
+    fn init(ctx: &InitContext) -> Self {
+        Self::new_inner(ctx.device, ctx.surface_format, ctx.depth_format)
     }
 
     fn resolve(&mut self, _device: &wgpu::Device, resources: &ResourceTable) {
-        self.depth_handle = Some(resources.handle::<GDepth>("gbuffer_depth"));
+        self.depth_handle = Some(resources.handle::<GDepth>());
     }
 
     fn apply_frame(&mut self, frame: &RenderFrame) {
+        self.set_dynamic_lines(frame.config.dynamic_lines.clone());
+
         let view = frame.camera.view_matrix();
         let proj = frame.camera.projection_matrix(frame.aspect);
         let vp = proj * view;
@@ -173,9 +176,6 @@ impl Pass for DebugLinePass {
             pass.set_vertex_buffer(0, self.dynamic_vertex_buffer.slice(..));
             pass.draw(0..self.dynamic_vertex_count, 0..1);
         }
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
     }
 }
 
@@ -342,6 +342,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             dynamic_vertex_count: 0,
             max_dynamic_vertices: MAX_DYNAMIC_VERTICES,
             pending_dynamic_lines: Vec::new(),
+            output_format,
             depth_handle: None,
         }
     }

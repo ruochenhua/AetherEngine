@@ -27,7 +27,7 @@
 //! - **Inline WGSL** as `Cow::Borrowed` raw strings — keeps the pass
 //!   self-contained for AI agents.
 
-use crate::renderer::pass::{Pass, PassSignature};
+use crate::renderer::pass::{InitContext, Pass, PassSignature};
 use crate::renderer::resource_table::ResourceTable;
 
 /// TODO: Rename to your pass name.
@@ -56,21 +56,21 @@ impl Pass for TemplatePass {
         // TODO: Declare reads and writes.
         //
         // Reads: resources produced by earlier passes that this pass consumes.
-        //   .read::<TypeTag>("resource_name")
+        //   .read::<TypeTag>()
         //
         // Writes: resources this pass produces for later passes.
-        //   .write::<TypeTag>("resource_name", format)
+        //   .write::<TypeTag>(format)
         //
         // Example:
         //   PassSignature::new("SSAO")
-        //       .read::<GPosition>("gbuffer_position")
-        //       .read::<GNormal>("gbuffer_normal")
-        //       .write::<AOTexture>("ao", wgpu::TextureFormat::R8Unorm)
+        //       .read::<GPosition>()
+        //       .read::<GNormal>()
+        //       .write::<AOTexture>(wgpu::TextureFormat::R8Unorm)
 
         PassSignature::new("Template")
     }
 
-    fn init(device: &wgpu::Device) -> Self
+    fn init(ctx: &InitContext) -> Self
     where
         Self: Sized,
     {
@@ -80,7 +80,7 @@ impl Pass for TemplatePass {
         // after all signatures are collected.
         //
         // Example shader creation:
-        //   let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        //   let shader = ctx.device.create_shader_module(wgpu::ShaderModuleDescriptor {
         //       label: Some("Template Shader"),
         //       source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(
         //           r#" ... WGSL here ... "#,
@@ -88,7 +88,7 @@ impl Pass for TemplatePass {
         //   });
 
         // TODO: Replace this placeholder with real initialization.
-        let _ = device; // Silence unused warning — remove when real code is added.
+        let _ = ctx.device; // Silence unused warning — remove when real code is added.
 
         Self {
             placeholder: 0, // TODO: Replace with your fields.
@@ -98,11 +98,11 @@ impl Pass for TemplatePass {
     fn resolve(&mut self, device: &wgpu::Device, resources: &ResourceTable) {
         // TODO: Obtain handles and create texture-dependent bind groups.
         //
-        // Use `resources.handle::<TypeTag>("name")` to get ResHandle<T>.
+        // Use `resources.handle::<TypeTag>()` to get ResHandle<T>.
         // Then create bind groups referencing the texture views.
         //
         // Example:
-        //   self.pos_handle = Some(resources.handle::<GPosition>("gbuffer_position"));
+        //   self.pos_handle = Some(resources.handle::<GPosition>());
         //   let view = resources.get(self.pos_handle.unwrap());
         //   let sampler = device.create_sampler(&Default::default());
         //   let bg = device.create_bind_group(&wgpu::BindGroupDescriptor { ... });
@@ -144,10 +144,6 @@ impl Pass for TemplatePass {
         let _ = encoder;
         let _ = resources;
         let _ = surface_view;
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
     }
 }
 

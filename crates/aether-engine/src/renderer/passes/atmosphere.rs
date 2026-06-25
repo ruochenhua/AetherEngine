@@ -5,11 +5,9 @@
 //! pixels (identified by G-Buffer position alpha > 0) are preserved from the
 //! input `SceneColor`.
 
-use crate::ecs::components::Atmosphere;
-use crate::ecs::World;
 use crate::math::Vec3;
 use crate::renderer::frame::RenderFrame;
-use crate::renderer::pass::{Pass, PassSignature, ResHandle};
+use crate::renderer::pass::{InitContext, Pass, PassSignature, ResHandle};
 use crate::renderer::resource::{GDepth, SceneColor};
 use crate::renderer::resource_table::ResourceTable;
 use wgpu::util::DeviceExt;
@@ -98,17 +96,17 @@ impl Pass for AtmospherePass {
 
     fn signature(&self) -> PassSignature {
         PassSignature::new("Atmosphere")
-            .read::<GDepth>("gbuffer_depth")
-            .write::<SceneColor>("scene_color", wgpu::TextureFormat::Rgba16Float)
+            .read::<GDepth>()
+            .write::<SceneColor>(wgpu::TextureFormat::Rgba16Float)
     }
 
-    fn init(device: &wgpu::Device) -> Self {
-        Self::new(device)
+    fn init(ctx: &InitContext) -> Self {
+        Self::new(ctx.device)
     }
 
     fn resolve(&mut self, device: &wgpu::Device, resources: &ResourceTable) {
-        self.scene_color_handle = Some(resources.handle::<SceneColor>("scene_color"));
-        self.depth_handle = Some(resources.handle::<GDepth>("gbuffer_depth"));
+        self.scene_color_handle = Some(resources.handle::<SceneColor>());
+        self.depth_handle = Some(resources.handle::<GDepth>());
 
         let texture_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -142,7 +140,7 @@ impl Pass for AtmospherePass {
     }
 
     fn apply_frame(&mut self, frame: &RenderFrame) {
-        if let Some(atmos) = Self::read_atmosphere(frame.world) {
+        if let Some(atmos) = frame.optional.atmosphere.clone() {
             self.has_atmosphere = true;
             let sun_dir = Vec3::from_array(frame.lighting.light.direction).normalize();
             // `light.direction` points FROM the light; the sun is in the opposite direction.
@@ -212,10 +210,6 @@ impl Pass for AtmospherePass {
         pass.set_bind_group(1, texture_bg, &[]);
         pass.set_vertex_buffer(0, self.quad_vertex_buffer.slice(..));
         pass.draw(0..self.quad_vertex_count, 0..1);
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
     }
 }
 
@@ -516,18 +510,18 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             has_atmosphere: false,
         }
     }
-
-    fn read_atmosphere(world: &World) -> Option<Atmosphere> {
-        world.query::<&Atmosphere>().iter().next().cloned()
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ecs::components::Atmosphere;
     use crate::ecs::World;
     use crate::renderer::camera::FlyCamera;
+    use crate::renderer::extract::extract_optional_pass_data;
+    use crate::renderer::frame::FrameConfig;
     use crate::renderer::light::LightingUniforms;
+    use crate::renderer::resource::ResourceTag;
     use crate::scene::AtmosphereConfig;
 
     fn headless_device() -> (wgpu::Device, wgpu::Queue) {
@@ -539,22 +533,37 @@ mod tests {
             .expect("need device")
     }
 
+    fn init_ctx<'a>(device: &'a wgpu::Device, queue: &'a wgpu::Queue) -> InitContext<'a> {
+        InitContext {
+            device,
+            queue,
+            surface_format: wgpu::TextureFormat::Bgra8UnormSrgb,
+            depth_format: wgpu::TextureFormat::Depth32Float,
+            width: 64,
+            height: 64,
+            ibl_resources: None,
+        }
+    }
+
     #[test]
     fn atmosphere_pass_signature_reads_depth_and_writes_scene_color() {
-        let (device, _queue) = headless_device();
-        let pass = AtmospherePass::init(&device);
+        let (device, queue) = headless_device();
+        let ctx = init_ctx(&device, &queue);
+        let pass = AtmospherePass::init(&ctx);
         let sig = pass.signature();
         assert_eq!(sig.name, "Atmosphere");
-        assert!(sig.reads.iter().any(|s| s.name == "gbuffer_depth"));
+        assert!(sig.reads.iter().any(|s| s.name == GDepth::NAME));
         assert_eq!(sig.writes.len(), 1);
-        assert_eq!(sig.writes[0].name, "scene_color");
+        assert_eq!(sig.writes[0].name, SceneColor::NAME);
     }
 
     #[test]
     fn atmosphere_pass_skipped_without_component() {
         let (device, queue) = headless_device();
-        let pass = AtmospherePass::init(&device);
+        let ctx = init_ctx(&device, &queue);
+        let pass = AtmospherePass::init(&ctx);
         let world = World::new();
+        let optional = extract_optional_pass_data(&world);
         let camera = FlyCamera::default();
         let lighting = LightingUniforms::default();
         let frame = RenderFrame {
@@ -564,7 +573,8 @@ mod tests {
             queue: &queue,
             aspect: 1.0,
             delta_time: 0.016,
-            world: &world,
+            config: &FrameConfig::default(),
+            optional: &optional,
         };
         assert!(!pass.should_run(&frame));
     }
@@ -572,11 +582,13 @@ mod tests {
     #[test]
     fn atmosphere_pass_runs_when_component_present() {
         let (device, queue) = headless_device();
-        let mut pass = AtmospherePass::init(&device);
+        let ctx = init_ctx(&device, &queue);
+        let mut pass = AtmospherePass::init(&ctx);
         let mut world = World::new();
         world.spawn((Atmosphere {
             config: AtmosphereConfig::default(),
         },));
+        let optional = extract_optional_pass_data(&world);
         let camera = FlyCamera::default();
         let lighting = LightingUniforms::default();
         let frame = RenderFrame {
@@ -586,7 +598,8 @@ mod tests {
             queue: &queue,
             aspect: 1.0,
             delta_time: 0.016,
-            world: &world,
+            config: &FrameConfig::default(),
+            optional: &optional,
         };
         pass.apply_frame(&frame);
         assert!(pass.should_run(&frame));

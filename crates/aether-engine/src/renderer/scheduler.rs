@@ -75,147 +75,6 @@ impl Scheduler {
         self.passes.iter().map(|p| p.name().to_string()).collect()
     }
 
-    /// Find the first pass of type `T` and return a mutable reference.
-    fn pass_mut<T: 'static>(&mut self) -> Option<&mut T> {
-        self.passes
-            .iter_mut()
-            .find_map(|p| p.as_any_mut().downcast_mut::<T>())
-    }
-
-    /// Set screen size on the SSAOPass (for texel-accurate blur).
-    pub fn set_ssao_screen_size(&mut self, width: u32, height: u32) {
-        if let Some(ssao) = self.pass_mut::<crate::renderer::passes::ssao::SSAOPass>() {
-            ssao.set_screen_size(width, height);
-        }
-    }
-
-    /// Set dynamic debug lines on the DebugLinePass.
-    pub fn set_dynamic_lines(&mut self, lines: Vec<crate::renderer::passes::debug::DebugVertex>) {
-        if let Some(debug) = self.pass_mut::<crate::renderer::passes::debug::DebugLinePass>() {
-            debug.set_dynamic_lines(lines);
-        }
-    }
-
-    /// Set screen size on the AOBlurPass.
-    pub fn set_ao_blur_screen_size(&mut self, width: u32, height: u32) {
-        if let Some(blur) = self.pass_mut::<crate::renderer::passes::ao_blur::AOBlurPass>() {
-            blur.set_screen_size(width, height);
-        }
-    }
-
-    /// Set screen size on the SSRPass (for textureLoad pixel coords).
-    pub fn set_ssr_screen_size(&mut self, width: u32, height: u32) {
-        if let Some(ssr) = self.pass_mut::<crate::renderer::passes::ssr::SSRPass>() {
-            ssr.set_screen_size(width, height);
-        }
-    }
-
-    /// Set the debug visualization mode on the LightingPass.
-    pub fn set_debug_mode(&mut self, mode: u32) {
-        if let Some(lp) = self.pass_mut::<crate::renderer::passes::lighting::LightingPass>() {
-            lp.set_debug_mode(mode);
-        }
-    }
-
-    /// Set the SSR debug visualization mode.
-    pub fn set_ssr_debug_mode(&mut self, mode: u32) {
-        if let Some(ssr) = self.pass_mut::<crate::renderer::passes::ssr::SSRPass>() {
-            ssr.set_debug_mode(mode);
-        }
-    }
-
-    /// Enable or disable SSR.
-    pub fn set_ssr_enabled(&mut self, enabled: bool) {
-        if let Some(ssr) = self.pass_mut::<crate::renderer::passes::ssr::SSRPass>() {
-            ssr.set_enabled(enabled);
-        }
-    }
-
-    /// Set the frame index for SSR temporal jitter.
-    pub fn set_ssr_frame_index(&mut self, index: u32) {
-        if let Some(ssr) = self.pass_mut::<crate::renderer::passes::ssr::SSRPass>() {
-            ssr.set_frame_index(index);
-        }
-    }
-
-    /// Set SSAO parameters (radius, bias, intensity).
-    pub fn set_ssao_params(&mut self, radius: f32, bias: f32, intensity: f32) {
-        if let Some(ssao) = self.pass_mut::<crate::renderer::passes::ssao::SSAOPass>() {
-            ssao.set_radius(radius);
-            ssao.set_bias(bias);
-            ssao.set_intensity(intensity);
-        }
-    }
-
-    /// Toggle rendering features in the LightingPass and SSRPass.
-    pub fn set_feature_flags(&mut self, ssao: bool, shadow: bool, ibl: bool) {
-        if let Some(lp) = self.pass_mut::<crate::renderer::passes::lighting::LightingPass>() {
-            lp.set_ssao_enabled(ssao);
-            lp.set_shadow_enabled(shadow);
-            lp.set_ibl_enabled(ibl);
-        }
-        if let Some(ssao_p) = self.pass_mut::<crate::renderer::passes::ssao::SSAOPass>() {
-            ssao_p.set_enabled(ssao);
-        }
-        if let Some(ao_blur) = self.pass_mut::<crate::renderer::passes::ao_blur::AOBlurPass>() {
-            ao_blur.set_enabled(ssao);
-        }
-    }
-
-    /// Set tone mapping mode on the ToneMappingPass.
-    pub fn set_tone_mapping_mode(
-        &mut self,
-        mode: crate::renderer::passes::tone_mapping::ToneMappingMode,
-        queue: &wgpu::Queue,
-    ) {
-        if let Some(tmp) = self.pass_mut::<crate::renderer::passes::tone_mapping::ToneMappingPass>()
-        {
-            tmp.set_mode(mode);
-            tmp.update_uniforms(queue);
-        }
-    }
-
-    /// Set bloom parameters.
-    pub fn set_bloom_params(
-        &mut self,
-        enabled: bool,
-        threshold: f32,
-        intensity: f32,
-        bloom_intensity: f32,
-        queue: &wgpu::Queue,
-    ) {
-        if let Some(bloom) = self.pass_mut::<crate::renderer::passes::bloom::BloomPass>() {
-            bloom.set_enabled(enabled);
-            bloom.set_threshold(threshold);
-            bloom.set_intensity(intensity);
-            bloom.set_bloom_intensity(bloom_intensity);
-            bloom.update_uniforms(queue);
-        }
-    }
-
-    /// Set bloom screen size (call before rebuild).
-    pub fn set_bloom_screen_size(&mut self, width: u32, height: u32) {
-        if let Some(bloom) = self.pass_mut::<crate::renderer::passes::bloom::BloomPass>() {
-            bloom.set_screen_size(width, height);
-        }
-    }
-
-    /// Set FXAA parameters.
-    pub fn set_fxaa_params(
-        &mut self,
-        enabled: bool,
-        quality: crate::renderer::passes::fxaa::FxaaQuality,
-        edge_threshold: Option<f32>,
-        queue: &wgpu::Queue,
-    ) {
-        if let Some(fxaa) = self.pass_mut::<crate::renderer::passes::fxaa::FXAAPass>() {
-            fxaa.set_enabled(enabled);
-            fxaa.set_quality(quality);
-            fxaa.set_edge_threshold(edge_threshold);
-            fxaa.update_uniforms_with_queue(queue);
-        }
-    }
-
     /// Rebuild resolution-dependent resources after a resize.
     pub fn rebuild(&mut self, device: &wgpu::Device, width: u32, height: u32) {
         // Re-allocate all textures and re-resolve all passes
@@ -255,7 +114,7 @@ impl Scheduler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::renderer::pass::{PassSignature, ResSlot, SlotKind};
+    use crate::renderer::pass::{InitContext, PassSignature, ResSlot, SlotKind};
     use crate::renderer::passes::debug::DebugLinePass;
     use crate::renderer::passes::gbuffer::GBufferPass;
     use crate::renderer::passes::lighting::LightingPass;
@@ -281,14 +140,10 @@ mod tests {
             }
         }
 
-        fn with_write<T: ResourceTag>(
-            mut self,
-            name: &'static str,
-            format: wgpu::TextureFormat,
-        ) -> Self {
+        fn with_write<T: ResourceTag>(mut self, format: wgpu::TextureFormat) -> Self {
             self.writes.push(ResSlot {
                 type_id: TypeId::of::<T>(),
-                name,
+                name: T::NAME,
                 format: Some(format),
                 kind: SlotKind::Write,
                 width: None,
@@ -298,10 +153,10 @@ mod tests {
             self
         }
 
-        fn with_read<T: ResourceTag>(mut self, name: &'static str) -> Self {
+        fn with_read<T: ResourceTag>(mut self) -> Self {
             self.reads.push(ResSlot {
                 type_id: TypeId::of::<T>(),
-                name,
+                name: T::NAME,
                 format: None,
                 kind: SlotKind::Read,
                 width: None,
@@ -323,7 +178,7 @@ mod tests {
                 writes: self.writes.clone(),
             }
         }
-        fn init(_device: &wgpu::Device) -> Self {
+        fn init(_ctx: &InitContext) -> Self {
             panic!("MockPass does not support init()")
         }
         fn execute(
@@ -334,9 +189,6 @@ mod tests {
         ) {
             self.order_log.lock().unwrap().push(self.name.to_string());
         }
-        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-            self
-        }
     }
 
     fn build_mock_scheduler(passes: Vec<MockPass>) -> Scheduler {
@@ -344,7 +196,7 @@ mod tests {
             .into_iter()
             .map(|p| Box::new(p) as Box<dyn Pass>)
             .collect();
-        let _order = compute_topological_order(&boxed);
+        let _order = compute_topological_order(&boxed).expect("mock scheduler should be valid");
 
         Scheduler {
             passes: boxed,
@@ -364,14 +216,14 @@ mod tests {
     fn dependency_order_before_dependent() {
         let log = std::sync::Arc::new(Mutex::new(Vec::new()));
         let a = MockPass::new("Producer", log.clone())
-            .with_write::<GPosition>("pos", wgpu::TextureFormat::Rgba16Float);
-        let b = MockPass::new("Consumer", log.clone()).with_read::<GPosition>("pos");
+            .with_write::<GPosition>(wgpu::TextureFormat::Rgba16Float);
+        let b = MockPass::new("Consumer", log.clone()).with_read::<GPosition>();
         let passes = vec![a, b];
         let boxed: Vec<Box<dyn Pass>> = passes
             .into_iter()
             .map(|p| Box::new(p) as Box<dyn Pass>)
             .collect();
-        let order = compute_topological_order(&boxed);
+        let order = compute_topological_order(&boxed).unwrap();
         assert_eq!(boxed[order[0]].name(), "Producer");
         assert_eq!(boxed[order[1]].name(), "Consumer");
     }
@@ -380,17 +232,17 @@ mod tests {
     fn three_pass_chain() {
         let log = std::sync::Arc::new(Mutex::new(Vec::new()));
         let a = MockPass::new("A", log.clone())
-            .with_write::<GPosition>("pos", wgpu::TextureFormat::Rgba16Float);
+            .with_write::<GPosition>(wgpu::TextureFormat::Rgba16Float);
         let b = MockPass::new("B", log.clone())
-            .with_read::<GPosition>("pos")
-            .with_write::<GNormal>("norm", wgpu::TextureFormat::Rgba16Float);
-        let c = MockPass::new("C", log.clone()).with_read::<GNormal>("norm");
+            .with_read::<GPosition>()
+            .with_write::<GNormal>(wgpu::TextureFormat::Rgba16Float);
+        let c = MockPass::new("C", log.clone()).with_read::<GNormal>();
         let passes = vec![a, b, c];
         let boxed: Vec<Box<dyn Pass>> = passes
             .into_iter()
             .map(|p| Box::new(p) as Box<dyn Pass>)
             .collect();
-        let order = compute_topological_order(&boxed);
+        let order = compute_topological_order(&boxed).unwrap();
         assert_eq!(boxed[order[0]].name(), "A");
         assert_eq!(boxed[order[1]].name(), "B");
         assert_eq!(boxed[order[2]].name(), "C");
@@ -400,62 +252,68 @@ mod tests {
     fn independent_passes_keep_registration_order() {
         let log = std::sync::Arc::new(Mutex::new(Vec::new()));
         let a = MockPass::new("First", log.clone())
-            .with_write::<GPosition>("pos", wgpu::TextureFormat::Rgba16Float);
+            .with_write::<GPosition>(wgpu::TextureFormat::Rgba16Float);
         let b = MockPass::new("Second", log.clone())
-            .with_write::<GNormal>("norm", wgpu::TextureFormat::Rgba16Float);
+            .with_write::<GNormal>(wgpu::TextureFormat::Rgba16Float);
         let passes = vec![a, b];
         let boxed: Vec<Box<dyn Pass>> = passes
             .into_iter()
             .map(|p| Box::new(p) as Box<dyn Pass>)
             .collect();
-        let order = compute_topological_order(&boxed);
+        let order = compute_topological_order(&boxed).unwrap();
         assert_eq!(boxed[order[0]].name(), "First");
         assert_eq!(boxed[order[1]].name(), "Second");
     }
 
     #[test]
-    #[should_panic(expected = "Missing producer")]
-    fn missing_producer_panics() {
+    fn missing_producer_returns_error() {
         let log = std::sync::Arc::new(Mutex::new(Vec::new()));
-        let pass = MockPass::new("Consumer", log.clone()).with_read::<GPosition>("nonexistent");
+        let pass = MockPass::new("Consumer", log.clone()).with_read::<GPosition>();
         let boxed: Vec<Box<dyn Pass>> = vec![Box::new(pass)];
-        compute_topological_order(&boxed);
+        let err = compute_topological_order(&boxed).unwrap_err();
+        assert!(matches!(
+            err,
+            crate::renderer::pipeline_builder::PipelineBuildError::MissingProducer { .. }
+        ));
     }
 
     #[test]
     fn sequential_writers_are_ordered() {
         let log = std::sync::Arc::new(Mutex::new(Vec::new()));
         let a = MockPass::new("A", log.clone())
-            .with_write::<GPosition>("same", wgpu::TextureFormat::Rgba16Float);
+            .with_write::<GPosition>(wgpu::TextureFormat::Rgba16Float);
         let b = MockPass::new("B", log.clone())
-            .with_write::<GPosition>("same", wgpu::TextureFormat::Rgba16Float);
+            .with_write::<GPosition>(wgpu::TextureFormat::Rgba16Float);
         let boxed: Vec<Box<dyn Pass>> = vec![Box::new(a), Box::new(b)];
-        let order = compute_topological_order(&boxed);
+        let order = compute_topological_order(&boxed).unwrap();
         assert_eq!(boxed[order[0]].name(), "A");
         assert_eq!(boxed[order[1]].name(), "B");
     }
 
     #[test]
-    #[should_panic(expected = "Dependency cycle")]
-    fn cycle_detection() {
+    fn cycle_detection_returns_error() {
         let log = std::sync::Arc::new(Mutex::new(Vec::new()));
         let a = MockPass::new("A", log.clone())
-            .with_write::<GPosition>("x", wgpu::TextureFormat::Rgba16Float)
-            .with_read::<GNormal>("y");
+            .with_write::<GPosition>(wgpu::TextureFormat::Rgba16Float)
+            .with_read::<GNormal>();
         let b = MockPass::new("B", log.clone())
-            .with_write::<GNormal>("y", wgpu::TextureFormat::Rgba16Float)
-            .with_read::<GPosition>("x");
+            .with_write::<GNormal>(wgpu::TextureFormat::Rgba16Float)
+            .with_read::<GPosition>();
         let boxed: Vec<Box<dyn Pass>> = vec![Box::new(a), Box::new(b)];
-        compute_topological_order(&boxed);
+        let err = compute_topological_order(&boxed).unwrap_err();
+        assert!(matches!(
+            err,
+            crate::renderer::pipeline_builder::PipelineBuildError::DependencyCycle { .. }
+        ));
     }
 
     #[test]
     fn pass_with_no_dependencies_works() {
         let log = std::sync::Arc::new(Mutex::new(Vec::new()));
         let pass = MockPass::new("Orphan", log.clone())
-            .with_write::<Swapchain>("output", wgpu::TextureFormat::Bgra8Unorm);
+            .with_write::<Swapchain>(wgpu::TextureFormat::Bgra8Unorm);
         let boxed: Vec<Box<dyn Pass>> = vec![Box::new(pass)];
-        let order = compute_topological_order(&boxed);
+        let order = compute_topological_order(&boxed).unwrap();
         assert_eq!(order, vec![0]);
     }
 
@@ -475,10 +333,10 @@ mod tests {
             &pass_blur as &dyn Pass,
             &pass_c as &dyn Pass,
         ];
-        let table = PipelineBuilder::validate_and_allocate(&passes, &device, 64, 64);
+        let table = PipelineBuilder::validate_and_allocate(&passes, &device, 64, 64).unwrap();
         assert!(table.len() >= 7); // shadow + 4 GBuffer + depth + AO + AO_blurred
 
-        let table2 = PipelineBuilder::validate_and_allocate(&passes, &device, 128, 128);
+        let table2 = PipelineBuilder::validate_and_allocate(&passes, &device, 128, 128).unwrap();
         assert!(table2.len() >= 7);
     }
 
@@ -496,7 +354,8 @@ mod tests {
             .add_pass(crate::renderer::passes::ao_blur::AOBlurPass::new(&device))
             .add_pass(LightingPass::new(&device, sf))
             .add_pass(debug_pass)
-            .build(&device, 64, 64);
+            .build(&device, 64, 64)
+            .unwrap();
 
         assert_eq!(scheduler.pass_count(), 6);
     }

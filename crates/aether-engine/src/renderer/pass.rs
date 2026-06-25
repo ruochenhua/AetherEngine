@@ -9,7 +9,7 @@
 //! ## Example
 //!
 //! ```rust,ignore
-//! use aether_engine::renderer::pass::{Pass, PassSignature};
+//! use aether_engine::renderer::pass::{InitContext, Pass, PassSignature};
 //! use aether_engine::renderer::resource::{GPosition, GNormal};
 //!
 //! struct MyPass;
@@ -18,23 +18,57 @@
 //!     fn name(&self) -> &str { "MyPass" }
 //!     fn signature(&self) -> PassSignature {
 //!         PassSignature::new("MyPass")
-//!             .read::<GPosition>("gbuffer_position")
-//!             .write::<GNormal>("gbuffer_normal", wgpu::TextureFormat::Rgba16Float)
+//!             .read::<GPosition>()
+//!             .write::<GNormal>(wgpu::TextureFormat::Rgba16Float)
 //!     }
-//!     fn init(device: &wgpu::Device) -> Self { MyPass }
+//!     fn init(_ctx: &InitContext) -> Self { MyPass }
 //!     fn apply_frame(&mut self, frame: &crate::renderer::frame::RenderFrame) {
 //!         // Extract per-frame data here
 //!     }
 //!     fn execute(&self, encoder: &mut wgpu::CommandEncoder, resources: &crate::renderer::resource_table::ResourceTable, surface_view: &wgpu::TextureView) {}
 //! }
 //! ```
+//!
+//! Typos in resource names are caught at compile time:
+//!
+//! ```compile_fail
+//! use aether_engine::renderer::pass::PassSignature;
+//! use aether_engine::renderer::resource::GPosition;
+//!
+//! let _ = PassSignature::new("Bad")
+//!     .read::<GPosition>("gbuffer_pos"); // error: `read` takes 0 arguments
+//! ```
 
 use std::any::TypeId;
 use std::marker::PhantomData;
 
 use crate::renderer::frame::RenderFrame;
+use crate::renderer::ibl::IblResources;
 use crate::renderer::resource::ResourceTag;
 use crate::renderer::resource_table::ResourceTable;
+
+/// Construction-time context available to every pass.
+///
+/// Passes receive all renderer-wide inputs (device, queue, surface formats,
+/// resolution, IBL resources) through this single struct, so `Pass::init` is a
+/// uniform interface even when individual passes need extra parameters.
+#[derive(Clone, Copy)]
+pub struct InitContext<'a> {
+    /// wgpu device for creating pipelines and buffers.
+    pub device: &'a wgpu::Device,
+    /// wgpu queue for uploading initial data.
+    pub queue: &'a wgpu::Queue,
+    /// Swapchain surface format.
+    pub surface_format: wgpu::TextureFormat,
+    /// Depth buffer format used by the pipeline.
+    pub depth_format: wgpu::TextureFormat,
+    /// Current backbuffer width.
+    pub width: u32,
+    /// Current backbuffer height.
+    pub height: u32,
+    /// Optional IBL resources; required by passes such as `LightingPass`.
+    pub ibl_resources: Option<&'a IblResources>,
+}
 
 /// A render pass that declares its resource dependencies.
 ///
@@ -51,7 +85,7 @@ pub trait Pass {
     fn signature(&self) -> PassSignature;
 
     /// Create GPU resources not dependent on transient textures.
-    fn init(device: &wgpu::Device) -> Self
+    fn init(ctx: &InitContext) -> Self
     where
         Self: Sized;
 
@@ -82,9 +116,6 @@ pub trait Pass {
         resources: &ResourceTable,
         surface_view: &wgpu::TextureView,
     );
-
-    /// Return self as &mut dyn Any for downcasting.
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
 }
 
 /// Declared resource dependencies for a pass.
@@ -108,11 +139,11 @@ impl PassSignature {
         }
     }
 
-    /// Add a read dependency.
-    pub fn read<T: ResourceTag>(mut self, name: &'static str) -> Self {
+    /// Add a read dependency. The resource name is inferred from `T::NAME`.
+    pub fn read<T: ResourceTag>(mut self) -> Self {
         self.reads.push(ResSlot {
             type_id: TypeId::of::<T>(),
-            name,
+            name: T::NAME,
             format: None, // Reads don't declare format
             kind: SlotKind::Read,
             width: None,
@@ -122,15 +153,12 @@ impl PassSignature {
         self
     }
 
-    /// Add a write dependency with the texture format.
-    pub fn write<T: ResourceTag>(
-        mut self,
-        name: &'static str,
-        format: wgpu::TextureFormat,
-    ) -> Self {
+    /// Add a write dependency with the texture format. The resource name is
+    /// inferred from `T::NAME`.
+    pub fn write<T: ResourceTag>(mut self, format: wgpu::TextureFormat) -> Self {
         self.writes.push(ResSlot {
             type_id: TypeId::of::<T>(),
-            name,
+            name: T::NAME,
             format: Some(format),
             kind: SlotKind::Write,
             width: None,
@@ -140,17 +168,17 @@ impl PassSignature {
         self
     }
 
-    /// Add a write dependency with a fixed texture size.
+    /// Add a write dependency with a fixed texture size. The resource name is
+    /// inferred from `T::NAME`.
     pub fn write_sized<T: ResourceTag>(
         mut self,
-        name: &'static str,
         format: wgpu::TextureFormat,
         width: u32,
         height: u32,
     ) -> Self {
         self.writes.push(ResSlot {
             type_id: TypeId::of::<T>(),
-            name,
+            name: T::NAME,
             format: Some(format),
             kind: SlotKind::Write,
             width: Some(width),
@@ -160,10 +188,10 @@ impl PassSignature {
         self
     }
 
-    /// Add a write dependency for a fixed-size array texture.
+    /// Add a write dependency for a fixed-size array texture. The resource name
+    /// is inferred from `T::NAME`.
     pub fn write_array<T: ResourceTag>(
         mut self,
-        name: &'static str,
         format: wgpu::TextureFormat,
         width: u32,
         height: u32,
@@ -171,7 +199,7 @@ impl PassSignature {
     ) -> Self {
         self.writes.push(ResSlot {
             type_id: TypeId::of::<T>(),
-            name,
+            name: T::NAME,
             format: Some(format),
             kind: SlotKind::Write,
             width: Some(width),
@@ -202,11 +230,11 @@ pub struct ResSlot {
 }
 
 impl ResSlot {
-    /// Create a write slot.
-    pub fn new<T: ResourceTag>(name: &'static str, format: wgpu::TextureFormat) -> Self {
+    /// Create a write slot. The resource name is inferred from `T::NAME`.
+    pub fn new<T: ResourceTag>(format: wgpu::TextureFormat) -> Self {
         Self {
             type_id: TypeId::of::<T>(),
-            name,
+            name: T::NAME,
             format: Some(format),
             kind: SlotKind::Write,
             width: None,
@@ -215,11 +243,11 @@ impl ResSlot {
         }
     }
 
-    /// Create a read slot.
-    pub fn read<T: ResourceTag>(name: &'static str) -> Self {
+    /// Create a read slot. The resource name is inferred from `T::NAME`.
+    pub fn read<T: ResourceTag>() -> Self {
         Self {
             type_id: TypeId::of::<T>(),
-            name,
+            name: T::NAME,
             format: None,
             kind: SlotKind::Read,
             width: None,
@@ -290,17 +318,17 @@ mod tests {
     #[test]
     fn signature_reads_and_writes() {
         let sig = PassSignature::new("TestPass")
-            .read::<GPosition>("gbuffer_position")
-            .write::<AOTexture>("ao", wgpu::TextureFormat::R8Unorm);
+            .read::<GPosition>()
+            .write::<AOTexture>(wgpu::TextureFormat::R8Unorm);
 
         assert_eq!(sig.name, "TestPass");
         assert_eq!(sig.reads.len(), 1);
-        assert_eq!(sig.reads[0].name, "gbuffer_position");
+        assert_eq!(sig.reads[0].name, GPosition::NAME);
         assert_eq!(sig.reads[0].type_id, std::any::TypeId::of::<GPosition>());
         assert_eq!(sig.reads[0].kind, SlotKind::Read);
 
         assert_eq!(sig.writes.len(), 1);
-        assert_eq!(sig.writes[0].name, "ao");
+        assert_eq!(sig.writes[0].name, AOTexture::NAME);
         assert_eq!(sig.writes[0].type_id, std::any::TypeId::of::<AOTexture>());
         assert_eq!(sig.writes[0].kind, SlotKind::Write);
         assert_eq!(sig.writes[0].format, Some(wgpu::TextureFormat::R8Unorm));
@@ -310,13 +338,26 @@ mod tests {
     #[test]
     fn multiple_reads_same_type() {
         let sig = PassSignature::new("MultiRead")
-            .read::<GPosition>("gbuffer_position")
-            .read::<GPosition>("world_position"); // different name, same type
+            .read::<GPosition>()
+            .read::<GPosition>();
 
         assert_eq!(sig.reads.len(), 2);
         // Same TypeId
         assert_eq!(sig.reads[0].type_id, sig.reads[1].type_id);
-        // Different names
-        assert_ne!(sig.reads[0].name, sig.reads[1].name);
+        // Same inferred name
+        assert_eq!(sig.reads[0].name, sig.reads[1].name);
+    }
+
+    /// Pass signatures infer resource names from the tag type, no string literals.
+    #[test]
+    fn signature_infers_resource_names() {
+        let sig = PassSignature::new("Inferred")
+            .read::<GPosition>()
+            .write::<AOTexture>(wgpu::TextureFormat::R8Unorm);
+
+        assert_eq!(sig.reads.len(), 1);
+        assert_eq!(sig.reads[0].name, GPosition::NAME);
+        assert_eq!(sig.writes.len(), 1);
+        assert_eq!(sig.writes[0].name, AOTexture::NAME);
     }
 }

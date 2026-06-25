@@ -7,7 +7,7 @@
 //! Pipeline: SSAOPass (→AOTexture) → AOBlurPass (→AOTextureBlurred) → LightingPass
 
 use crate::renderer::frame::RenderFrame;
-use crate::renderer::pass::{Pass, PassSignature, ResHandle};
+use crate::renderer::pass::{InitContext, Pass, PassSignature, ResHandle};
 use crate::renderer::resource::*;
 use crate::renderer::resource_table::ResourceTable;
 use std::borrow::Cow;
@@ -51,23 +51,22 @@ impl Pass for AOBlurPass {
 
     fn signature(&self) -> PassSignature {
         PassSignature::new("AOBlur")
-            .read::<AOTexture>("ao")
-            .read::<GPosition>("gbuffer_position")
+            .read::<AOTexture>()
+            .read::<GPosition>()
             .write_sized::<AOTextureBlurred>(
-                "ao_blurred",
                 wgpu::TextureFormat::R8Unorm,
                 self.half_width.max(1),
                 self.half_height.max(1),
             )
     }
 
-    fn init(device: &wgpu::Device) -> Self {
-        Self::new(device)
+    fn init(ctx: &InitContext) -> Self {
+        Self::new(ctx.device)
     }
 
     fn resolve(&mut self, device: &wgpu::Device, resources: &ResourceTable) {
-        self.ao_handle = Some(resources.handle::<AOTexture>("ao"));
-        self.pos_handle = Some(resources.handle::<GPosition>("gbuffer_position"));
+        self.ao_handle = Some(resources.handle::<AOTexture>());
+        self.pos_handle = Some(resources.handle::<GPosition>());
 
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("AOBlur Sampler"),
@@ -99,7 +98,10 @@ impl Pass for AOBlurPass {
         }));
     }
 
-    fn apply_frame(&mut self, _frame: &RenderFrame) {
+    fn apply_frame(&mut self, frame: &RenderFrame) {
+        self.set_enabled(frame.config.ssao_enabled);
+        self.set_screen_size(frame.config.screen_width, frame.config.screen_height);
+
         let texel_w = if self.half_width > 0 {
             1.0 / self.half_width as f32
         } else {
@@ -116,7 +118,7 @@ impl Pass for AOBlurPass {
             texel_size: [texel_w, texel_h],
             _pad1: [0.0; 8],
         };
-        _frame
+        frame
             .queue
             .write_buffer(&self.params_buffer, 0, bytemuck::cast_slice(&[p]));
     }
@@ -135,7 +137,7 @@ impl Pass for AOBlurPass {
             .texture_bind_group
             .as_ref()
             .expect("AOBlur: resolve not called");
-        let ao_blurred_view = resources.get(resources.handle::<AOTextureBlurred>("ao_blurred"));
+        let ao_blurred_view = resources.get(resources.handle::<AOTextureBlurred>());
 
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("AO Blur Pass"),
@@ -158,10 +160,6 @@ impl Pass for AOBlurPass {
         pass.set_bind_group(1, &self.params_bind_group, &[]);
         pass.set_vertex_buffer(0, self.quad_vertex_buffer.slice(..));
         pass.draw(0..self.quad_vertex_count, 0..1);
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
     }
 }
 

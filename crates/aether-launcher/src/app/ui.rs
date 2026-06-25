@@ -45,6 +45,8 @@ pub(crate) fn render(
     let pending_load = &mut app.pending_load;
     let camera = &app.camera;
     let fps = app.fps;
+    let gpu_info = &app.gpu_info;
+    let gpu_timer_supported = app.gpu_timer_supported;
     let ssao_enabled = &mut app.ssao_enabled;
     let ssao_radius = &mut app.ssao_radius;
     let ssao_bias = &mut app.ssao_bias;
@@ -236,6 +238,17 @@ pub(crate) fn render(
                                     }
 
                                     ui.heading("Scene Info");
+                                    ui.separator();
+                                    ui.label(format!("GPU: {}", gpu_info));
+                                    ui.label(format!(
+                                        "GPU Timer: {}",
+                                        if gpu_timer_supported {
+                                            "supported"
+                                        } else {
+                                            "unsupported"
+                                        }
+                                    ));
+                                    ui.label(format!("Scenes: {}", scene_entries.len()));
                                     ui.separator();
                                     ui.label(format!("FPS: {:.1}", fps));
                                     ui.label(format!("Frame: {:.2} ms", dt * 1000.0));

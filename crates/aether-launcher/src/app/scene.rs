@@ -110,7 +110,7 @@ pub(crate) fn open_cli_scene(app: &mut App, ctx: &RenderContext) {
                     app.rebuild_pipeline_for_terrain_if_needed(
                         &ctx.device,
                         &ctx.queue,
-                        ctx.surface_format(),
+                        ctx.render_target_format(),
                         ctx.config.width,
                         ctx.config.height,
                     );

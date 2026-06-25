@@ -2,13 +2,13 @@
 
 use super::{App, LauncherState};
 use aether_engine::renderer::{
-    extract::extract_render_batches,
-    frame::RenderFrame,
+    extract::{extract_optional_pass_data, extract_render_batches},
+    frame::{FrameConfig, RenderFrame},
     gizmo::{build_transform_gizmo, selected_entity_transform},
 };
 use std::sync::Arc;
 use std::time::Instant;
-use tracing::{error, info};
+use tracing::{error, info, trace};
 
 /// Save a GPU screenshot buffer to a PNG file on disk.
 fn save_screenshot(
@@ -59,7 +59,11 @@ pub(crate) fn frame(
     let frame_start = Instant::now();
 
     // Frame counter for SSR temporal jitter (stays 0 under --freeze-time)
-    let frame_index = if app.freeze_time { 0u32 } else { app.frame_counter };
+    let frame_index = if app.freeze_time {
+        0u32
+    } else {
+        app.frame_counter
+    };
     app.frame_counter = app.frame_counter.wrapping_add(1);
 
     let ctx = app.ctx.as_mut().unwrap();
@@ -94,9 +98,17 @@ pub(crate) fn frame(
     };
     let acquire_ms = t_acquire_0.elapsed().as_secs_f64() * 1000.0;
 
-    let target_view = output
-        .texture
-        .create_view(&wgpu::TextureViewDescriptor::default());
+    // The 3D pipeline renders to an sRGB view so hardware gamma encoding is
+    // applied, while egui renders to the default non-sRGB view.
+    let target_view = output.texture.create_view(&wgpu::TextureViewDescriptor {
+        label: Some("3D Render Target"),
+        format: Some(ctx.render_target_format()),
+        ..Default::default()
+    });
+    let egui_view = output.texture.create_view(&wgpu::TextureViewDescriptor {
+        label: Some("egui Render Target"),
+        ..Default::default()
+    });
 
     let mut encoder = ctx
         .device
@@ -155,10 +167,11 @@ pub(crate) fn frame(
                 lighting.light.intensity = light.intensity;
             }
 
-            // Extract phase: ECS World → GPU-ready batches
+            // Extract phase: ECS World → GPU-ready batches and optional pass data
             let t_extract_0 = Instant::now();
             let batches = extract_render_batches(world);
-            let extract_ms = t_extract_0.elapsed().as_secs_f64() * 1000.0;
+            let optional = extract_optional_pass_data(world);
+            extract_ms = t_extract_0.elapsed().as_secs_f64() * 1000.0;
 
             // Transform gizmo: build dynamic debug lines for selected entity
             let gizmo_lines = if let Some((_, transform)) = selected_entity_transform(world) {
@@ -166,7 +179,32 @@ pub(crate) fn frame(
             } else {
                 vec![]
             };
-            scheduler.set_dynamic_lines(gizmo_lines);
+
+            // Build per-frame configuration channel — all controllable pass
+            // parameters flow through RenderFrame::config.
+            let frame_config = FrameConfig {
+                ssao_enabled: app.ssao_enabled,
+                shadow_enabled: app.shadow_enabled,
+                ibl_enabled: app.ibl_enabled,
+                ssao_radius: app.ssao_radius,
+                ssao_bias: app.ssao_bias,
+                ssao_intensity: app.ssao_intensity,
+                debug_mode: app.debug_mode as u32,
+                ssr_debug_mode: app.ssr_debug_mode,
+                ssr_enabled: app.ssr_enabled,
+                ssr_frame_index: frame_index,
+                tone_mapping_mode: app.tone_mapping_mode,
+                bloom_enabled: app.bloom_enabled,
+                bloom_threshold: app.bloom_threshold,
+                bloom_intensity: 1.0,
+                bloom_composite_intensity: app.bloom_intensity,
+                fxaa_enabled: app.fxaa_enabled,
+                fxaa_quality: app.fxaa_quality,
+                fxaa_edge_threshold: app.fxaa_edge_threshold,
+                screen_width: ctx.config.width,
+                screen_height: ctx.config.height,
+                dynamic_lines: gizmo_lines,
+            };
 
             // Build per-frame context — all passes extract
             // what they need via apply_frame.
@@ -177,31 +215,12 @@ pub(crate) fn frame(
                 queue: &ctx.queue,
                 aspect,
                 delta_time: dt,
-                world,
+                optional: &optional,
+                config: &frame_config,
             };
             let t_apply_0 = Instant::now();
-            scheduler.set_feature_flags(app.ssao_enabled, app.shadow_enabled, app.ibl_enabled);
-            scheduler.set_ssao_params(app.ssao_radius, app.ssao_bias, app.ssao_intensity);
-            scheduler.set_debug_mode(app.debug_mode as u32);
-            scheduler.set_ssr_debug_mode(app.ssr_debug_mode);
-            scheduler.set_ssr_enabled(app.ssr_enabled);
-            scheduler.set_ssr_frame_index(frame_index);
-            scheduler.set_tone_mapping_mode(app.tone_mapping_mode, &ctx.queue);
-            scheduler.set_bloom_params(
-                app.bloom_enabled,
-                app.bloom_threshold,
-                1.0,
-                app.bloom_intensity,
-                &ctx.queue,
-            );
-            scheduler.set_fxaa_params(
-                app.fxaa_enabled,
-                app.fxaa_quality,
-                app.fxaa_edge_threshold,
-                &ctx.queue,
-            );
             scheduler.apply_frame_all(&frame);
-            let apply_ms = t_apply_0.elapsed().as_secs_f64() * 1000.0;
+            apply_ms = t_apply_0.elapsed().as_secs_f64() * 1000.0;
 
             let t_execute_0 = Instant::now();
             scheduler.execute_all(&mut encoder, &target_view, &frame, app.gpu_timer.as_mut());
@@ -256,7 +275,7 @@ pub(crate) fn frame(
         let rp = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("egui"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &target_view,
+                view: &egui_view,
                 depth_slice: None,
                 resolve_target: None,
                 ops: wgpu::Operations {
@@ -279,7 +298,7 @@ pub(crate) fn frame(
     let frame_time = frame_start.elapsed();
     app.input.end_frame();
 
-    info!(
+    trace!(
         "frame_timing total_ms={:.2} acquire_ms={:.2} extract_ms={:.2} apply_ms={:.2} execute_ms={:.2} submit_to_present_ms={:.2}",
         frame_time.as_secs_f64() * 1000.0,
         acquire_ms,

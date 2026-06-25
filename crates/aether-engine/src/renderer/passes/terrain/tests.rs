@@ -2,7 +2,8 @@ use super::*;
 use crate::ecs::components::Terrain;
 use crate::ecs::World;
 use crate::math::{Frustum, Mat4, Vec3};
-use crate::renderer::frame::RenderFrame;
+use crate::renderer::extract::extract_optional_pass_data;
+use crate::renderer::frame::{FrameConfig, RenderFrame};
 use crate::scene::{TerrainGeometry, TerrainSource};
 use crate::terrain::Chunk;
 
@@ -15,10 +16,23 @@ fn headless_device() -> (wgpu::Device, wgpu::Queue) {
         .expect("need device")
 }
 
+fn init_ctx<'a>(device: &'a wgpu::Device, queue: &'a wgpu::Queue) -> InitContext<'a> {
+    InitContext {
+        device,
+        queue,
+        surface_format: wgpu::TextureFormat::Bgra8UnormSrgb,
+        depth_format: wgpu::TextureFormat::Depth32Float,
+        width: 64,
+        height: 64,
+        ibl_resources: None,
+    }
+}
+
 #[test]
 fn terrain_pass_signature_declares_gbuffer_outputs() {
-    let (device, _queue) = headless_device();
-    let pass = TerrainPass::init(&device);
+    let (device, queue) = headless_device();
+    let ctx = init_ctx(&device, &queue);
+    let pass = TerrainPass::init(&ctx);
     let sig = pass.signature();
     assert_eq!(sig.writes.len(), 5);
 }
@@ -26,8 +40,10 @@ fn terrain_pass_signature_declares_gbuffer_outputs() {
 #[test]
 fn terrain_pass_skipped_when_no_terrain_component() {
     let (device, queue) = headless_device();
-    let pass = TerrainPass::init(&device);
+    let ctx = init_ctx(&device, &queue);
+    let pass = TerrainPass::init(&ctx);
     let world = World::new();
+    let optional = extract_optional_pass_data(&world);
     let camera = crate::renderer::camera::FlyCamera::default();
     let lighting = crate::renderer::light::LightingUniforms::default();
     let frame = RenderFrame {
@@ -37,7 +53,8 @@ fn terrain_pass_skipped_when_no_terrain_component() {
         queue: &queue,
         aspect: 1.0,
         delta_time: 0.016,
-        world: &world,
+        config: &FrameConfig::default(),
+        optional: &optional,
     };
     assert!(!pass.should_run(&frame));
 }
@@ -45,7 +62,8 @@ fn terrain_pass_skipped_when_no_terrain_component() {
 #[test]
 fn terrain_pass_runs_when_terrain_component_present() {
     let (device, queue) = headless_device();
-    let mut pass = TerrainPass::init(&device);
+    let ctx = init_ctx(&device, &queue);
+    let mut pass = TerrainPass::init(&ctx);
     let mut world = World::new();
     world.spawn((Terrain {
         source: TerrainSource::Procedural {
@@ -62,6 +80,7 @@ fn terrain_pass_runs_when_terrain_component_present() {
         splatmap_path: None,
         layer_configs: vec![],
     },));
+    let optional = extract_optional_pass_data(&world);
     let camera = crate::renderer::camera::FlyCamera::default();
     let lighting = crate::renderer::light::LightingUniforms::default();
     let frame = RenderFrame {
@@ -71,7 +90,8 @@ fn terrain_pass_runs_when_terrain_component_present() {
         queue: &queue,
         aspect: 1.0,
         delta_time: 0.016,
-        world: &world,
+        config: &FrameConfig::default(),
+        optional: &optional,
     };
     pass.apply_frame(&frame);
     assert!(pass.should_run(&frame));
@@ -80,7 +100,8 @@ fn terrain_pass_runs_when_terrain_component_present() {
 #[test]
 fn terrain_pass_rebuilds_chunks_when_config_changes() {
     let (device, queue) = headless_device();
-    let mut pass = TerrainPass::init(&device);
+    let ctx = init_ctx(&device, &queue);
+    let mut pass = TerrainPass::init(&ctx);
     let mut world = World::new();
     let entity = world.spawn((Terrain {
         source: TerrainSource::Procedural {
@@ -99,6 +120,7 @@ fn terrain_pass_rebuilds_chunks_when_config_changes() {
     },));
     let camera = crate::renderer::camera::FlyCamera::default();
     let lighting = crate::renderer::light::LightingUniforms::default();
+    let optional = extract_optional_pass_data(&world);
     let first_chunk_count = {
         let frame = RenderFrame {
             batches: std::sync::Arc::from([]),
@@ -107,7 +129,8 @@ fn terrain_pass_rebuilds_chunks_when_config_changes() {
             queue: &queue,
             aspect: 1.0,
             delta_time: 0.016,
-            world: &world,
+            config: &FrameConfig::default(),
+            optional: &optional,
         };
         pass.apply_frame(&frame);
         pass.chunks.len()
@@ -131,6 +154,7 @@ fn terrain_pass_rebuilds_chunks_when_config_changes() {
         splatmap_path: None,
         layer_configs: vec![],
     },));
+    let optional = extract_optional_pass_data(&world);
     let frame = RenderFrame {
         batches: std::sync::Arc::from([]),
         camera: &camera,
@@ -138,7 +162,8 @@ fn terrain_pass_rebuilds_chunks_when_config_changes() {
         queue: &queue,
         aspect: 1.0,
         delta_time: 0.016,
-        world: &world,
+        config: &FrameConfig::default(),
+        optional: &optional,
     };
     pass.apply_frame(&frame);
     assert!(

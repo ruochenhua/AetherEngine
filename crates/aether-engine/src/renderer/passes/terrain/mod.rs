@@ -7,7 +7,7 @@
 use crate::asset::mesh::{GpuMesh, Vertex};
 use crate::ecs::components::Terrain;
 use crate::renderer::frame::RenderFrame;
-use crate::renderer::pass::{Pass, PassSignature, ResHandle};
+use crate::renderer::pass::{InitContext, Pass, PassSignature, ResHandle};
 use crate::renderer::renderable::ViewProjUniform;
 use crate::renderer::resource::*;
 use crate::renderer::resource_table::ResourceTable;
@@ -73,23 +73,23 @@ impl Pass for TerrainPass {
 
     fn signature(&self) -> PassSignature {
         PassSignature::new("Terrain")
-            .write::<GPosition>("gbuffer_position", wgpu::TextureFormat::Rgba16Float)
-            .write::<GNormal>("gbuffer_normal", wgpu::TextureFormat::Rgba16Float)
-            .write::<GAlbedo>("gbuffer_albedo", wgpu::TextureFormat::Rgba8Unorm)
-            .write::<GMaterial>("gbuffer_material", wgpu::TextureFormat::Rg8Unorm)
-            .write::<GDepth>("gbuffer_depth", wgpu::TextureFormat::Depth32Float)
+            .write::<GPosition>(wgpu::TextureFormat::Rgba16Float)
+            .write::<GNormal>(wgpu::TextureFormat::Rgba16Float)
+            .write::<GAlbedo>(wgpu::TextureFormat::Rgba8Unorm)
+            .write::<GMaterial>(wgpu::TextureFormat::Rg8Unorm)
+            .write::<GDepth>(wgpu::TextureFormat::Depth32Float)
     }
 
-    fn init(device: &wgpu::Device) -> Self {
-        Self::new(device)
+    fn init(ctx: &InitContext) -> Self {
+        Self::new(ctx.device)
     }
 
     fn resolve(&mut self, _device: &wgpu::Device, resources: &ResourceTable) {
-        self.pos_handle = Some(resources.handle::<GPosition>("gbuffer_position"));
-        self.normal_handle = Some(resources.handle::<GNormal>("gbuffer_normal"));
-        self.albedo_handle = Some(resources.handle::<GAlbedo>("gbuffer_albedo"));
-        self.material_handle = Some(resources.handle::<GMaterial>("gbuffer_material"));
-        self.depth_handle = Some(resources.handle::<GDepth>("gbuffer_depth"));
+        self.pos_handle = Some(resources.handle::<GPosition>());
+        self.normal_handle = Some(resources.handle::<GNormal>());
+        self.albedo_handle = Some(resources.handle::<GAlbedo>());
+        self.material_handle = Some(resources.handle::<GMaterial>());
+        self.depth_handle = Some(resources.handle::<GDepth>());
     }
 
     fn should_run(&self, _frame: &RenderFrame) -> bool {
@@ -97,12 +97,10 @@ impl Pass for TerrainPass {
     }
 
     fn apply_frame(&mut self, frame: &RenderFrame) {
-        let world = frame.world;
-        if let Some(terrain) = update::read_terrain(world) {
+        if let Some(terrain) = frame.optional.terrain.clone() {
             self.has_terrain = true;
             self.update_terrain(
                 terrain,
-                world,
                 &frame.camera.view_matrix(),
                 &frame.camera.projection_matrix(frame.aspect),
                 frame.queue,
@@ -196,10 +194,6 @@ impl Pass for TerrainPass {
                 pass.draw(0..lod_mesh.vertex_count, 0..1);
             }
         }
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
     }
 }
 

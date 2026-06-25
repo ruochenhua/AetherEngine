@@ -12,7 +12,7 @@
 //! Pipeline: GBufferPass → SSAOPass (→AOTexture) → LightingPass
 
 use crate::renderer::frame::RenderFrame;
-use crate::renderer::pass::{Pass, PassSignature, ResHandle};
+use crate::renderer::pass::{InitContext, Pass, PassSignature, ResHandle};
 use crate::renderer::resource::*;
 use crate::renderer::resource_table::ResourceTable;
 use std::borrow::Cow;
@@ -36,10 +36,10 @@ struct SSAOParams {
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct SSAOFrameUniforms {
-    params: SSAOParams,     // offset 0,   32 bytes
-    proj: [[f32; 4]; 4],    // offset 32,  64 bytes
+    params: SSAOParams,      // offset 0,   32 bytes
+    proj: [[f32; 4]; 4],     // offset 32,  64 bytes
     inv_proj: [[f32; 4]; 4], // offset 96,  64 bytes
-    view: [[f32; 4]; 4],    // offset 160, 64 bytes
+    view: [[f32; 4]; 4],     // offset 160, 64 bytes
 }
 // Total: 224 bytes, aligned to 16
 
@@ -77,23 +77,22 @@ impl Pass for SSAOPass {
 
     fn signature(&self) -> PassSignature {
         PassSignature::new("SSAO")
-            .read::<GDepth>("gbuffer_depth")
-            .read::<GNormal>("gbuffer_normal")
+            .read::<GDepth>()
+            .read::<GNormal>()
             .write_sized::<AOTexture>(
-                "ao",
                 wgpu::TextureFormat::R8Unorm,
                 self.half_width.max(1),
                 self.half_height.max(1),
             )
     }
 
-    fn init(device: &wgpu::Device) -> Self {
-        Self::new(device)
+    fn init(ctx: &InitContext) -> Self {
+        Self::new(ctx.device)
     }
 
     fn resolve(&mut self, device: &wgpu::Device, resources: &ResourceTable) {
-        self.depth_handle = Some(resources.handle::<GDepth>("gbuffer_depth"));
-        self.normal_handle = Some(resources.handle::<GNormal>("gbuffer_normal"));
+        self.depth_handle = Some(resources.handle::<GDepth>());
+        self.normal_handle = Some(resources.handle::<GNormal>());
 
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("SSAO GBuffer Sampler"),
@@ -126,6 +125,12 @@ impl Pass for SSAOPass {
     }
 
     fn apply_frame(&mut self, frame: &RenderFrame) {
+        self.set_enabled(frame.config.ssao_enabled);
+        self.set_screen_size(frame.config.screen_width, frame.config.screen_height);
+        self.set_radius(frame.config.ssao_radius);
+        self.set_bias(frame.config.ssao_bias);
+        self.set_intensity(frame.config.ssao_intensity);
+
         let proj = frame.camera.projection_matrix(frame.aspect);
         let view = frame.camera.view_matrix();
         self.view = view;
@@ -165,7 +170,7 @@ impl Pass for SSAOPass {
             .texture_bind_group
             .as_ref()
             .expect("SSAO: resolve not called");
-        let ao_view = resources.get(resources.handle::<AOTexture>("ao"));
+        let ao_view = resources.get(resources.handle::<AOTexture>());
 
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("SSAO Pass"),
@@ -188,10 +193,6 @@ impl Pass for SSAOPass {
         pass.set_bind_group(1, &self.frame_bind_group, &[]);
         pass.set_vertex_buffer(0, self.quad_vertex_buffer.slice(..));
         pass.draw(0..self.quad_vertex_count, 0..1);
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
     }
 }
 

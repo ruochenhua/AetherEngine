@@ -12,7 +12,7 @@
 use crate::asset::mesh::{InstanceData, Vertex};
 use crate::renderer::extract::RenderBatch;
 use crate::renderer::frame::RenderFrame;
-use crate::renderer::pass::{Pass, PassSignature, ResHandle};
+use crate::renderer::pass::{InitContext, Pass, PassSignature, ResHandle};
 use crate::renderer::renderable::*;
 use crate::renderer::resource::*;
 use crate::renderer::resource_table::ResourceTable;
@@ -53,23 +53,23 @@ impl Pass for GBufferPass {
 
     fn signature(&self) -> PassSignature {
         PassSignature::new("GBuffer")
-            .write::<GPosition>("gbuffer_position", wgpu::TextureFormat::Rgba16Float)
-            .write::<GNormal>("gbuffer_normal", wgpu::TextureFormat::Rgba16Float)
-            .write::<GAlbedo>("gbuffer_albedo", wgpu::TextureFormat::Rgba8Unorm)
-            .write::<GMaterial>("gbuffer_material", wgpu::TextureFormat::Rg8Unorm)
-            .write::<GDepth>("gbuffer_depth", wgpu::TextureFormat::Depth32Float)
+            .write::<GPosition>(wgpu::TextureFormat::Rgba16Float)
+            .write::<GNormal>(wgpu::TextureFormat::Rgba16Float)
+            .write::<GAlbedo>(wgpu::TextureFormat::Rgba8Unorm)
+            .write::<GMaterial>(wgpu::TextureFormat::Rg8Unorm)
+            .write::<GDepth>(wgpu::TextureFormat::Depth32Float)
     }
 
-    fn init(device: &wgpu::Device) -> Self {
-        Self::new(device)
+    fn init(ctx: &InitContext) -> Self {
+        Self::new(ctx.device)
     }
 
     fn resolve(&mut self, _device: &wgpu::Device, resources: &ResourceTable) {
-        self.pos_handle = Some(resources.handle::<GPosition>("gbuffer_position"));
-        self.normal_handle = Some(resources.handle::<GNormal>("gbuffer_normal"));
-        self.albedo_handle = Some(resources.handle::<GAlbedo>("gbuffer_albedo"));
-        self.material_handle = Some(resources.handle::<GMaterial>("gbuffer_material"));
-        self.depth_handle = Some(resources.handle::<GDepth>("gbuffer_depth"));
+        self.pos_handle = Some(resources.handle::<GPosition>());
+        self.normal_handle = Some(resources.handle::<GNormal>());
+        self.albedo_handle = Some(resources.handle::<GAlbedo>());
+        self.material_handle = Some(resources.handle::<GMaterial>());
+        self.depth_handle = Some(resources.handle::<GDepth>());
     }
 
     fn apply_frame(&mut self, frame: &RenderFrame) {
@@ -236,9 +236,6 @@ impl Pass for GBufferPass {
             }
             instance_offset += batch.instances.len();
         }
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
     }
 }
 
@@ -454,53 +451,66 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
 mod tests {
     use super::*;
 
-    fn headless_device() -> wgpu::Device {
+    fn headless_device() -> (wgpu::Device, wgpu::Queue) {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
         let adapter =
             pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
                 .expect("need adapter");
-        let (device, _queue) =
-            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-                .expect("need device");
-        device
+        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
+            .expect("need device")
+    }
+
+    fn init_ctx<'a>(device: &'a wgpu::Device, queue: &'a wgpu::Queue) -> InitContext<'a> {
+        InitContext {
+            device,
+            queue,
+            surface_format: wgpu::TextureFormat::Bgra8UnormSrgb,
+            depth_format: wgpu::TextureFormat::Depth32Float,
+            width: 64,
+            height: 64,
+            ibl_resources: None,
+        }
     }
 
     #[test]
     fn signature_ok() {
-        let pass = GBufferPass::init(&headless_device());
+        let (device, queue) = headless_device();
+        let ctx = init_ctx(&device, &queue);
+        let pass = GBufferPass::init(&ctx);
         let sig = pass.signature();
         assert_eq!(sig.writes.len(), 5);
     }
 
     #[test]
     fn resolve_ok() {
-        let device = headless_device();
-        let mut pass = GBufferPass::init(&device);
+        let (device, queue) = headless_device();
+        let ctx = init_ctx(&device, &queue);
+        let mut pass = GBufferPass::init(&ctx);
         let mut table = ResourceTable::new();
         for (type_id, name, fmt) in [
             (
                 std::any::TypeId::of::<GPosition>(),
-                "gbuffer_position",
+                GPosition::NAME,
                 wgpu::TextureFormat::Rgba16Float,
             ),
             (
                 std::any::TypeId::of::<GNormal>(),
-                "gbuffer_normal",
+                GNormal::NAME,
                 wgpu::TextureFormat::Rgba16Float,
             ),
             (
                 std::any::TypeId::of::<GAlbedo>(),
-                "gbuffer_albedo",
+                GAlbedo::NAME,
                 wgpu::TextureFormat::Rgba8Unorm,
             ),
             (
                 std::any::TypeId::of::<GMaterial>(),
-                "gbuffer_material",
+                GMaterial::NAME,
                 wgpu::TextureFormat::Rg8Unorm,
             ),
             (
                 std::any::TypeId::of::<GDepth>(),
-                "gbuffer_depth",
+                GDepth::NAME,
                 wgpu::TextureFormat::Depth32Float,
             ),
         ] {

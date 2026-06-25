@@ -1,11 +1,17 @@
-//! Extract phase: ECS World → GPU-ready render batches.
+//! Extract phase: ECS World → GPU-ready render data.
 //!
 //! Runs every frame before the render scheduler. Queries the ECS World for
-//! renderable entities and produces `Vec<RenderBatch>` that the deferred
-//! passes consume. Decouples ECS access from GPU command encoding.
+//! renderable entities and produces `Vec<RenderBatch>` that the deferred passes
+//! consume, plus `OptionalPassData` for passes that depend on optional scene
+//! components such as terrain, water, atmosphere, clouds, and god rays.
+//!
+//! This module decouples ECS access from GPU command encoding: after extraction,
+//! no render pass needs a `&World` reference.
 
 use crate::asset::mesh::{GpuMesh, InstanceData};
-use crate::ecs::components::{MeshHandle, Transform, Visibility};
+use crate::ecs::components::{
+    Atmosphere, Clouds, GodRay, MeshHandle, Terrain, Transform, Visibility, Water,
+};
 use crate::ecs::World;
 use crate::math::{CullingVisibility, Frustum, Mat4};
 use crate::renderer::renderable::MaterialUniform;
@@ -51,6 +57,25 @@ pub struct RenderBatch {
     pub material: MaterialUniform,
     /// Instances to draw.
     pub instances: Vec<InstanceData>,
+}
+
+/// Optional scene components consumed by conditional render passes.
+///
+/// Each field is `Option<Component>` because scenes may or may not contain
+/// terrain, water, atmosphere, clouds, or god rays. Passes read from this
+/// struct in `apply_frame` instead of querying the ECS World directly.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct OptionalPassData {
+    /// Terrain component for `TerrainPass`.
+    pub terrain: Option<Terrain>,
+    /// Water component for `WaterPass`.
+    pub water: Option<Water>,
+    /// Atmosphere component for `AtmospherePass`.
+    pub atmosphere: Option<Atmosphere>,
+    /// Cloud component for `VolumetricCloudPass`.
+    pub clouds: Option<Clouds>,
+    /// God ray component for `GodRayPass`.
+    pub god_ray: Option<GodRay>,
 }
 
 /// Extract render batches from the ECS World.
@@ -124,15 +149,48 @@ pub fn extract_render_batches_with_frustum_culling(
     batches.into_values().collect()
 }
 
+/// Extract optional pass data from the ECS World.
+///
+/// Each optional component is queried independently. Missing components result
+/// in `None`, which tells the corresponding pass to skip execution via
+/// `should_run`.
+pub fn extract_optional_pass_data(world: &World) -> OptionalPassData {
+    OptionalPassData {
+        terrain: world.query::<&Terrain>().iter().next().cloned(),
+        water: world.query::<&Water>().iter().next().cloned(),
+        atmosphere: world.query::<&Atmosphere>().iter().next().cloned(),
+        clouds: world.query::<&Clouds>().iter().next().cloned(),
+        god_ray: world.query::<&GodRay>().iter().next().cloned(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::asset::mesh::GpuMesh;
     use crate::asset::registry::BuiltinMeshRegistry;
+    use crate::asset::terrain_material::TerrainMaterial;
     use crate::ecs::components::{Name, Visibility};
     use crate::ecs::World;
     use crate::math::{Frustum, Vec3};
     use crate::renderer::renderable::MaterialUniform;
+    use crate::scene::{
+        AtmosphereConfig, CloudConfig, GodRayConfig, TerrainGeometry, TerrainSource, WaterConfig,
+    };
+
+    fn default_terrain() -> Terrain {
+        Terrain {
+            source: TerrainSource::Procedural {
+                seed: 0,
+                frequency: 0.05,
+                amplitude: 32.0,
+            },
+            geometry: TerrainGeometry::default(),
+            material: TerrainMaterial::default(),
+            splatmap_path: None,
+            layer_configs: Vec::new(),
+        }
+    }
     use std::sync::Arc;
 
     fn headless_device() -> wgpu::Device {
@@ -219,5 +277,37 @@ mod tests {
 
         let batches = extract_render_batches(&world);
         assert!(batches.is_empty());
+    }
+
+    #[test]
+    fn extract_optional_data_is_empty_by_default() {
+        let world = World::new();
+        let optional = extract_optional_pass_data(&world);
+        assert_eq!(optional, OptionalPassData::default());
+    }
+
+    #[test]
+    fn extract_optional_data_finds_all_components() {
+        let mut world = World::new();
+        world.spawn((default_terrain(),));
+        world.spawn((Water {
+            config: WaterConfig::default(),
+        },));
+        world.spawn((Atmosphere {
+            config: AtmosphereConfig::default(),
+        },));
+        world.spawn((Clouds {
+            config: CloudConfig::default(),
+        },));
+        world.spawn((GodRay {
+            config: GodRayConfig::default(),
+        },));
+
+        let optional = extract_optional_pass_data(&world);
+        assert!(optional.terrain.is_some());
+        assert!(optional.water.is_some());
+        assert!(optional.atmosphere.is_some());
+        assert!(optional.clouds.is_some());
+        assert!(optional.god_ray.is_some());
     }
 }
