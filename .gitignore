@@ -27,9 +27,6 @@ dist/
 assets/textures/*.hdr
 assets/meshes/*.gltf
 assets/meshes/*.glb
-assets/models/porsche/
-assets/models/cyborg/
-assets/models/nanosuit/
 
 # Logs
 *.log
