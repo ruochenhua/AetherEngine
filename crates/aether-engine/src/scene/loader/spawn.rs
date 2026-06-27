@@ -24,7 +24,9 @@ pub(super) fn spawn_camera(world: &mut World, camera: &crate::scene::CameraConfi
         },
         Camera {
             fov: camera.fov.to_radians(),
-            ..Camera::default()
+            near: camera.near,
+            far: camera.far,
+            speed: camera.speed,
         },
         Name("Camera".into()),
     ));

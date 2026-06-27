@@ -1,0 +1,30 @@
+SceneDescription(
+    name: "Model Loading - Nanosuit",
+    camera: (
+        position: (0.0, 1.4, 2.8),
+        yaw: -1.57,
+        pitch: -0.25,
+    ),
+    ambient: 0.1,
+    lights: [(
+        light_type: Directional,
+        direction: (0.3, -1.0, -0.3),
+        color: (1.0, 1.0, 1.0),
+        intensity: 2.0,
+    )],
+    objects: [
+        (
+            name: "Nanosuit",
+            mesh: File("assets/models/nanosuit/nanosuit.obj"),
+            transform: (
+                translation: (0.0, 0.0, 0.0),
+                scale: (0.12, 0.12, 0.12),
+            ),
+            material: (
+                albedo: (1.0, 1.0, 1.0, 1.0),
+                roughness: 0.4,
+                metallic: 0.2,
+            ),
+        ),
+    ],
+)

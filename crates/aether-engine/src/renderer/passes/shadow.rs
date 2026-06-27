@@ -168,6 +168,10 @@ impl Pass for ShadowPass {
             let mut instance_offset = 0usize;
             for batch in self.batches.iter() {
                 let instance_count = batch.instances.len() as u32;
+                if instance_count == 0 || batch.mesh.vertex_count == 0 {
+                    continue;
+                }
+
                 pass.set_vertex_buffer(0, batch.mesh.vertex_buffer.slice(..));
                 let instance_byte_start =
                     (instance_offset * std::mem::size_of::<InstanceData>()) as wgpu::BufferAddress;
@@ -181,7 +185,9 @@ impl Pass for ShadowPass {
                 );
                 if let Some(ref ib) = batch.mesh.index_buffer {
                     pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
-                    pass.draw_indexed(0..batch.mesh.index_count, 0, 0..instance_count);
+                    let start = batch.mesh.index_offset;
+                    let end = start + batch.mesh.index_count;
+                    pass.draw_indexed(start..end, 0, 0..instance_count);
                 } else {
                     pass.draw(0..batch.mesh.vertex_count, 0..instance_count);
                 }
@@ -500,6 +506,8 @@ mod tests {
         queue: &'a wgpu::Queue,
         optional: &'a crate::renderer::extract::OptionalPassData,
         config: &'a FrameConfig,
+        texture_cache: &'a crate::asset::texture_cache::GpuTextureCache,
+        asset_manager: &'a crate::asset::AssetManager,
     ) -> RenderFrame<'a> {
         RenderFrame {
             camera,
@@ -510,6 +518,8 @@ mod tests {
             delta_time: 0.0,
             config,
             optional,
+            texture_cache,
+            asset_manager,
         }
     }
 
@@ -518,9 +528,19 @@ mod tests {
         let camera = FlyCamera::default();
         let lighting = LightingUniforms::default();
         let (device, queue) = headless_queue();
+        let texture_cache = crate::asset::texture_cache::GpuTextureCache::new(&device, &queue);
+        let asset_manager = crate::asset::AssetManager::new();
         let optional = crate::renderer::extract::OptionalPassData::default();
         let config = FrameConfig::default();
-        let frame = build_frame(&camera, &lighting, &queue, &optional, &config);
+        let frame = build_frame(
+            &camera,
+            &lighting,
+            &queue,
+            &optional,
+            &config,
+            &texture_cache,
+            &asset_manager,
+        );
         let light_dir = glam::Vec3::new(0.5, -1.0, 0.3).normalize();
         let cascades = compute_cascades(&frame, &light_dir);
         for cascade in &cascades {
@@ -550,9 +570,19 @@ mod tests {
         let camera = FlyCamera::default();
         let lighting = LightingUniforms::default();
         let (device, queue) = headless_queue();
+        let texture_cache = crate::asset::texture_cache::GpuTextureCache::new(&device, &queue);
+        let asset_manager = crate::asset::AssetManager::new();
         let optional = crate::renderer::extract::OptionalPassData::default();
         let config = FrameConfig::default();
-        let frame = build_frame(&camera, &lighting, &queue, &optional, &config);
+        let frame = build_frame(
+            &camera,
+            &lighting,
+            &queue,
+            &optional,
+            &config,
+            &texture_cache,
+            &asset_manager,
+        );
         let light_dir = glam::Vec3::new(-0.6, -1.0, -0.4).normalize();
         let cascades = compute_cascades(&frame, &light_dir);
 

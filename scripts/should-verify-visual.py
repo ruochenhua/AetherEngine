@@ -78,6 +78,7 @@ NO_VERIFY_PATTERNS = [
     r"tests/reports/.*",
     r"tests/output/.*",
     r"tests/reference/.*",
+    r"output/.*",
 ]
 
 # 语义关键词：issue/PRD/commit message 中有这些词 → 提升验证等级

@@ -43,6 +43,8 @@ pub struct MaterialUniform {
     pub metallic: f32,
     /// Padding to 16-byte alignment.
     pub _pad: [f32; 2],
+    /// Optional albedo texture handle ID (0 = none).
+    pub albedo_texture_id: u64,
 }
 
 impl Default for MaterialUniform {
@@ -52,6 +54,7 @@ impl Default for MaterialUniform {
             roughness: 0.5,
             metallic: 0.0,
             _pad: [0.0, 0.0],
+            albedo_texture_id: 0,
         }
     }
 }

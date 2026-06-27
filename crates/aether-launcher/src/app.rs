@@ -10,7 +10,7 @@ mod scene;
 mod ui;
 
 use aether_engine::{
-    asset::{registry::BuiltinMeshRegistry, AssetManager},
+    asset::{registry::BuiltinMeshRegistry, texture_cache::GpuTextureCache, AssetManager},
     ecs::{Entity, World},
     input::InputManager,
     renderer::{
@@ -64,6 +64,7 @@ pub(crate) struct App {
     pub(crate) camera: FlyCamera,
     pub(crate) mesh_registry: BuiltinMeshRegistry,
     pub(crate) asset_manager: AssetManager,
+    pub(crate) texture_cache: Option<GpuTextureCache>,
     pub(crate) scheduler: Option<Scheduler>,
     pub(crate) has_terrain_pipeline: bool,
     pub(crate) gpu_timer: Option<aether_engine::renderer::gpu_timer::GpuTimer>,
@@ -160,6 +161,7 @@ impl App {
             },
             mesh_registry: BuiltinMeshRegistry::new(),
             asset_manager: AssetManager::new(),
+            texture_cache: None,
             scheduler: None,
             has_terrain_pipeline: false,
             gpu_timer: None,
@@ -171,7 +173,7 @@ impl App {
             fullscreen_3d: false,
             pending_select_entity: None,
             debug_mode,
-            ssao_enabled: true,
+            ssao_enabled: false,
             shadow_enabled: true,
             ibl_enabled: true,
             ssr_enabled: false,
@@ -263,9 +265,14 @@ impl App {
         if has_terrain == self.has_terrain_pipeline {
             return;
         }
+        info!(
+            "rebuilding pipeline: has_terrain={} current_has_terrain={}",
+            has_terrain, self.has_terrain_pipeline
+        );
         match crate::pipeline::build_pipeline(
             device,
             queue,
+            self.texture_cache.as_ref().unwrap(),
             output_format,
             wgpu::TextureFormat::Depth32Float,
             width,
@@ -273,6 +280,7 @@ impl App {
             has_terrain,
         ) {
             Ok((scheduler, ibl_resources)) => {
+                info!("rebuilt pipeline with passes: {:?}", scheduler.pass_names());
                 self.scheduler = Some(scheduler);
                 self.ibl_resources = Some(ibl_resources);
                 self.has_terrain_pipeline = has_terrain;
@@ -325,12 +333,16 @@ impl ApplicationHandler for App {
         let output_format = ctx.render_target_format();
         let depth_format = wgpu::TextureFormat::Depth32Float;
 
+        // Initialize the GPU texture cache used by all passes.
+        self.texture_cache = Some(GpuTextureCache::new(&ctx.device, &ctx.queue));
+
         // Build render pipeline via helper. Terrain presence is determined by
         // the scene; the empty default scene has no terrain.
         let has_terrain = false;
         let (scheduler, ibl_resources) = crate::pipeline::build_pipeline(
             &ctx.device,
             &ctx.queue,
+            self.texture_cache.as_ref().unwrap(),
             output_format,
             depth_format,
             ctx.config.width,
@@ -466,13 +478,16 @@ impl ApplicationHandler for App {
             if let Some(ctx) = self.ctx.as_ref() {
                 let device = ctx.device.clone();
                 let queue = ctx.queue.clone();
-                let surface_format = ctx.surface_format();
+                // The 3D pipeline renders to the sRGB render target view, not the
+                // non-sRGB surface view used by egui. Pass the same format as the
+                // initial build in `resumed()`.
+                let render_target_format = ctx.render_target_format();
                 let width = ctx.config.width;
                 let height = ctx.config.height;
                 self.rebuild_pipeline_for_terrain_if_needed(
                     &device,
                     &queue,
-                    surface_format,
+                    render_target_format,
                     width,
                     height,
                 );

@@ -31,6 +31,10 @@ pub struct GBufferPass {
     object_buffer_capacity: usize,
     object_bind_group: wgpu::BindGroup,
     object_bind_group_layout: wgpu::BindGroupLayout,
+    /// Per-batch albedo texture bind group layout and bind groups.
+    texture_bind_group_layout: wgpu::BindGroupLayout,
+    texture_bind_groups: Vec<wgpu::BindGroup>,
+    fallback_white: Arc<crate::asset::texture::GpuTexture>,
     /// Per-instance transform + entity_id vertex buffer.
     instance_buffer: wgpu::Buffer,
     instance_buffer_capacity: usize,
@@ -61,7 +65,7 @@ impl Pass for GBufferPass {
     }
 
     fn init(ctx: &InitContext) -> Self {
-        Self::new(ctx.device)
+        Self::new(ctx.device, ctx.queue, ctx.texture_cache)
     }
 
     fn resolve(&mut self, _device: &wgpu::Device, resources: &ResourceTable) {
@@ -146,6 +150,32 @@ impl Pass for GBufferPass {
                 .queue
                 .write_buffer(&self.instance_buffer, 0, &instance_data);
         }
+
+        // Build per-batch albedo texture bind groups.
+        self.texture_bind_groups.clear();
+        for batch in self.batches.iter() {
+            let gpu_tex = match &batch.albedo_texture {
+                Some(handle) => frame
+                    .texture_cache
+                    .get_or_upload(handle.clone(), frame.asset_manager),
+                None => self.fallback_white.clone(),
+            };
+            let bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("GBuffer Texture BG"),
+                layout: &self.texture_bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&gpu_tex.view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(&gpu_tex.sampler),
+                    },
+                ],
+            });
+            self.texture_bind_groups.push(bg);
+        }
     }
 
     fn execute(
@@ -214,8 +244,13 @@ impl Pass for GBufferPass {
         let mut instance_offset = 0usize;
         for (batch_index, batch) in self.batches.iter().enumerate() {
             let instance_count = batch.instances.len() as u32;
+            if instance_count == 0 || batch.mesh.vertex_count == 0 {
+                continue;
+            }
+
             let offset = batch_index as u32 * obj_size as u32;
             pass.set_bind_group(1, &self.object_bind_group, &[offset]);
+            pass.set_bind_group(2, &self.texture_bind_groups[batch_index], &[]);
 
             pass.set_vertex_buffer(0, batch.mesh.vertex_buffer.slice(..));
             let instance_byte_start =
@@ -230,7 +265,9 @@ impl Pass for GBufferPass {
             );
             if let Some(ref ib) = batch.mesh.index_buffer {
                 pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
-                pass.draw_indexed(0..batch.mesh.index_count, 0, 0..instance_count);
+                let start = batch.mesh.index_offset;
+                let end = start + batch.mesh.index_count;
+                pass.draw_indexed(start..end, 0, 0..instance_count);
             } else {
                 pass.draw(0..batch.mesh.vertex_count, 0..instance_count);
             }
@@ -241,7 +278,11 @@ impl Pass for GBufferPass {
 
 impl GBufferPass {
     /// Create a new G-Buffer pass.
-    pub fn new(device: &wgpu::Device) -> Self {
+    pub fn new(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        _texture_cache: &crate::asset::texture_cache::GpuTextureCache,
+    ) -> Self {
         let shader_source = r#"
 struct VertexInput { @location(0) position: vec3<f32>, @location(1) normal: vec3<f32>, @location(2) uv: vec2<f32>, @location(3) tangent: vec4<f32>, };
 struct InstanceInput {
@@ -257,6 +298,8 @@ struct ViewProjUniform { view: mat4x4<f32>, proj: mat4x4<f32>, };
 
 struct ObjectData { albedo: vec4<f32>, roughness: f32, metallic: f32, };
 @group(1) @binding(0) var<uniform> obj: ObjectData;
+@group(2) @binding(0) var albedo_texture: texture_2d<f32>;
+@group(2) @binding(1) var albedo_sampler: sampler;
 
 @vertex
 fn vs_main(in: VertexInput, instance: InstanceInput) -> VertexOutput {
@@ -277,7 +320,8 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
     var out: FragmentOutput;
     out.position = vec4<f32>(in.world_pos, 1.0);
     out.normal = vec4<f32>(in.world_normal * 0.5 + 0.5, 1.0);
-    out.albedo = obj.albedo;
+    let tex_color = textureSample(albedo_texture, albedo_sampler, in.uv);
+    out.albedo = obj.albedo * tex_color;
     out.material = vec2<f32>(obj.roughness, obj.metallic);
     return out;
 }
@@ -318,9 +362,36 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
                 }],
             });
 
+        let texture_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("GBuffer Texture BGL"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
+
         let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("GBuffer PL"),
-            bind_group_layouts: &[Some(&vp_bgl), Some(&object_bind_group_layout)],
+            bind_group_layouts: &[
+                Some(&vp_bgl),
+                Some(&object_bind_group_layout),
+                Some(&texture_bind_group_layout),
+            ],
             immediate_size: 0,
         });
 
@@ -424,6 +495,13 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
             mapped_at_creation: false,
         });
 
+        let fallback_white = Arc::new(crate::asset::texture::GpuTexture::from_cpu(
+            device,
+            queue,
+            &crate::asset::texture::CpuTexture::from_color(255, 255, 255, 255),
+            Some("gbuffer_fallback_white"),
+        ));
+
         Self {
             device: device.clone(),
             pipeline,
@@ -433,6 +511,9 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
             object_buffer_capacity: initial_object_capacity,
             object_bind_group,
             object_bind_group_layout,
+            texture_bind_group_layout,
+            texture_bind_groups: Vec::new(),
+            fallback_white,
             instance_buffer,
             instance_buffer_capacity: initial_instance_capacity,
             pos_handle: None,
@@ -461,6 +542,9 @@ mod tests {
     }
 
     fn init_ctx<'a>(device: &'a wgpu::Device, queue: &'a wgpu::Queue) -> InitContext<'a> {
+        let texture_cache = Box::leak(Box::new(crate::asset::texture_cache::GpuTextureCache::new(
+            device, queue,
+        )));
         InitContext {
             device,
             queue,
@@ -469,6 +553,7 @@ mod tests {
             width: 64,
             height: 64,
             ibl_resources: None,
+            texture_cache,
         }
     }
 

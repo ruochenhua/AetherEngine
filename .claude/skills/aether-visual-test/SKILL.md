@@ -34,6 +34,10 @@ Or run the full milestone verification script:
 ./scripts/verify-milestone.sh
 ```
 
+> **Issue-level outputs:** When capturing screenshots as part of an issue or
+> feature deliverable, save them to `output/<issue-name>/` instead of
+> `tests/output/`. `tests/output/` is reserved for regression-test captures.
+
 ## Workflows
 
 ### 0. Smart Gate — 判定是否需要视觉验证
@@ -156,8 +160,12 @@ python3 scripts/should-verify-visual.py \
 ```
 tests/
 ├── reference/          # Golden reference images (commit these)
-├── output/             # Captured screenshots (.gitignore)
+├── output/             # Regression-test captures (.gitignore)
 └── reports/            # Generated test reports (.gitignore)
+
+output/                 # Issue/feature-level screenshots (.gitignore)
+└── <issue-name>/
+    └── *.png
 ```
 
 ## Tips

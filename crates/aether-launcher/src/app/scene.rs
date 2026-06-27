@@ -3,7 +3,9 @@
 use super::{App, LauncherState, SceneEntry};
 use aether_engine::{
     asset::mesh::GpuMesh,
-    ecs::components::{Camera, MeshHandle, Name, Selected, Terrain, Transform, Visibility, Water},
+    ecs::components::{
+        Camera, MeshHandle, MeshSource, Name, Selected, Terrain, Transform, Visibility, Water,
+    },
     ecs::{Entity, World},
     renderer::{camera::FlyCamera, context::RenderContext},
     scene::loader::SceneLoader,
@@ -41,14 +43,24 @@ pub(crate) fn discover_scenes() -> Vec<SceneEntry> {
 }
 
 /// Read camera state from the first `(Transform, Camera)` entity.
-pub(crate) fn read_camera_from_world(world: &World) -> Option<(glam::Vec3, f32, f32, f32)> {
+pub(crate) fn read_camera_from_world(
+    world: &World,
+) -> Option<(glam::Vec3, f32, f32, f32, f32, f32, f32)> {
     world
         .query::<(&Transform, &Camera)>()
         .iter()
         .next()
         .map(|(transform, cam)| {
             let (yaw, pitch, _roll) = transform.rotation.to_euler(glam::EulerRot::YXZ);
-            (transform.translation, yaw, pitch, cam.fov)
+            (
+                transform.translation,
+                yaw,
+                pitch,
+                cam.fov,
+                cam.speed,
+                cam.near,
+                cam.far,
+            )
         })
 }
 
@@ -75,7 +87,9 @@ pub(crate) fn write_camera_to_world(camera: &FlyCamera, world: &mut World) {
                 },
                 Camera {
                     fov: camera.fov,
-                    ..Default::default()
+                    near: camera.near,
+                    far: camera.far,
+                    speed: camera.speed,
                 },
             ),
         );
@@ -100,20 +114,22 @@ pub(crate) fn open_cli_scene(app: &mut App, ctx: &RenderContext) {
             ) {
                 Ok(new_lighting) => {
                     *lighting = new_lighting;
-                    if let Some((pos, yaw, pitch, fov)) = read_camera_from_world(world) {
+                    if let Some((pos, yaw, pitch, fov, speed, near, far)) =
+                        read_camera_from_world(world)
+                    {
                         app.camera.position = pos;
                         app.camera.yaw = yaw;
                         app.camera.pitch = pitch;
                         app.camera.fov = fov;
+                        app.camera.speed = speed;
+                        app.camera.base_speed = speed;
+                        app.camera.near = near;
+                        app.camera.far = far;
                         app.camera.active = false;
                     }
-                    app.rebuild_pipeline_for_terrain_if_needed(
-                        &ctx.device,
-                        &ctx.queue,
-                        ctx.render_target_format(),
-                        ctx.config.width,
-                        ctx.config.height,
-                    );
+                    // Queue a pipeline rebuild so the first frame after
+                    // `resumed()` uses a scheduler that includes TerrainPass.
+                    app.pending_terrain_pipeline_rebuild = true;
                 }
                 Err(e) => {
                     error!("Open scene error: {:?}", e);
@@ -143,11 +159,17 @@ pub(crate) fn process_pending_load(app: &mut App) {
             ) {
                 Ok(new_lighting) => {
                     *lighting = new_lighting;
-                    if let Some((pos, yaw, pitch, fov)) = read_camera_from_world(world) {
+                    if let Some((pos, yaw, pitch, fov, speed, near, far)) =
+                        read_camera_from_world(world)
+                    {
                         app.camera.position = pos;
                         app.camera.yaw = yaw;
                         app.camera.pitch = pitch;
                         app.camera.fov = fov;
+                        app.camera.speed = speed;
+                        app.camera.base_speed = speed;
+                        app.camera.near = near;
+                        app.camera.far = far;
                         app.camera.active = false;
                     }
                     app.show_overlay = false;
@@ -179,12 +201,13 @@ pub(crate) fn process_post_ui_ops(app: &mut App) {
                 let gpu_mesh = Arc::new(GpuMesh::from_cpu(&ctx.device, &cpu_mesh));
                 let _entity = world.spawn((
                     Transform::default(),
-                    MeshHandle::new(gpu_mesh, "cube"),
+                    MeshHandle::new(gpu_mesh, MeshSource::Builtin("cube".into()), "cube"),
                     aether_engine::renderer::renderable::MaterialUniform {
                         albedo: [0.8, 0.3, 0.2, 1.0],
                         roughness: 0.5,
                         metallic: 0.0,
                         _pad: [0.0, 0.0],
+                        albedo_texture_id: 0,
                     },
                     Visibility::default(),
                     Name("DefaultCube".into()),
@@ -219,11 +242,17 @@ pub(crate) fn process_post_ui_ops(app: &mut App) {
                 ) {
                     Ok(new_lighting) => {
                         *lighting = new_lighting;
-                        if let Some((pos, yaw, pitch, fov)) = read_camera_from_world(world) {
+                        if let Some((pos, yaw, pitch, fov, speed, near, far)) =
+                            read_camera_from_world(world)
+                        {
                             app.camera.position = pos;
                             app.camera.yaw = yaw;
                             app.camera.pitch = pitch;
                             app.camera.fov = fov;
+                            app.camera.speed = speed;
+                            app.camera.base_speed = speed;
+                            app.camera.near = near;
+                            app.camera.far = far;
                             app.camera.active = false;
                         }
                         info!("Opened scene from {:?}", path);
@@ -321,12 +350,13 @@ pub(crate) fn process_post_ui_ops(app: &mut App) {
                 let gpu_mesh = Arc::new(GpuMesh::from_cpu(&ctx.device, &cpu_mesh));
                 let entity = world.spawn((
                     Transform::default(),
-                    MeshHandle::new(gpu_mesh, "cube"),
+                    MeshHandle::new(gpu_mesh, MeshSource::Builtin("cube".into()), "cube"),
                     aether_engine::renderer::renderable::MaterialUniform {
                         albedo: [0.8, 0.3, 0.2, 1.0],
                         roughness: 0.5,
                         metallic: 0.0,
                         _pad: [0.0, 0.0],
+                        albedo_texture_id: 0,
                     },
                     Visibility::default(),
                     Name("Cube".into()),
@@ -345,12 +375,13 @@ pub(crate) fn process_post_ui_ops(app: &mut App) {
                 let gpu_mesh = Arc::new(GpuMesh::from_cpu(&ctx.device, &cpu_mesh));
                 let entity = world.spawn((
                     Transform::default(),
-                    MeshHandle::new(gpu_mesh, "sphere"),
+                    MeshHandle::new(gpu_mesh, MeshSource::Builtin("sphere".into()), "sphere"),
                     aether_engine::renderer::renderable::MaterialUniform {
                         albedo: [0.2, 0.5, 0.8, 1.0],
                         roughness: 0.05,
                         metallic: 0.0,
                         _pad: [0.0, 0.0],
+                        albedo_texture_id: 0,
                     },
                     Visibility::default(),
                     Name("Sphere".into()),

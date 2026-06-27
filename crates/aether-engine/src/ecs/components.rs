@@ -34,24 +34,38 @@ impl Default for Transform {
     }
 }
 
+/// Source of a mesh reference — used to round-trip scenes through RON.
+#[derive(Clone, Debug, PartialEq)]
+pub enum MeshSource {
+    /// Built-in mesh identified by name (e.g. "cube", "sphere").
+    Builtin(String),
+    /// External mesh file path.
+    File(String),
+}
+
 /// Handle to a GPU mesh.
 ///
 /// Shared ownership via `Arc` so that multiple entities can reference
 /// the same mesh without duplicating GPU memory.
-/// The `name` field stores the original mesh reference (e.g. "cube") for serialization.
+/// `source` stores whether the mesh came from a built-in shape or an external
+/// file, which is what the serializer writes back to the scene file. `name`
+/// is kept for UI labels and debugging.
 #[derive(Clone)]
 pub struct MeshHandle {
     /// GPU mesh data.
     pub mesh: Arc<GpuMesh>,
-    /// Original mesh name (e.g. "cube") for serialization.
+    /// Original mesh source for serialization.
+    pub source: MeshSource,
+    /// Human-readable mesh name for the UI / debug output.
     pub name: String,
 }
 
 impl MeshHandle {
     /// Create a new mesh handle.
-    pub fn new(mesh: Arc<GpuMesh>, name: impl Into<String>) -> Self {
+    pub fn new(mesh: Arc<GpuMesh>, source: MeshSource, name: impl Into<String>) -> Self {
         Self {
             mesh,
+            source,
             name: name.into(),
         }
     }
@@ -59,7 +73,10 @@ impl MeshHandle {
 
 impl std::fmt::Debug for MeshHandle {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("MeshHandle").field(&self.name).finish()
+        f.debug_struct("MeshHandle")
+            .field("source", &self.source)
+            .field("name", &self.name)
+            .finish()
     }
 }
 
@@ -81,7 +98,7 @@ pub struct Selected;
 ///
 /// Stores camera intrinsic parameters. Extrinsic parameters (position,
 /// rotation) are stored in the `Transform` component on the same entity.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Camera {
     /// Vertical field of view in radians.
     pub fov: f32,
@@ -89,6 +106,8 @@ pub struct Camera {
     pub near: f32,
     /// Far clip plane.
     pub far: f32,
+    /// Movement speed (units per second) for fly mode.
+    pub speed: f32,
 }
 
 impl Default for Camera {
@@ -97,6 +116,7 @@ impl Default for Camera {
             fov: 45.0f32.to_radians(),
             near: 0.1,
             far: 1000.0,
+            speed: 4.0,
         }
     }
 }

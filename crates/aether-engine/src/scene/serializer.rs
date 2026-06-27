@@ -81,8 +81,10 @@ fn extract_camera(world: &World) -> CameraConfig {
             position: transform.translation.to_array(),
             yaw,
             pitch,
-            speed: 4.0,
+            speed: cam.speed,
             fov: cam.fov.to_degrees(),
+            near: cam.near,
+            far: cam.far,
         };
     }
     camera
@@ -173,9 +175,14 @@ fn extract_objects(world: &World) -> Vec<ObjectConfig> {
         )>()
         .iter()
     {
+        let mesh_ref = match &mesh_handle.source {
+            crate::ecs::components::MeshSource::Builtin(name) => MeshRef::Builtin(name.clone()),
+            crate::ecs::components::MeshSource::File(path) => MeshRef::File(path.clone()),
+        };
+
         let obj = ObjectConfig {
             name: name.0.clone(),
-            mesh: MeshRef::Builtin(mesh_handle.name.clone()),
+            mesh: mesh_ref,
             transform: TransformConfig {
                 translation: transform.translation.to_array(),
                 rotation: transform.rotation.to_array(),
@@ -185,6 +192,7 @@ fn extract_objects(world: &World) -> Vec<ObjectConfig> {
                 albedo: material.albedo,
                 roughness: material.roughness,
                 metallic: material.metallic,
+                albedo_texture: None,
             },
         };
         objects.push(obj);
@@ -260,7 +268,11 @@ mod tests {
         let gpu_mesh = Arc::new(crate::asset::mesh::GpuMesh::from_cpu(device, &cpu_mesh));
         world.spawn((
             Transform::default(),
-            crate::ecs::components::MeshHandle::new(gpu_mesh, mesh_name),
+            crate::ecs::components::MeshHandle::new(
+                gpu_mesh,
+                crate::ecs::components::MeshSource::Builtin(mesh_name.into()),
+                mesh_name,
+            ),
             MaterialUniform::default(),
             Visibility::default(),
             Name(name.into()),
@@ -323,6 +335,34 @@ mod tests {
     }
 
     #[test]
+    fn extract_object_preserves_file_mesh_source() {
+        let device = headless_device();
+        let registry = BuiltinMeshRegistry::new();
+        let mut world = World::new();
+        let cpu_mesh = registry.get("cube").expect("known mesh");
+        let gpu_mesh = Arc::new(crate::asset::mesh::GpuMesh::from_cpu(&device, &cpu_mesh));
+        world.spawn((
+            Transform::default(),
+            crate::ecs::components::MeshHandle::new(
+                gpu_mesh,
+                crate::ecs::components::MeshSource::File("assets/models/dragon.obj".into()),
+                "assets/models/dragon.obj",
+            ),
+            MaterialUniform::default(),
+            Visibility::default(),
+            Name("Dragon".into()),
+        ));
+
+        let objects = extract_objects(&world);
+        assert_eq!(objects.len(), 1);
+        assert_eq!(objects[0].name, "Dragon");
+        assert_eq!(
+            objects[0].mesh,
+            MeshRef::File("assets/models/dragon.obj".into())
+        );
+    }
+
+    #[test]
     fn serialize_world_full_roundtrip() {
         let device = headless_device();
         let registry = BuiltinMeshRegistry::new();
@@ -354,7 +394,11 @@ mod tests {
         let gpu_mesh = Arc::new(crate::asset::mesh::GpuMesh::from_cpu(&device, &cpu_mesh));
         world.spawn((
             Transform::default(),
-            crate::ecs::components::MeshHandle::new(gpu_mesh, "cube"),
+            crate::ecs::components::MeshHandle::new(
+                gpu_mesh,
+                crate::ecs::components::MeshSource::Builtin("cube".into()),
+                "cube",
+            ),
             MaterialUniform::default(),
             Visibility::default(),
             Name("DefaultCube".into()),
@@ -380,6 +424,8 @@ mod tests {
                 pitch: -0.5,
                 speed: 4.0,
                 fov: 60.0,
+                near: 0.1,
+                far: 1000.0,
             },
             lights: vec![LightConfig {
                 light_type: LightType::Directional,

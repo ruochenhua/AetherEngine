@@ -11,7 +11,7 @@ mod render;
 pub(crate) use apply::{apply, apply_undo};
 
 use aether_engine::ecs::components::{
-    Atmosphere, Clouds, GodRay, Light, Terrain, Transform, Water,
+    Atmosphere, Camera, Clouds, GodRay, Light, Terrain, Transform, Water,
 };
 use aether_engine::ecs::{Entity, World};
 use aether_engine::renderer::renderable::MaterialUniform;
@@ -52,6 +52,8 @@ pub(crate) enum EditorCommand {
     Clouds { entity: Entity, old_clouds: Clouds },
     /// Restore a GodRay to a previous value.
     GodRay { entity: Entity, old_god_ray: GodRay },
+    /// Restore a Camera to a previous value.
+    Camera { entity: Entity, old_camera: Camera },
 }
 
 /// Editable snapshot of the currently selected entity.
@@ -85,6 +87,12 @@ pub(crate) enum InspectorTarget {
     Clouds { entity: Entity, clouds: Clouds },
     /// God ray actor.
     GodRay { entity: Entity, god_ray: GodRay },
+    /// Scene camera.
+    Camera {
+        entity: Entity,
+        camera: Camera,
+        fov_degrees: f32,
+    },
 }
 
 impl InspectorTarget {
@@ -97,6 +105,7 @@ impl InspectorTarget {
             InspectorTarget::Atmosphere { entity, .. } => entity,
             InspectorTarget::Clouds { entity, .. } => entity,
             InspectorTarget::GodRay { entity, .. } => entity,
+            InspectorTarget::Camera { entity, .. } => entity,
         }
     }
 }
@@ -178,6 +187,16 @@ pub(crate) fn extract(world: &World) -> Option<InspectorTarget> {
         return Some(InspectorTarget::GodRay {
             entity,
             god_ray: god_ray.clone(),
+        });
+    }
+
+    // Camera.
+    let mut q = world.query_one::<&Camera>(entity);
+    if let Ok(camera) = q.get() {
+        return Some(InspectorTarget::Camera {
+            entity,
+            camera: *camera,
+            fov_degrees: camera.fov.to_degrees(),
         });
     }
 
@@ -300,6 +319,106 @@ mod tests {
         assert_eq!(terrain.material.layers[0].roughness, 0.1);
     }
 
+    fn world_with_camera() -> (World, Entity) {
+        let mut world = World::new();
+        let entity = world.spawn((
+            Transform::default(),
+            Camera {
+                fov: 60.0f32.to_radians(),
+                near: 0.1,
+                far: 500.0,
+                speed: 8.0,
+            },
+            Selected,
+        ));
+        (world, entity)
+    }
+
+    #[test]
+    fn extract_returns_camera_for_selected_camera_entity() {
+        let (world, entity) = world_with_camera();
+        let target = extract(&world).expect("should extract camera target");
+        assert_eq!(target.entity(), entity);
+        match target {
+            InspectorTarget::Camera {
+                camera,
+                fov_degrees,
+                ..
+            } => {
+                assert!((camera.fov - 60.0f32.to_radians()).abs() < 1e-4);
+                assert!((fov_degrees - 60.0).abs() < 1e-4);
+                assert_eq!(camera.speed, 8.0);
+                assert_eq!(camera.near, 0.1);
+                assert_eq!(camera.far, 500.0);
+            }
+            _ => panic!("expected Camera target"),
+        }
+    }
+
+    #[test]
+    fn apply_camera_updates_component() {
+        let (mut world, entity) = world_with_camera();
+        let mut target = extract(&world).unwrap();
+        match &mut target {
+            InspectorTarget::Camera {
+                camera,
+                fov_degrees,
+                ..
+            } => {
+                *fov_degrees = 90.0;
+                camera.fov = 90.0f32.to_radians();
+                camera.speed = 16.0;
+                camera.near = 0.5;
+                camera.far = 2000.0;
+            }
+            _ => panic!("expected Camera target"),
+        }
+        let mut undo = Vec::new();
+        let mut redo = Vec::new();
+        apply(&target, &mut world, &mut undo, &mut redo);
+
+        let camera = world.query_one_mut::<&Camera>(entity).unwrap();
+        assert!((camera.fov - 90.0f32.to_radians()).abs() < 1e-4);
+        assert_eq!(camera.speed, 16.0);
+        assert_eq!(camera.near, 0.5);
+        assert_eq!(camera.far, 2000.0);
+    }
+
+    #[test]
+    fn apply_camera_undo_restores_previous_values() {
+        let (mut world, entity) = world_with_camera();
+        let mut target = extract(&world).unwrap();
+        match &mut target {
+            InspectorTarget::Camera {
+                camera,
+                fov_degrees,
+                ..
+            } => {
+                *fov_degrees = 90.0;
+                camera.fov = 90.0f32.to_radians();
+                camera.speed = 16.0;
+            }
+            _ => panic!("expected Camera target"),
+        }
+        let mut undo = Vec::new();
+        let mut redo = Vec::new();
+        apply(&target, &mut world, &mut undo, &mut redo);
+        assert_eq!(undo.len(), 1);
+
+        let redo = apply_undo(&mut world, &undo.pop().unwrap());
+        let camera = world.query_one_mut::<&Camera>(entity).unwrap();
+        assert!((camera.fov - 60.0f32.to_radians()).abs() < 1e-4);
+        assert_eq!(camera.speed, 8.0);
+
+        match redo {
+            EditorCommand::Camera { old_camera, .. } => {
+                assert!((old_camera.fov - 90.0f32.to_radians()).abs() < 1e-4);
+                assert_eq!(old_camera.speed, 16.0);
+            }
+            _ => panic!("expected Camera undo command"),
+        }
+    }
+
     fn headless_device() -> wgpu::Device {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
         let adapter =
@@ -320,12 +439,17 @@ mod tests {
         ));
         let entity = world.spawn((
             Transform::default(),
-            aether_engine::ecs::components::MeshHandle::new(gpu_mesh, "cube"),
+            aether_engine::ecs::components::MeshHandle::new(
+                gpu_mesh,
+                aether_engine::ecs::components::MeshSource::Builtin("cube".into()),
+                "cube",
+            ),
             MaterialUniform {
                 albedo: [0.8, 0.3, 0.2, 1.0],
                 roughness: 0.5,
                 metallic: 0.0,
                 _pad: [0.0, 0.0],
+                albedo_texture_id: 0,
             },
             Selected,
         ));

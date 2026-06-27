@@ -40,7 +40,7 @@ Issue body 或评论中必须包含：
 ## Verification Checklist
 
 - [ ] 单元测试通过 (`cargo test`)
-- [ ] 场景截图已捕获 (`tests/output/`)
+- [ ] 场景截图已捕获 (`output/<issue-name>/`)
 - [ ] 与参考图对比通过 (SSIM ≥ 0.95 或 Agent 判定 PASS)
 - [ ] 测试报告已生成 (`tests/reports/`)
 - [ ] 参考图已更新（如视觉变更是预期的）
@@ -142,7 +142,7 @@ QA Agent 验证后应在 `tests/reports/` 生成报告：
 **PASS** — 可以合并
 
 ### Artifacts
-- Output: `tests/output/05_ssao_debug.png`
+- Output: `output/05_ssao_debug/05_ssao_debug.png`
 - Reference: `tests/reference/05_ssao_debug.png`
 ```
 

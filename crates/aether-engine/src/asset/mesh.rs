@@ -3,6 +3,40 @@ use crate::math::Aabb;
 use bytemuck::{Pod, Zeroable};
 use glam::Vec3;
 use std::path::Path;
+use std::sync::Arc;
+
+/// CPU-side PBR material description used while loading models.
+///
+/// This is a simplified material representation that captures the fields the
+/// deferred PBR pipeline currently supports. It is populated by OBJ/ glTF
+/// loaders and then converted into a [`MaterialUniform`](crate::renderer::renderable::MaterialUniform)
+/// when spawning scene objects.
+#[derive(Debug, Clone, Default)]
+pub struct CpuMaterial {
+    /// Human-readable material name.
+    pub name: String,
+    /// Base color multiplier.
+    pub base_color: [f32; 4],
+    /// Metallic factor.
+    pub metallic: f32,
+    /// Roughness factor.
+    pub roughness: f32,
+    /// Path to the albedo/base-color texture, relative to the project root.
+    pub albedo_texture: Option<String>,
+}
+
+/// A contiguous range of indices in a [`CpuMesh`] that uses a specific material.
+#[derive(Debug, Clone)]
+pub struct CpuSubmesh {
+    /// Human-readable submesh name (object/group/primitive name).
+    pub name: String,
+    /// Offset into [`CpuMesh::indices`].
+    pub index_offset: usize,
+    /// Number of indices.
+    pub index_count: usize,
+    /// Material to use for this range.
+    pub material: CpuMaterial,
+}
 
 /// CPU-side mesh data.
 #[derive(Debug, Clone)]
@@ -17,6 +51,9 @@ pub struct CpuMesh {
     pub tangents: Vec<[f32; 4]>,
     /// Index data.
     pub indices: Vec<u32>,
+    /// Optional material submeshes. When empty the whole mesh uses the
+    /// material assigned by the scene.
+    pub submeshes: Vec<CpuSubmesh>,
 }
 
 impl CpuMesh {
@@ -141,6 +178,7 @@ impl CpuMesh {
             uvs,
             tangents: Vec::new(),
             indices,
+            submeshes: Vec::new(),
         }
     }
 
@@ -193,6 +231,7 @@ impl CpuMesh {
             uvs,
             tangents: Vec::new(),
             indices,
+            submeshes: Vec::new(),
         }
     }
 
@@ -219,6 +258,7 @@ impl CpuMesh {
             uvs,
             tangents: Vec::new(),
             indices,
+            submeshes: Vec::new(),
         }
     }
 
@@ -245,6 +285,7 @@ impl CpuMesh {
             uvs,
             tangents: Vec::new(),
             indices,
+            submeshes: Vec::new(),
         }
     }
 
@@ -270,31 +311,19 @@ impl CpuMesh {
 
 impl Asset for CpuMesh {
     fn load(path: &Path) -> anyhow::Result<Self> {
-        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-
-        match ext {
-            "obj" => load_obj(path),
-            "gltf" | "glb" => load_gltf(path),
-            _ => anyhow::bail!("Unsupported mesh format: {}", ext),
-        }
+        crate::asset::loaders::load_mesh(path)
     }
-}
-
-fn load_obj(_path: &Path) -> anyhow::Result<CpuMesh> {
-    anyhow::bail!("OBJ loading not yet implemented")
-}
-
-fn load_gltf(_path: &Path) -> anyhow::Result<CpuMesh> {
-    anyhow::bail!("GLTF mesh loading not yet implemented")
 }
 
 /// GPU mesh representation.
 #[derive(Debug)]
 pub struct GpuMesh {
     /// Vertex buffer.
-    pub vertex_buffer: wgpu::Buffer,
+    pub vertex_buffer: Arc<wgpu::Buffer>,
     /// Index buffer (optional).
-    pub index_buffer: Option<wgpu::Buffer>,
+    pub index_buffer: Option<Arc<wgpu::Buffer>>,
+    /// Offset into the index buffer for the first draw index.
+    pub index_offset: u32,
     /// Number of indices.
     pub index_count: u32,
     /// Number of vertices.
@@ -309,11 +338,13 @@ impl GpuMesh {
         use wgpu::util::DeviceExt;
 
         let vertices = cpu.to_vertices();
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Mesh Vertex Buffer"),
-            contents: bytemuck::cast_slice(&vertices),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
+        let vertex_buffer = Arc::new(device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Mesh Vertex Buffer"),
+                contents: bytemuck::cast_slice(&vertices),
+                usage: wgpu::BufferUsages::VERTEX,
+            },
+        ));
 
         let (index_buffer, index_count) = if cpu.indices.is_empty() {
             (None, vertices.len() as u32)
@@ -323,7 +354,7 @@ impl GpuMesh {
                 contents: bytemuck::cast_slice(&cpu.indices),
                 usage: wgpu::BufferUsages::INDEX,
             });
-            (Some(buffer), cpu.indices.len() as u32)
+            (Some(Arc::new(buffer)), cpu.indices.len() as u32)
         };
 
         let aabb = cpu.compute_aabb();
@@ -331,9 +362,25 @@ impl GpuMesh {
         Self {
             vertex_buffer,
             index_buffer,
+            index_offset: 0,
             index_count,
             vertex_count: vertices.len() as u32,
             aabb,
+        }
+    }
+
+    /// Create a view into a contiguous index range of an existing GPU mesh.
+    ///
+    /// The returned mesh shares the same vertex/index buffers but draws only
+    /// `index_count` indices starting at `index_offset`.
+    pub fn submesh_view(parent: &GpuMesh, index_offset: u32, index_count: u32) -> Self {
+        Self {
+            vertex_buffer: Arc::clone(&parent.vertex_buffer),
+            index_buffer: parent.index_buffer.as_ref().map(Arc::clone),
+            index_offset,
+            index_count,
+            vertex_count: parent.vertex_count,
+            aabb: parent.aabb,
         }
     }
 }

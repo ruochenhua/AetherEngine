@@ -1,0 +1,38 @@
+SceneDescription(
+    name: "Textured Objects",
+    camera: (
+        position: (3.0, 3.0, 5.0),
+        yaw: -2.5,
+        pitch: -0.4,
+    ),
+    lights: [(
+        light_type: Directional,
+        direction: (0.3, -1.0, -0.5),
+        color: (1.0, 1.0, 1.0),
+        intensity: 1.5,
+    )],
+    objects: [
+        (
+            name: "TexturedCube",
+            mesh: Builtin("cube"),
+            transform: (translation: (-1.0, 0.0, 0.0)),
+            material: (
+                albedo: (1.0, 1.0, 1.0, 1.0),
+                roughness: 0.5,
+                metallic: 0.0,
+                albedo_texture: Some("assets/textures/test_checker.png"),
+            ),
+        ),
+        (
+            name: "TexturedSphere",
+            mesh: Builtin("sphere"),
+            transform: (translation: (1.0, 0.0, 0.0)),
+            material: (
+                albedo: (1.0, 1.0, 1.0, 1.0),
+                roughness: 0.3,
+                metallic: 0.1,
+                albedo_texture: Some("assets/textures/test_checker.png"),
+            ),
+        ),
+    ],
+)

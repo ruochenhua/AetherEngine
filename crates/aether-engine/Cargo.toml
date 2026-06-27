@@ -30,7 +30,11 @@ egui-winit = { workspace = true }
 
 # Asset
 gltf = { workspace = true }
+tobj = { workspace = true }
 image = { workspace = true }
+
+# Procedural generation
+noise = { workspace = true }
 
 # Serialization
 serde = { workspace = true }

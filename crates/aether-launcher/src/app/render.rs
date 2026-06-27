@@ -8,7 +8,7 @@ use aether_engine::renderer::{
 };
 use std::sync::Arc;
 use std::time::Instant;
-use tracing::{error, info, trace};
+use tracing::{debug, error, info, trace};
 
 /// Save a GPU screenshot buffer to a PNG file on disk.
 fn save_screenshot(
@@ -217,7 +217,15 @@ pub(crate) fn frame(
                 delta_time: dt,
                 optional: &optional,
                 config: &frame_config,
+                texture_cache: app.texture_cache.as_ref().unwrap(),
+                asset_manager: &app.asset_manager,
             };
+            debug!(
+                "frame {} scheduler passes={} optional.terrain.is_some()={}",
+                app.frame_count,
+                scheduler.pass_names().join(","),
+                optional.terrain.is_some()
+            );
             let t_apply_0 = Instant::now();
             scheduler.apply_frame_all(&frame);
             apply_ms = t_apply_0.elapsed().as_secs_f64() * 1000.0;

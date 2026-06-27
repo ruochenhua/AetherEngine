@@ -78,7 +78,7 @@ impl Default for TerrainLayerConfig {
 pub enum TerrainSource {
     /// Load height from an image file (grayscale heightmap).
     Heightmap(String),
-    /// Procedurally generated height field.
+    /// Procedurally generated height field using layered sine waves.
     Procedural {
         /// Random seed.
         seed: u64,
@@ -89,6 +89,29 @@ pub enum TerrainSource {
         #[serde(default = "default_noise_amplitude")]
         amplitude: f32,
     },
+    /// FBM Perlin noise generated height field.
+    Perlin {
+        /// Random seed.
+        seed: u64,
+        /// Base noise frequency.
+        #[serde(default = "default_noise_frequency")]
+        frequency: f32,
+        /// Maximum displacement amplitude.
+        #[serde(default = "default_noise_amplitude")]
+        amplitude: f32,
+        /// Number of FBM octaves.
+        #[serde(default = "default_perlin_octaves")]
+        octaves: u32,
+        /// Amplitude decay per octave.
+        #[serde(default = "default_perlin_persistence")]
+        persistence: f32,
+        /// Frequency multiplier per octave.
+        #[serde(default = "default_perlin_lacunarity")]
+        lacunarity: f32,
+        /// Optional post-exponent for terracing (1.0 = linear).
+        #[serde(default = "default_perlin_exponent")]
+        exponent: f32,
+    },
 }
 
 fn default_noise_frequency() -> f32 {
@@ -96,6 +119,18 @@ fn default_noise_frequency() -> f32 {
 }
 fn default_noise_amplitude() -> f32 {
     32.0
+}
+fn default_perlin_octaves() -> u32 {
+    4
+}
+fn default_perlin_persistence() -> f32 {
+    0.5
+}
+fn default_perlin_lacunarity() -> f32 {
+    2.0
+}
+fn default_perlin_exponent() -> f32 {
+    1.0
 }
 
 /// Geometry generation strategy for terrain.

@@ -19,6 +19,12 @@ pub struct CameraConfig {
     /// Vertical field of view in degrees.
     #[serde(default = "default_fov")]
     pub fov: f32,
+    /// Near clip plane.
+    #[serde(default = "default_near")]
+    pub near: f32,
+    /// Far clip plane.
+    #[serde(default = "default_far")]
+    pub far: f32,
 }
 
 fn default_camera_speed() -> f32 {
@@ -26,6 +32,12 @@ fn default_camera_speed() -> f32 {
 }
 fn default_fov() -> f32 {
     45.0
+}
+fn default_near() -> f32 {
+    0.1
+}
+fn default_far() -> f32 {
+    1000.0
 }
 
 impl Default for CameraConfig {
@@ -36,6 +48,8 @@ impl Default for CameraConfig {
             pitch: -0.785,
             speed: default_camera_speed(),
             fov: default_fov(),
+            near: default_near(),
+            far: default_far(),
         }
     }
 }

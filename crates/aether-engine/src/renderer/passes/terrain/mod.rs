@@ -28,6 +28,7 @@ pub struct TerrainPass {
     view_proj_bind_group: wgpu::BindGroup,
     terrain_buffer: wgpu::Buffer,
     terrain_bind_group: wgpu::BindGroup,
+    terrain_bind_group_layout: wgpu::BindGroupLayout,
 
     pos_handle: Option<ResHandle<GPosition>>,
     normal_handle: Option<ResHandle<GNormal>>,
@@ -81,7 +82,7 @@ impl Pass for TerrainPass {
     }
 
     fn init(ctx: &InitContext) -> Self {
-        Self::new(ctx.device)
+        Self::new(ctx.device, ctx.queue)
     }
 
     fn resolve(&mut self, _device: &wgpu::Device, resources: &ResourceTable) {
@@ -97,6 +98,11 @@ impl Pass for TerrainPass {
     }
 
     fn apply_frame(&mut self, frame: &RenderFrame) {
+        tracing::debug!(
+            target: "aether_engine::renderer::passes::terrain",
+            "TerrainPass::apply_frame called, optional.terrain.is_some()={}",
+            frame.optional.terrain.is_some()
+        );
         if let Some(terrain) = frame.optional.terrain.clone() {
             self.has_terrain = true;
             self.update_terrain(
@@ -104,6 +110,8 @@ impl Pass for TerrainPass {
                 &frame.camera.view_matrix(),
                 &frame.camera.projection_matrix(frame.aspect),
                 frame.queue,
+                frame.texture_cache,
+                frame.asset_manager,
             );
         } else {
             self.has_terrain = false;
@@ -116,6 +124,12 @@ impl Pass for TerrainPass {
         resources: &ResourceTable,
         _surface_view: &wgpu::TextureView,
     ) {
+        tracing::debug!(
+            target: "aether_engine::renderer::passes::terrain",
+            "TerrainPass::execute called, has_terrain={}, visible_chunks={}",
+            self.has_terrain,
+            self.visible_chunk_indices.len()
+        );
         if !self.has_terrain || self.visible_chunk_indices.is_empty() {
             return;
         }
@@ -199,7 +213,7 @@ impl Pass for TerrainPass {
 
 impl TerrainPass {
     /// Create a new terrain pass.
-    pub fn new(device: &wgpu::Device) -> Self {
+    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Terrain Shader"),
             source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(shaders::TERRAIN)),
@@ -221,16 +235,74 @@ impl TerrainPass {
 
         let terrain_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Terrain Material BGL"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
                 },
-                count: None,
-            }],
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 4,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 5,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 6,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+            ],
         });
 
         let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -317,13 +389,47 @@ impl TerrainPass {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
+
+        // Fallback 1x1 white texture until the first real terrain material is resolved.
+        let fallback = Arc::new(crate::asset::texture::GpuTexture::from_cpu(
+            device,
+            queue,
+            &crate::asset::texture::CpuTexture::from_color(255, 255, 255, 255),
+            Some("terrain_fallback_white"),
+        ));
         let terrain_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Terrain Material BG"),
             layout: &terrain_bgl,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: terrain_buffer.as_entire_binding(),
-            }],
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: terrain_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&fallback.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(&fallback.sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::TextureView(&fallback.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: wgpu::BindingResource::TextureView(&fallback.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: wgpu::BindingResource::TextureView(&fallback.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 6,
+                    resource: wgpu::BindingResource::TextureView(&fallback.view),
+                },
+            ],
         });
 
         let instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -340,6 +446,7 @@ impl TerrainPass {
             view_proj_bind_group,
             terrain_buffer,
             terrain_bind_group,
+            terrain_bind_group_layout: terrain_bgl,
             pos_handle: None,
             normal_handle: None,
             albedo_handle: None,

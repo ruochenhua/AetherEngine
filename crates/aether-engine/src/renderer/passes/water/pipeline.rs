@@ -313,5 +313,6 @@ fn create_water_plane(subdivisions: u32, extent: f32) -> CpuMesh {
         uvs,
         tangents: Vec::new(),
         indices,
+        submeshes: Vec::new(),
     }
 }

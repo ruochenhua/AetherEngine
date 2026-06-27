@@ -50,11 +50,11 @@ impl SceneLoader {
         path: &Path,
         device: &wgpu::Device,
         registry: &BuiltinMeshRegistry,
-        _assets: &mut AssetManager,
+        assets: &mut AssetManager,
         world: &mut World,
     ) -> anyhow::Result<()> {
         let desc = Self::from_file(path)?;
-        objects::build_objects(&desc, device, registry, world)?;
+        objects::build_objects(&desc, device, registry, assets, world)?;
         Ok(())
     }
 
@@ -86,7 +86,7 @@ impl SceneLoader {
         spawn::spawn_clouds(world, desc.clouds.as_ref());
         spawn::spawn_god_ray(world, desc.god_ray.as_ref());
         spawn::spawn_terrain(world, desc.terrain.as_ref(), assets);
-        objects::build_objects(desc, device, registry, world)?;
+        objects::build_objects(desc, device, registry, assets, world)?;
         Ok(lighting::build_lighting_uniforms(desc))
     }
 
@@ -137,7 +137,7 @@ impl SceneLoader {
             inv_view_proj: [[0.0; 4]; 4],
             camera_forward: [0.0, 0.0, -1.0],
             _pad_cam: 0,
-            ssao_enabled: 1,
+            ssao_enabled: 0,
             shadow_enabled: 1,
             ibl_enabled: 1,
             _pad4: 0,
@@ -198,6 +198,7 @@ mod tests {
                         albedo: [0.8, 0.3, 0.2, 1.0],
                         roughness: 0.5,
                         metallic: 0.0,
+                        albedo_texture: None,
                     },
                 },
                 ObjectConfig {
@@ -211,6 +212,7 @@ mod tests {
                         albedo: [0.2, 0.5, 0.8, 1.0],
                         roughness: 0.05,
                         metallic: 0.0,
+                        albedo_texture: None,
                     },
                 },
             ],
@@ -354,16 +356,32 @@ mod tests {
     }
 
     #[test]
-    fn build_world_file_mesh_returns_error() {
+    fn build_world_file_mesh_loads_obj() {
         let device = headless_device();
         let registry = test_registry();
         let mut desc = test_scene_desc();
-        desc.objects[0].mesh = MeshRef::File("foo.obj".into());
+
+        let dir = std::env::temp_dir().join("aether_test_file_mesh");
+        let _ = std::fs::create_dir(&dir);
+        let obj_path = dir.join("test_quad.obj");
+        std::fs::write(
+            &obj_path,
+            "v 0.0 0.0 0.0\nv 1.0 0.0 0.0\nv 1.0 0.0 1.0\nv 0.0 0.0 1.0\nf 1 3 2\nf 1 4 3\n",
+        )
+        .unwrap();
+
+        desc.objects[0].mesh = MeshRef::File(obj_path.to_string_lossy().to_string());
         let mut world = World::new();
         let mut assets = test_assets();
 
-        let result = SceneLoader::build_world(&desc, &device, &registry, &mut assets, &mut world);
-        assert!(result.is_err());
+        SceneLoader::build_world(&desc, &device, &registry, &mut assets, &mut world)
+            .expect("file mesh should load");
+
+        // The original cube_left object is now a file mesh; both objects still spawn.
+        assert_eq!(world.len(), 4);
+
+        let _ = std::fs::remove_file(&obj_path);
+        let _ = std::fs::remove_dir(&dir);
     }
 
     #[test]

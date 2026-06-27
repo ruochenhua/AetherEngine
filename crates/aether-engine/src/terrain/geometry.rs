@@ -6,6 +6,7 @@
 use crate::asset::mesh::CpuMesh;
 use crate::math::{Aabb, Vec3};
 use crate::scene::TerrainSource;
+use noise::{Fbm, NoiseFn, Perlin};
 
 /// A single terrain chunk at a specific LOD level.
 #[derive(Debug, Clone)]
@@ -57,6 +58,49 @@ impl HeightFunction for ProceduralHeight {
     }
 }
 
+/// Height function using FBM Perlin noise.
+pub struct PerlinHeight {
+    fbm: Fbm<Perlin>,
+    amplitude: f32,
+    exponent: f32,
+}
+
+impl PerlinHeight {
+    /// Create a new Perlin height source.
+    pub fn new(
+        seed: u64,
+        frequency: f32,
+        amplitude: f32,
+        octaves: u32,
+        persistence: f32,
+        lacunarity: f32,
+        exponent: f32,
+    ) -> Self {
+        let mut fbm = Fbm::<Perlin>::new(seed as u32);
+        fbm.frequency = frequency as f64;
+        fbm.octaves = octaves as usize;
+        fbm.persistence = persistence as f64;
+        fbm.lacunarity = lacunarity as f64;
+        Self {
+            fbm,
+            amplitude,
+            exponent,
+        }
+    }
+}
+
+impl HeightFunction for PerlinHeight {
+    fn sample(&self, x: f32, z: f32) -> f32 {
+        let v = self.fbm.get([x as f64, z as f64]) as f32;
+        let shaped = if v == 0.0 {
+            0.0
+        } else {
+            v.signum() * v.abs().powf(self.exponent)
+        };
+        shaped * self.amplitude
+    }
+}
+
 /// Generate a flat grid mesh with the given vertex count and world-space size.
 ///
 /// `segments` is the number of quads along each edge. The mesh is centered at
@@ -66,6 +110,7 @@ pub fn generate_chunk_mesh(
     size: f32,
     height: &dyn HeightFunction,
     with_skirt: bool,
+    offset: (f32, f32),
 ) -> CpuMesh {
     let segments = segments.max(1);
     let verts_per_side = segments + 1;
@@ -76,12 +121,15 @@ pub fn generate_chunk_mesh(
     let half_size = size * 0.5;
     let step = size / segments as f32;
 
-    // Helper to push a vertex.
+    // Helper to push a vertex. Sample height in world space by adding the chunk
+    // origin offset so adjacent chunks share edge heights seamlessly.
     let mut add_vertex = |x: f32, z: f32, is_skirt: bool| {
+        let wx = x + offset.0;
+        let wz = z + offset.1;
         let y = if is_skirt {
-            height.sample(x, z) - size * 0.15
+            height.sample(wx, wz) - size * 0.03
         } else {
-            height.sample(x, z)
+            height.sample(wx, wz)
         };
         positions.push([x, y, z]);
         normals.push([0.0, 1.0, 0.0]);
@@ -112,8 +160,10 @@ pub fn generate_chunk_mesh(
         }
     }
 
-    // Compute flat normals from face averages.
-    recompute_normals(&mut normals, &positions);
+    // Compute smooth normals from the height function gradient. Sampling in world
+    // space guarantees that adjacent chunks produce matching edge normals, avoiding
+    // the faceted shading seams you get when each chunk recomputes normals locally.
+    compute_smooth_normals(&mut normals, &positions, offset, step, height);
 
     CpuMesh {
         positions,
@@ -121,6 +171,7 @@ pub fn generate_chunk_mesh(
         uvs,
         tangents: Vec::new(),
         indices: generate_grid_indices(verts_per_side, with_skirt),
+        submeshes: Vec::new(),
     }
 }
 
@@ -154,49 +205,30 @@ fn generate_grid_indices(verts_per_side: u32, with_skirt: bool) -> Vec<u32> {
     indices
 }
 
-fn recompute_normals(normals: &mut [[f32; 3]], positions: &[[f32; 3]]) {
-    for n in normals.iter_mut() {
-        *n = [0.0, 0.0, 0.0];
-    }
-    // Assume a regular grid. Accumulate face normals per vertex.
-    let count = positions.len();
-    let side = (count as f32).sqrt() as usize;
-    if side * side != count {
-        // Fallback for non-square grids.
-        for n in normals.iter_mut() {
-            *n = [0.0, 1.0, 0.0];
-        }
-        return;
-    }
+/// Compute smooth normals by finite-differencing the height function in world
+/// space. This keeps normals consistent across chunk boundaries and removes the
+/// faceted grid lines caused by per-chunk face-normal averaging.
+fn compute_smooth_normals(
+    normals: &mut [[f32; 3]],
+    positions: &[[f32; 3]],
+    offset: (f32, f32),
+    step: f32,
+    height: &dyn HeightFunction,
+) {
+    let two_step = step * 2.0;
+    for (n, p) in normals.iter_mut().zip(positions.iter()) {
+        let wx = p[0] + offset.0;
+        let wz = p[2] + offset.1;
 
-    for row in 0..side - 1 {
-        for col in 0..side - 1 {
-            let i0 = row * side + col;
-            let i1 = i0 + 1;
-            let i2 = (row + 1) * side + col;
-            let i3 = i2 + 1;
+        let h_l = height.sample(wx - step, wz);
+        let h_r = height.sample(wx + step, wz);
+        let h_d = height.sample(wx, wz - step);
+        let h_u = height.sample(wx, wz + step);
 
-            let p0 = Vec3::from_array(positions[i0]);
-            let p1 = Vec3::from_array(positions[i1]);
-            let p2 = Vec3::from_array(positions[i2]);
-            let p3 = Vec3::from_array(positions[i3]);
+        let dh_dx = (h_r - h_l) / two_step;
+        let dh_dz = (h_u - h_d) / two_step;
 
-            let n0 = (p2 - p0).cross(p1 - p0).normalize();
-            let n1 = (p1 - p2).cross(p3 - p2).normalize();
-
-            for idx in [i0, i1, i2] {
-                let v = Vec3::from_array(normals[idx]) + n0;
-                normals[idx] = v.to_array();
-            }
-            for idx in [i1, i2, i3] {
-                let v = Vec3::from_array(normals[idx]) + n1;
-                normals[idx] = v.to_array();
-            }
-        }
-    }
-
-    for n in normals.iter_mut() {
-        let v = Vec3::from_array(*n).normalize();
+        let v = Vec3::new(-dh_dx, 1.0, -dh_dz).normalize();
         *n = if v.is_nan() {
             [0.0, 1.0, 0.0]
         } else {
@@ -218,6 +250,23 @@ pub fn height_function_from_source(source: &TerrainSource) -> Box<dyn HeightFunc
             frequency,
             amplitude,
         } => Box::new(ProceduralHeight::new(*seed, *frequency, *amplitude)),
+        TerrainSource::Perlin {
+            seed,
+            frequency,
+            amplitude,
+            octaves,
+            persistence,
+            lacunarity,
+            exponent,
+        } => Box::new(PerlinHeight::new(
+            *seed,
+            *frequency,
+            *amplitude,
+            *octaves,
+            *persistence,
+            *lacunarity,
+            *exponent,
+        )),
     }
 }
 
@@ -226,13 +275,16 @@ pub fn generate_chunk_lod_meshes(
     max_lod: u32,
     base_size: f32,
     height: &dyn HeightFunction,
+    offset: (f32, f32),
 ) -> Vec<CpuMesh> {
     let mut meshes = Vec::with_capacity((max_lod + 1) as usize);
     for lod in 0..=max_lod {
         // Each LOD halves the segment count.
         let segments = 4u32.max(64 >> lod);
         let with_skirt = lod != max_lod;
-        meshes.push(generate_chunk_mesh(segments, base_size, height, with_skirt));
+        meshes.push(generate_chunk_mesh(
+            segments, base_size, height, with_skirt, offset,
+        ));
     }
     meshes
 }
@@ -244,7 +296,7 @@ mod tests {
     #[test]
     fn chunk_mesh_has_expected_vertex_count() {
         let height = ProceduralHeight::new(0, 0.1, 1.0);
-        let mesh = generate_chunk_mesh(4, 64.0, &height, false);
+        let mesh = generate_chunk_mesh(4, 64.0, &height, false, (0.0, 0.0));
         assert_eq!(mesh.positions.len(), 25);
         assert_eq!(mesh.indices.len(), 4 * 4 * 6);
     }
@@ -252,8 +304,8 @@ mod tests {
     #[test]
     fn chunk_mesh_with_skirt_is_larger() {
         let height = ProceduralHeight::new(0, 0.1, 1.0);
-        let mesh = generate_chunk_mesh(4, 64.0, &height, true);
-        let no_skirt = generate_chunk_mesh(4, 64.0, &height, false);
+        let mesh = generate_chunk_mesh(4, 64.0, &height, true, (0.0, 0.0));
+        let no_skirt = generate_chunk_mesh(4, 64.0, &height, false, (0.0, 0.0));
         assert!(mesh.positions.len() > no_skirt.positions.len());
     }
 
@@ -267,11 +319,33 @@ mod tests {
     #[test]
     fn chunk_aabb_computes_from_positions() {
         let height = ProceduralHeight::new(0, 0.1, 10.0);
-        let mesh = generate_chunk_mesh(4, 64.0, &height, false);
+        let mesh = generate_chunk_mesh(4, 64.0, &height, false, (0.0, 0.0));
         let aabb = mesh.compute_aabb();
         assert!(aabb.min.x <= -31.0);
         assert!(aabb.max.x >= 31.0);
         assert!(aabb.min.z <= -31.0);
         assert!(aabb.max.z >= 31.0);
+    }
+
+    #[test]
+    fn perlin_height_is_bounded() {
+        let height = PerlinHeight::new(42, 0.01, 32.0, 4, 0.5, 2.0, 1.0);
+        let h = height.sample(100.0, 200.0);
+        assert!(h.abs() <= 32.0 * 1.1);
+    }
+
+    #[test]
+    fn height_function_from_perlin_source() {
+        let source = TerrainSource::Perlin {
+            seed: 7,
+            frequency: 0.02,
+            amplitude: 16.0,
+            octaves: 3,
+            persistence: 0.5,
+            lacunarity: 2.0,
+            exponent: 1.0,
+        };
+        let height = height_function_from_source(&source);
+        let _ = height.sample(0.0, 0.0);
     }
 }

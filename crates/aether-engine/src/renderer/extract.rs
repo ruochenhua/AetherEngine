@@ -9,6 +9,8 @@
 //! no render pass needs a `&World` reference.
 
 use crate::asset::mesh::{GpuMesh, InstanceData};
+use crate::asset::texture::CpuTexture;
+use crate::asset::Handle;
 use crate::ecs::components::{
     Atmosphere, Clouds, GodRay, MeshHandle, Terrain, Transform, Visibility, Water,
 };
@@ -23,6 +25,7 @@ use std::sync::Arc;
 struct BatchKey {
     mesh: *const GpuMesh,
     material: MaterialBits,
+    albedo_texture: u64,
 }
 
 /// Bit-level representation of `MaterialUniform` so it can be hashed.
@@ -55,6 +58,8 @@ pub struct RenderBatch {
     pub mesh: Arc<GpuMesh>,
     /// Material parameters shared by all instances.
     pub material: MaterialUniform,
+    /// Optional albedo texture handle shared by all instances.
+    pub albedo_texture: Option<Handle<CpuTexture>>,
     /// Instances to draw.
     pub instances: Vec<InstanceData>,
 }
@@ -134,12 +139,19 @@ pub fn extract_render_batches_with_frustum_culling(
         let key = BatchKey {
             mesh: Arc::as_ptr(&mesh_handle.mesh),
             material: MaterialBits::from(*material),
+            albedo_texture: material.albedo_texture_id,
+        };
+        let albedo_texture = if material.albedo_texture_id == 0 {
+            None
+        } else {
+            Some(Handle::<CpuTexture>::new(material.albedo_texture_id))
         };
         batches
             .entry(key)
             .or_insert_with(|| RenderBatch {
                 mesh: mesh_handle.mesh.clone(),
                 material: *material,
+                albedo_texture,
                 instances: Vec::new(),
             })
             .instances
@@ -214,7 +226,11 @@ mod tests {
         let mut world = World::new();
         world.spawn((
             Transform::default(),
-            MeshHandle::new(cube_gpu.clone(), "cube"),
+            MeshHandle::new(
+                cube_gpu.clone(),
+                crate::ecs::components::MeshSource::Builtin("cube".into()),
+                "cube",
+            ),
             MaterialUniform::default(),
             Visibility::default(),
             Name("visible".into()),
@@ -236,7 +252,11 @@ mod tests {
         // Inside the identity NDC cube.
         world.spawn((
             Transform::default(),
-            MeshHandle::new(cube_gpu.clone(), "cube"),
+            MeshHandle::new(
+                cube_gpu.clone(),
+                crate::ecs::components::MeshSource::Builtin("cube".into()),
+                "cube",
+            ),
             MaterialUniform::default(),
             Visibility::default(),
             Name("inside".into()),
@@ -247,7 +267,11 @@ mod tests {
                 translation: Vec3::new(10.0, 0.0, 0.0),
                 ..Default::default()
             },
-            MeshHandle::new(cube_gpu.clone(), "cube"),
+            MeshHandle::new(
+                cube_gpu.clone(),
+                crate::ecs::components::MeshSource::Builtin("cube".into()),
+                "cube",
+            ),
             MaterialUniform::default(),
             Visibility::default(),
             Name("outside".into()),
@@ -269,7 +293,11 @@ mod tests {
         let mut world = World::new();
         world.spawn((
             Transform::default(),
-            MeshHandle::new(cube_gpu.clone(), "cube"),
+            MeshHandle::new(
+                cube_gpu.clone(),
+                crate::ecs::components::MeshSource::Builtin("cube".into()),
+                "cube",
+            ),
             MaterialUniform::default(),
             Visibility(false),
             Name("hidden".into()),

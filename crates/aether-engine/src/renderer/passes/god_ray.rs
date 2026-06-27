@@ -633,6 +633,8 @@ fn vs_main(@location(0) pos: vec2<f32>) -> @builtin(position) vec4<f32> {
         let lighting = crate::renderer::light::LightingUniforms::default();
 
         let optional = extract_optional_pass_data(&world);
+        let texture_cache = crate::asset::texture_cache::GpuTextureCache::new(&device, &queue);
+        let asset_manager = crate::asset::AssetManager::new();
         let frame = RenderFrame {
             batches: std::sync::Arc::from([]),
             camera: &camera,
@@ -642,6 +644,8 @@ fn vs_main(@location(0) pos: vec2<f32>) -> @builtin(position) vec4<f32> {
             delta_time: 0.016,
             config: &FrameConfig::default(),
             optional: &optional,
+            texture_cache: &texture_cache,
+            asset_manager: &asset_manager,
         };
         pass.apply_frame(&frame);
         assert!(pass.has_god_ray);

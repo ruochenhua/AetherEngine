@@ -35,7 +35,7 @@ pub(super) fn build_lighting_uniforms(desc: &SceneDescription) -> LightingUnifor
         inv_view_proj: [[0.0; 4]; 4],
         camera_forward: [0.0, 0.0, -1.0],
         _pad_cam: 0,
-        ssao_enabled: 1,
+        ssao_enabled: 0,
         shadow_enabled: 1,
         ibl_enabled: 1,
         _pad4: 0,

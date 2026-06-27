@@ -42,6 +42,7 @@
 use std::any::TypeId;
 use std::marker::PhantomData;
 
+use crate::asset::texture_cache::GpuTextureCache;
 use crate::renderer::frame::RenderFrame;
 use crate::renderer::ibl::IblResources;
 use crate::renderer::resource::ResourceTag;
@@ -68,6 +69,8 @@ pub struct InitContext<'a> {
     pub height: u32,
     /// Optional IBL resources; required by passes such as `LightingPass`.
     pub ibl_resources: Option<&'a IblResources>,
+    /// GPU texture cache for resolving CPU texture handles.
+    pub texture_cache: &'a GpuTextureCache,
 }
 
 /// A render pass that declares its resource dependencies.

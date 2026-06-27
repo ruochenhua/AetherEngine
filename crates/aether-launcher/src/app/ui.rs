@@ -2,7 +2,7 @@
 
 use super::{App, LauncherState};
 use crate::inspector::{self, InspectorTarget};
-use aether_engine::ecs::components::{MeshHandle, Name};
+use aether_engine::ecs::components::{Camera, MeshHandle, Name};
 use aether_engine::ecs::Entity;
 use aether_engine::renderer::passes::{fxaa::FxaaQuality, tone_mapping::ToneMappingMode};
 
@@ -405,6 +405,16 @@ pub(crate) fn render(
     if let Some(ref target) = inspector_target {
         if let LauncherState::Running { ref mut world, .. } = app.state {
             inspector::apply(target, world, &mut app.undo_stack, &mut app.redo_stack);
+            // If the camera was edited, sync intrinsic params to the runtime fly camera.
+            if matches!(target, inspector::InspectorTarget::Camera { .. }) {
+                if let Some(camera) = world.query::<&Camera>().iter().next() {
+                    app.camera.fov = camera.fov;
+                    app.camera.speed = camera.speed;
+                    app.camera.base_speed = camera.speed;
+                    app.camera.near = camera.near;
+                    app.camera.far = camera.far;
+                }
+            }
         }
     }
 

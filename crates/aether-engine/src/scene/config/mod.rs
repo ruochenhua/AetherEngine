@@ -317,6 +317,34 @@ mod tests {
     }
 
     #[test]
+    fn parse_terrain_with_perlin_source() {
+        let ron = r#"
+            SceneDescription(
+                name: "Perlin Terrain",
+                camera: (position: (0.0, 0.0, 0.0)),
+                terrain: Some((
+                    source: Perlin(seed: 42, frequency: 0.01, amplitude: 64.0, octaves: 6, persistence: 0.45, lacunarity: 2.2, exponent: 1.1),
+                )),
+            )
+        "#;
+        let scene = SceneDescription::from_ron(ron).expect("should parse");
+        let terrain = scene.terrain.expect("terrain should be present");
+        assert_eq!(
+            terrain.source,
+            TerrainSource::Perlin {
+                seed: 42,
+                frequency: 0.01,
+                amplitude: 64.0,
+                octaves: 6,
+                persistence: 0.45,
+                lacunarity: 2.2,
+                exponent: 1.1,
+            }
+        );
+        assert_eq!(terrain.geometry, TerrainGeometry::default());
+    }
+
+    #[test]
     fn scene_without_terrain_defaults_to_none() {
         let ron = r#"
             SceneDescription(

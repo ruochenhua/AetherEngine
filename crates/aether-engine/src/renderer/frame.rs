@@ -8,6 +8,7 @@
 //! Adding a pass that needs new data means adding a field here, but the number
 //! of distinct data categories in a deferred renderer is bounded (~4-6 fields).
 
+use crate::asset::{texture_cache::GpuTextureCache, AssetManager};
 use crate::renderer::{
     camera::FlyCamera,
     extract::{OptionalPassData, RenderBatch},
@@ -71,7 +72,7 @@ pub struct FrameConfig {
 impl Default for FrameConfig {
     fn default() -> Self {
         Self {
-            ssao_enabled: true,
+            ssao_enabled: false,
             shadow_enabled: true,
             ibl_enabled: true,
             ssao_radius: 0.5,
@@ -120,4 +121,8 @@ pub struct RenderFrame<'a> {
     pub optional: &'a OptionalPassData,
     /// Per-frame configuration channel.
     pub config: &'a FrameConfig,
+    /// GPU texture cache shared by all passes.
+    pub texture_cache: &'a GpuTextureCache,
+    /// Asset manager for resolving CPU texture handles into GPU textures.
+    pub asset_manager: &'a AssetManager,
 }

@@ -319,9 +319,10 @@ mod tests {
 
     #[test]
     fn rebuild_reallocates_textures() {
-        let device = headless_device();
+        let (device, queue) = headless_device();
+        let texture_cache = crate::asset::texture_cache::GpuTextureCache::new(&device, &queue);
         let pass_a = ShadowPass::new(&device);
-        let pass_b = GBufferPass::new(&device);
+        let pass_b = GBufferPass::new(&device, &queue, &texture_cache);
         let pass_ssao = crate::renderer::passes::ssao::SSAOPass::new(&device);
         let pass_blur = crate::renderer::passes::ao_blur::AOBlurPass::new(&device);
         let pass_c = LightingPass::new(&device, wgpu::TextureFormat::Bgra8UnormSrgb);
@@ -342,14 +343,15 @@ mod tests {
 
     #[test]
     fn build_all_passes_works() {
-        let device = headless_device();
+        let (device, queue) = headless_device();
+        let texture_cache = crate::asset::texture_cache::GpuTextureCache::new(&device, &queue);
         let sf = wgpu::TextureFormat::Bgra8UnormSrgb;
         let df = wgpu::TextureFormat::Depth32Float;
         let debug_pass = DebugLinePass::new(&device, sf, df);
 
         let scheduler = PipelineBuilder::new()
             .add_pass(ShadowPass::new(&device))
-            .add_pass(GBufferPass::new(&device))
+            .add_pass(GBufferPass::new(&device, &queue, &texture_cache))
             .add_pass(crate::renderer::passes::ssao::SSAOPass::new(&device))
             .add_pass(crate::renderer::passes::ao_blur::AOBlurPass::new(&device))
             .add_pass(LightingPass::new(&device, sf))
@@ -360,14 +362,12 @@ mod tests {
         assert_eq!(scheduler.pass_count(), 6);
     }
 
-    fn headless_device() -> wgpu::Device {
+    fn headless_device() -> (wgpu::Device, wgpu::Queue) {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
         let adapter =
             pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
                 .expect("need adapter");
-        let (device, _queue) =
-            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-                .expect("need device");
-        device
+        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
+            .expect("need device")
     }
 }

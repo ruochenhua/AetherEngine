@@ -70,6 +70,9 @@ pub struct MaterialConfig {
     /// Metalness (0 = dielectric, 1 = metal).
     #[serde(default)]
     pub metallic: f32,
+    /// Optional albedo texture path.
+    #[serde(default)]
+    pub albedo_texture: Option<String>,
 }
 
 fn default_albedo() -> [f32; 4] {
@@ -82,6 +85,7 @@ impl Default for MaterialConfig {
             albedo: default_albedo(),
             roughness: 0.5,
             metallic: 0.0,
+            albedo_texture: None,
         }
     }
 }

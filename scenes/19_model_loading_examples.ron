@@ -1,0 +1,44 @@
+SceneDescription(
+    name: "Model Loading Examples",
+    camera: (
+        position: (0.5, 2.0, 5.5),
+        yaw: -1.57,
+        pitch: -0.25,
+    ),
+    ambient: 0.1,
+    lights: [(
+        light_type: Directional,
+        direction: (0.3, -1.0, -0.3),
+        color: (1.0, 1.0, 1.0),
+        intensity: 2.0,
+    )],
+    objects: [
+        (
+            name: "Cyborg",
+            mesh: File("assets/models/cyborg/cyborg.obj"),
+            transform: (
+                translation: (-1.3, 0.0, 0.0),
+                scale: (0.35, 0.35, 0.35),
+            ),
+            material: (
+                albedo: (1.0, 1.0, 1.0, 1.0),
+                roughness: 0.5,
+                metallic: 0.1,
+                albedo_texture: Some("assets/models/cyborg/cyborg_diffuse.png"),
+            ),
+        ),
+        (
+            name: "Porsche",
+            mesh: File("assets/models/porsche/scene.gltf"),
+            transform: (
+                translation: (1.5, -0.05, -0.2),
+                scale: (0.5, 0.5, 0.5),
+            ),
+            material: (
+                albedo: (1.0, 1.0, 1.0, 1.0),
+                roughness: 0.3,
+                metallic: 0.6,
+            ),
+        ),
+    ],
+)

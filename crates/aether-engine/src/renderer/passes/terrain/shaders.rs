@@ -35,6 +35,12 @@ struct TerrainUniform {
     has_splat_map: u32,
 };
 @group(1) @binding(0) var<uniform> terrain: TerrainUniform;
+@group(1) @binding(1) var splat_map: texture_2d<f32>;
+@group(1) @binding(2) var terrain_sampler: sampler;
+@group(1) @binding(3) var layer_albedo_0: texture_2d<f32>;
+@group(1) @binding(4) var layer_albedo_1: texture_2d<f32>;
+@group(1) @binding(5) var layer_albedo_2: texture_2d<f32>;
+@group(1) @binding(6) var layer_albedo_3: texture_2d<f32>;
 
 @vertex
 fn vs_main(in: VertexInput, instance: InstanceInput) -> VertexOutput {
@@ -61,21 +67,22 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
     out.position = vec4<f32>(in.world_pos, 1.0);
     out.normal = vec4<f32>(in.world_normal * 0.5 + 0.5, 1.0);
 
-    // Simple layer blending without splat map texture for this foundation pass.
-    // Phase 5+ will sample the splat map and layer texture array here.
+    // Sample splat map if present; otherwise default to the first layer.
     var weights: vec4<f32>;
     if (terrain.has_splat_map != 0u) {
-        // Placeholder: even blend when splat map is configured.
-        weights = vec4<f32>(0.25, 0.25, 0.25, 0.25);
+        let splat = textureSample(splat_map, terrain_sampler, in.uv);
+        weights = splat;
     } else {
         weights = vec4<f32>(1.0, 0.0, 0.0, 0.0);
     }
 
-    let albedo =
-        terrain.layer_color_0 * weights.x +
-        terrain.layer_color_1 * weights.y +
-        terrain.layer_color_2 * weights.z +
-        terrain.layer_color_3 * weights.w;
+    // Sample each layer's albedo texture and blend using the splat weights.
+    let c0 = terrain.layer_color_0 * textureSample(layer_albedo_0, terrain_sampler, in.uv * 16.0);
+    let c1 = terrain.layer_color_1 * textureSample(layer_albedo_1, terrain_sampler, in.uv * 16.0);
+    let c2 = terrain.layer_color_2 * textureSample(layer_albedo_2, terrain_sampler, in.uv * 16.0);
+    let c3 = terrain.layer_color_3 * textureSample(layer_albedo_3, terrain_sampler, in.uv * 16.0);
+
+    let albedo = c0 * weights.x + c1 * weights.y + c2 * weights.z + c3 * weights.w;
     let roughness = dot(terrain.layer_roughness, weights);
     let metallic = dot(terrain.layer_metallic, weights);
 

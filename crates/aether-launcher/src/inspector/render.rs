@@ -3,7 +3,7 @@
 use super::helpers::{drag_xyz, drag_xyz_raw, rebuild_terrain_material};
 use super::InspectorTarget;
 use aether_engine::ecs::components::{
-    Atmosphere, Clouds, GodRay, Light, Terrain, Transform, Water,
+    Atmosphere, Camera, Clouds, GodRay, Light, Terrain, Transform, Water,
 };
 use aether_engine::renderer::renderable::MaterialUniform;
 
@@ -30,6 +30,11 @@ pub(crate) fn render(ui: &mut egui::Ui, target: &mut InspectorTarget) {
         InspectorTarget::Atmosphere { atmosphere, .. } => render_atmosphere(ui, atmosphere),
         InspectorTarget::Clouds { clouds, .. } => render_clouds(ui, clouds),
         InspectorTarget::GodRay { god_ray, .. } => render_god_ray(ui, god_ray),
+        InspectorTarget::Camera {
+            camera,
+            fov_degrees,
+            ..
+        } => render_camera(ui, camera, fov_degrees),
     }
 }
 
@@ -71,6 +76,31 @@ fn render_material(ui: &mut egui::Ui, material: &mut MaterialUniform) {
     });
     ui.add(egui::Slider::new(&mut material.roughness, 0.0..=1.0).text("Roughness"));
     ui.add(egui::Slider::new(&mut material.metallic, 0.0..=1.0).text("Metallic"));
+    ui.separator();
+}
+
+fn render_camera(ui: &mut egui::Ui, camera: &mut Camera, fov_degrees: &mut f32) {
+    ui.label("Camera");
+    ui.add(egui::Slider::new(fov_degrees, 10.0..=120.0).text("FOV (degrees)"));
+    camera.fov = fov_degrees.to_radians();
+    ui.add(
+        egui::DragValue::new(&mut camera.speed)
+            .speed(0.1)
+            .range(0.1..=100.0)
+            .prefix("Speed: "),
+    );
+    ui.add(
+        egui::DragValue::new(&mut camera.near)
+            .speed(0.01)
+            .range(0.001..=10.0)
+            .prefix("Near: "),
+    );
+    ui.add(
+        egui::DragValue::new(&mut camera.far)
+            .speed(1.0)
+            .range(10.0..=10000.0)
+            .prefix("Far: "),
+    );
     ui.separator();
 }
 
@@ -130,26 +160,74 @@ fn render_terrain(ui: &mut egui::Ui, terrain: &mut Terrain) {
             .prefix("Max LOD: "),
     );
 
-    ui.label("Procedural Source");
-    if let aether_engine::scene::TerrainSource::Procedural {
-        seed,
-        frequency,
-        amplitude,
-    } = &mut terrain.source
-    {
-        ui.add(egui::DragValue::new(seed).speed(1.0).prefix("Seed: "));
-        ui.add(
-            egui::DragValue::new(frequency)
-                .speed(0.001)
-                .prefix("Frequency: "),
-        );
-        ui.add(
-            egui::DragValue::new(amplitude)
-                .speed(0.1)
-                .prefix("Amplitude: "),
-        );
-    } else {
-        ui.label("Heightmap source: edit in RON file.");
+    match &mut terrain.source {
+        aether_engine::scene::TerrainSource::Procedural {
+            seed,
+            frequency,
+            amplitude,
+        } => {
+            ui.label("Procedural Source");
+            ui.add(egui::DragValue::new(seed).speed(1.0).prefix("Seed: "));
+            ui.add(
+                egui::DragValue::new(frequency)
+                    .speed(0.001)
+                    .prefix("Frequency: "),
+            );
+            ui.add(
+                egui::DragValue::new(amplitude)
+                    .speed(0.1)
+                    .prefix("Amplitude: "),
+            );
+        }
+        aether_engine::scene::TerrainSource::Perlin {
+            seed,
+            frequency,
+            amplitude,
+            octaves,
+            persistence,
+            lacunarity,
+            exponent,
+        } => {
+            ui.label("Perlin Source");
+            ui.add(egui::DragValue::new(seed).speed(1.0).prefix("Seed: "));
+            ui.add(
+                egui::DragValue::new(frequency)
+                    .speed(0.001)
+                    .prefix("Frequency: "),
+            );
+            ui.add(
+                egui::DragValue::new(amplitude)
+                    .speed(0.1)
+                    .prefix("Amplitude: "),
+            );
+            ui.add(
+                egui::DragValue::new(octaves)
+                    .speed(0.1)
+                    .range(1..=8)
+                    .prefix("Octaves: "),
+            );
+            ui.add(
+                egui::DragValue::new(persistence)
+                    .speed(0.01)
+                    .range(0.0..=1.0)
+                    .prefix("Persistence: "),
+            );
+            ui.add(
+                egui::DragValue::new(lacunarity)
+                    .speed(0.01)
+                    .range(1.0..=4.0)
+                    .prefix("Lacunarity: "),
+            );
+            ui.add(
+                egui::DragValue::new(exponent)
+                    .speed(0.01)
+                    .range(0.1..=3.0)
+                    .prefix("Exponent: "),
+            );
+        }
+        aether_engine::scene::TerrainSource::Heightmap(_) => {
+            ui.label("Heightmap source: edit in RON file.");
+        }
     }
 
     ui.label("Layers");

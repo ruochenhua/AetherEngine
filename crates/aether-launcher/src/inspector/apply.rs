@@ -3,7 +3,7 @@
 use super::helpers::{light_direction_to_rotation, rebuild_terrain_material};
 use super::{EditorCommand, InspectorTarget};
 use aether_engine::ecs::components::{
-    Atmosphere, Clouds, GodRay, Light, Terrain, Transform, Water,
+    Atmosphere, Camera, Clouds, GodRay, Light, Terrain, Transform, Water,
 };
 use aether_engine::ecs::World;
 use aether_engine::renderer::renderable::MaterialUniform;
@@ -142,6 +142,18 @@ pub(crate) fn apply(
                 }
             }
         }
+        InspectorTarget::Camera { entity, camera, .. } => {
+            if let Ok(current) = world.query_one_mut::<&mut Camera>(*entity) {
+                if *current != *camera {
+                    undo_stack.push(EditorCommand::Camera {
+                        entity: *entity,
+                        old_camera: *current,
+                    });
+                    redo_stack.clear();
+                    *current = *camera;
+                }
+            }
+        }
     }
 }
 
@@ -241,6 +253,14 @@ pub(crate) fn apply_undo(world: &mut World, cmd: &EditorCommand) -> EditorComman
             EditorCommand::GodRay {
                 entity,
                 old_god_ray: current,
+            }
+        }
+        EditorCommand::Camera { entity, old_camera } => {
+            let current = *world.query_one_mut::<&mut Camera>(entity).unwrap();
+            *world.query_one_mut::<&mut Camera>(entity).unwrap() = old_camera;
+            EditorCommand::Camera {
+                entity,
+                old_camera: current,
             }
         }
     }

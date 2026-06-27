@@ -1,0 +1,27 @@
+SceneDescription(
+    name: "File Mesh",
+    camera: (
+        position: (0.0, 0.0, 5.0),
+        yaw: -1.57,
+        pitch: 0.0,
+    ),
+    lights: [(
+        light_type: Directional,
+        direction: (0.0, 0.0, -1.0),
+        color: (1.0, 1.0, 1.0),
+        intensity: 1.5,
+    )],
+    objects: [
+        (
+            name: "ObjQuad",
+            mesh: File("assets/models/cube.obj"),
+            transform: (scale: (3.0, 3.0, 3.0)),
+            material: (
+                albedo: (1.0, 0.2, 0.2, 1.0),
+                roughness: 0.5,
+                metallic: 0.0,
+                albedo_texture: Some("assets/textures/test_checker.png"),
+            ),
+        ),
+    ],
+)

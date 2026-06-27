@@ -2,6 +2,8 @@
 
 use crate::asset::mesh::GpuMesh;
 use crate::asset::terrain_material::TerrainMaterial;
+use crate::asset::texture_cache::GpuTextureCache;
+use crate::asset::AssetManager;
 use crate::ecs::components::Terrain;
 use crate::math::{Frustum, Mat4, Vec3};
 use crate::renderer::renderable::ViewProjUniform;
@@ -17,6 +19,8 @@ impl TerrainPass {
         view: &Mat4,
         proj: &Mat4,
         queue: &wgpu::Queue,
+        texture_cache: &GpuTextureCache,
+        asset_manager: &AssetManager,
     ) {
         // If the terrain configuration changed, invalidate cached geometry.
         if self.last_terrain.as_ref() != Some(&terrain) {
@@ -41,6 +45,7 @@ impl TerrainPass {
                         terrain.geometry.max_lod,
                         chunk.size,
                         height_fn.as_ref(),
+                        (chunk.center.x, chunk.center.z),
                     );
                     cpu_meshes
                         .into_iter()
@@ -65,10 +70,63 @@ impl TerrainPass {
             queue,
         );
 
+        // Resolve GPU textures and rebuild the material bind group.
+        let splat = texture_cache.get_or_upload_optional(terrain.material.splat_map, asset_manager);
+        let layer0 = texture_cache.get_or_upload_optional(
+            terrain.material.layers[0].albedo_texture.clone(),
+            asset_manager,
+        );
+        let layer1 = texture_cache.get_or_upload_optional(
+            terrain.material.layers[1].albedo_texture.clone(),
+            asset_manager,
+        );
+        let layer2 = texture_cache.get_or_upload_optional(
+            terrain.material.layers[2].albedo_texture.clone(),
+            asset_manager,
+        );
+        let layer3 = texture_cache.get_or_upload_optional(
+            terrain.material.layers[3].albedo_texture.clone(),
+            asset_manager,
+        );
+        self.terrain_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Terrain Material BG"),
+            layout: &self.terrain_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: self.terrain_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&splat.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(&splat.sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::TextureView(&layer0.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: wgpu::BindingResource::TextureView(&layer1.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: wgpu::BindingResource::TextureView(&layer2.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 6,
+                    resource: wgpu::BindingResource::TextureView(&layer3.view),
+                },
+            ],
+        });
+
         // Cull and select LOD.
         let camera_pos = self.camera_position_from_view(view);
         let frustum = Frustum::from_view_projection(*proj * *view);
-        let height_estimate = self.estimate_height_range();
+        let height_estimate = self.estimate_height_range(&terrain.source);
         self.visible_chunk_indices = cull_and_select_lod(
             &mut self.chunks,
             camera_pos,
@@ -76,6 +134,13 @@ impl TerrainPass {
             height_estimate.0,
             height_estimate.1,
             2.0,
+        );
+        tracing::debug!(
+            target: "aether_engine::renderer::passes::terrain",
+            "TerrainPass::update_terrain: chunks={}, visible={}, camera_pos={:?}",
+            self.chunks.len(),
+            self.visible_chunk_indices.len(),
+            camera_pos
         );
 
         // Build instance data.
@@ -105,9 +170,17 @@ impl TerrainPass {
         inv.transform_point3(Vec3::ZERO)
     }
 
-    fn estimate_height_range(&self) -> (f32, f32) {
-        // Conservative estimate; in production use actual height bounds per chunk.
-        (-128.0, 128.0)
+    fn estimate_height_range(&self, source: &crate::scene::TerrainSource) -> (f32, f32) {
+        // Conservative estimate based on the source's configured amplitude.
+        // Procedural sine waves and FBM Perlin can both exceed the nominal
+        // amplitude when multiple octaves/layers combine, so leave headroom.
+        let amplitude = match source {
+            crate::scene::TerrainSource::Heightmap(_) => 128.0,
+            crate::scene::TerrainSource::Procedural { amplitude, .. } => *amplitude,
+            crate::scene::TerrainSource::Perlin { amplitude, .. } => *amplitude,
+        };
+        let half_range = amplitude * 1.5;
+        (-half_range, half_range)
     }
 }
 

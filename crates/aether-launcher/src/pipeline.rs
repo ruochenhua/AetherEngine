@@ -1,5 +1,6 @@
 //! Helper functions for pipeline and screenshot operations.
 
+use aether_engine::asset::texture_cache::GpuTextureCache;
 use aether_engine::renderer::{
     ibl::IblResources,
     pass::{InitContext, Pass},
@@ -19,9 +20,11 @@ use std::sync::Arc;
 ///
 /// `has_terrain` controls whether `TerrainPass` is registered; per ADR-0010 it
 /// should only be present when the scene actually contains terrain.
+#[allow(clippy::too_many_arguments)]
 pub fn build_pipeline(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
+    texture_cache: &GpuTextureCache,
     surface_format: wgpu::TextureFormat,
     depth_format: wgpu::TextureFormat,
     width: u32,
@@ -45,6 +48,7 @@ pub fn build_pipeline(
         width,
         height,
         ibl_resources: Some(&ibl_resources),
+        texture_cache,
     };
 
     let mut ssao = SSAOPass::init(&ctx);
@@ -83,7 +87,9 @@ pub fn spawn_default_cube(
     mesh_registry: &aether_engine::asset::registry::BuiltinMeshRegistry,
     world: &mut aether_engine::ecs::World,
 ) {
-    use aether_engine::ecs::components::{MeshHandle, Name, Selected, Transform, Visibility};
+    use aether_engine::ecs::components::{
+        MeshHandle, MeshSource, Name, Selected, Transform, Visibility,
+    };
     use aether_engine::renderer::renderable::MaterialUniform;
     if let Some(cpu_mesh) = mesh_registry.get("cube") {
         let gpu_mesh = Arc::new(aether_engine::asset::mesh::GpuMesh::from_cpu(
@@ -91,12 +97,13 @@ pub fn spawn_default_cube(
         ));
         world.spawn((
             Transform::default(),
-            MeshHandle::new(gpu_mesh, "cube"),
+            MeshHandle::new(gpu_mesh, MeshSource::Builtin("cube".into()), "cube"),
             MaterialUniform {
                 albedo: [0.8, 0.3, 0.2, 1.0],
                 roughness: 0.5,
                 metallic: 0.0,
                 _pad: [0.0, 0.0],
+                albedo_texture_id: 0,
             },
             Visibility::default(),
             Name("DefaultCube".into()),

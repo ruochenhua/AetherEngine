@@ -17,6 +17,9 @@ fn headless_device() -> (wgpu::Device, wgpu::Queue) {
 }
 
 fn init_ctx<'a>(device: &'a wgpu::Device, queue: &'a wgpu::Queue) -> InitContext<'a> {
+    let texture_cache = Box::leak(Box::new(crate::asset::texture_cache::GpuTextureCache::new(
+        device, queue,
+    )));
     InitContext {
         device,
         queue,
@@ -25,6 +28,7 @@ fn init_ctx<'a>(device: &'a wgpu::Device, queue: &'a wgpu::Queue) -> InitContext
         width: 64,
         height: 64,
         ibl_resources: None,
+        texture_cache,
     }
 }
 
@@ -46,6 +50,7 @@ fn terrain_pass_skipped_when_no_terrain_component() {
     let optional = extract_optional_pass_data(&world);
     let camera = crate::renderer::camera::FlyCamera::default();
     let lighting = crate::renderer::light::LightingUniforms::default();
+    let assets = crate::asset::AssetManager::new();
     let frame = RenderFrame {
         batches: std::sync::Arc::from([]),
         camera: &camera,
@@ -55,6 +60,8 @@ fn terrain_pass_skipped_when_no_terrain_component() {
         delta_time: 0.016,
         config: &FrameConfig::default(),
         optional: &optional,
+        texture_cache: ctx.texture_cache,
+        asset_manager: &assets,
     };
     assert!(!pass.should_run(&frame));
 }
@@ -83,6 +90,7 @@ fn terrain_pass_runs_when_terrain_component_present() {
     let optional = extract_optional_pass_data(&world);
     let camera = crate::renderer::camera::FlyCamera::default();
     let lighting = crate::renderer::light::LightingUniforms::default();
+    let assets = crate::asset::AssetManager::new();
     let frame = RenderFrame {
         batches: std::sync::Arc::from([]),
         camera: &camera,
@@ -92,6 +100,8 @@ fn terrain_pass_runs_when_terrain_component_present() {
         delta_time: 0.016,
         config: &FrameConfig::default(),
         optional: &optional,
+        texture_cache: ctx.texture_cache,
+        asset_manager: &assets,
     };
     pass.apply_frame(&frame);
     assert!(pass.should_run(&frame));
@@ -121,6 +131,7 @@ fn terrain_pass_rebuilds_chunks_when_config_changes() {
     let camera = crate::renderer::camera::FlyCamera::default();
     let lighting = crate::renderer::light::LightingUniforms::default();
     let optional = extract_optional_pass_data(&world);
+    let assets = crate::asset::AssetManager::new();
     let first_chunk_count = {
         let frame = RenderFrame {
             batches: std::sync::Arc::from([]),
@@ -131,6 +142,8 @@ fn terrain_pass_rebuilds_chunks_when_config_changes() {
             delta_time: 0.016,
             config: &FrameConfig::default(),
             optional: &optional,
+            texture_cache: ctx.texture_cache,
+            asset_manager: &assets,
         };
         pass.apply_frame(&frame);
         pass.chunks.len()
@@ -164,6 +177,8 @@ fn terrain_pass_rebuilds_chunks_when_config_changes() {
         delta_time: 0.016,
         config: &FrameConfig::default(),
         optional: &optional,
+        texture_cache: ctx.texture_cache,
+        asset_manager: &assets,
     };
     pass.apply_frame(&frame);
     assert!(

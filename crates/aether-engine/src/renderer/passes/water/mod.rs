@@ -181,6 +181,9 @@ mod tests {
     }
 
     fn init_ctx<'a>(device: &'a wgpu::Device, queue: &'a wgpu::Queue) -> InitContext<'a> {
+        let texture_cache = Box::leak(Box::new(crate::asset::texture_cache::GpuTextureCache::new(
+            device, queue,
+        )));
         InitContext {
             device,
             queue,
@@ -189,6 +192,7 @@ mod tests {
             width: 64,
             height: 64,
             ibl_resources: None,
+            texture_cache,
         }
     }
 
@@ -215,6 +219,7 @@ mod tests {
         let optional = extract_optional_pass_data(&world);
         let camera = FlyCamera::default();
         let lighting = LightingUniforms::default();
+        let assets = crate::asset::AssetManager::new();
         let frame = RenderFrame {
             batches: std::sync::Arc::from([]),
             camera: &camera,
@@ -224,6 +229,8 @@ mod tests {
             delta_time: 0.016,
             config: &FrameConfig::default(),
             optional: &optional,
+            texture_cache: ctx.texture_cache,
+            asset_manager: &assets,
         };
         assert!(!pass.should_run(&frame));
     }
@@ -240,6 +247,7 @@ mod tests {
         let optional = extract_optional_pass_data(&world);
         let camera = FlyCamera::default();
         let lighting = LightingUniforms::default();
+        let assets = crate::asset::AssetManager::new();
         let frame = RenderFrame {
             batches: std::sync::Arc::from([]),
             camera: &camera,
@@ -249,6 +257,8 @@ mod tests {
             delta_time: 0.016,
             config: &FrameConfig::default(),
             optional: &optional,
+            texture_cache: ctx.texture_cache,
+            asset_manager: &assets,
         };
         pass.apply_frame(&frame);
         assert!(pass.should_run(&frame));
