@@ -5,6 +5,7 @@
 //! `GBufferPass` so that deferred lighting and post-processing apply unchanged.
 
 use crate::asset::mesh::{GpuMesh, Vertex};
+use crate::asset::texture::GpuTexture;
 use crate::ecs::components::Terrain;
 use crate::renderer::frame::RenderFrame;
 use crate::renderer::pass::{InitContext, Pass, PassSignature, ResHandle};
@@ -44,6 +45,13 @@ pub struct TerrainPass {
 
     last_terrain: Option<Terrain>,
     has_terrain: bool,
+
+    /// Cached terrain material bind group state.
+    last_splat: Option<Arc<GpuTexture>>,
+    last_layer0: Option<Arc<GpuTexture>>,
+    last_layer1: Option<Arc<GpuTexture>>,
+    last_layer2: Option<Arc<GpuTexture>>,
+    last_layer3: Option<Arc<GpuTexture>>,
 }
 
 #[repr(C)]
@@ -462,6 +470,11 @@ impl TerrainPass {
             instance_buffer,
             last_terrain: None,
             has_terrain: false,
+            last_splat: None,
+            last_layer0: None,
+            last_layer1: None,
+            last_layer2: None,
+            last_layer3: None,
         }
     }
 }

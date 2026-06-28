@@ -72,7 +72,9 @@ impl TerrainPass {
             queue,
         );
 
-        // Resolve GPU textures and rebuild the material bind group.
+        // Resolve GPU textures and rebuild the material bind group only when the
+        // texture set changes. The uniform buffer is updated separately, so color
+        // or roughness edits do not require a bind group rebuild.
         let splat = texture_cache.get_or_upload_optional(terrain.material.splat_map, asset_manager);
         let layer0 = texture_cache.get_or_upload_optional(
             terrain.material.layers[0].albedo_texture.clone(),
@@ -90,40 +92,65 @@ impl TerrainPass {
             terrain.material.layers[3].albedo_texture.clone(),
             asset_manager,
         );
-        self.terrain_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Terrain Material BG"),
-            layout: &self.terrain_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: self.terrain_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&splat.view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::Sampler(&splat.sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: wgpu::BindingResource::TextureView(&layer0.view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 4,
-                    resource: wgpu::BindingResource::TextureView(&layer1.view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 5,
-                    resource: wgpu::BindingResource::TextureView(&layer2.view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 6,
-                    resource: wgpu::BindingResource::TextureView(&layer3.view),
-                },
-            ],
-        });
+
+        let needs_rebuild = match (
+            &self.last_splat,
+            &self.last_layer0,
+            &self.last_layer1,
+            &self.last_layer2,
+            &self.last_layer3,
+        ) {
+            (Some(last_splat), Some(last_l0), Some(last_l1), Some(last_l2), Some(last_l3)) => {
+                !Arc::ptr_eq(last_splat, &splat)
+                    || !Arc::ptr_eq(last_l0, &layer0)
+                    || !Arc::ptr_eq(last_l1, &layer1)
+                    || !Arc::ptr_eq(last_l2, &layer2)
+                    || !Arc::ptr_eq(last_l3, &layer3)
+            }
+            _ => true,
+        };
+
+        if needs_rebuild {
+            self.terrain_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("Terrain Material BG"),
+                layout: &self.terrain_bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: self.terrain_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::TextureView(&splat.view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::Sampler(&splat.sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: wgpu::BindingResource::TextureView(&layer0.view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
+                        resource: wgpu::BindingResource::TextureView(&layer1.view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 5,
+                        resource: wgpu::BindingResource::TextureView(&layer2.view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 6,
+                        resource: wgpu::BindingResource::TextureView(&layer3.view),
+                    },
+                ],
+            });
+            self.last_splat = Some(splat);
+            self.last_layer0 = Some(layer0);
+            self.last_layer1 = Some(layer1);
+            self.last_layer2 = Some(layer2);
+            self.last_layer3 = Some(layer3);
+        }
 
         // Cull and select LOD.
         let camera_pos = self.camera_position_from_view(view);

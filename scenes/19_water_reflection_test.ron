@@ -43,6 +43,8 @@ SceneDescription(
         secondary_scale: 0.7,
         flow_speed: (0.03, 0.01),
         flow_speed_2: (-0.02, 0.015),
+        reflection_enabled: true,
+        reflection_resolution_scale: 0.5,
     )),
     objects: [
         (

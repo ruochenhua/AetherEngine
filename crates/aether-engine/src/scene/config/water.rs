@@ -68,6 +68,12 @@ pub struct WaterConfig {
     /// Exponent for the Blinn-Phong sun specular highlight.
     #[serde(default = "default_water_specular_power")]
     pub specular_power: f32,
+    /// Enable planar reflection rendering for this water surface.
+    #[serde(default = "default_water_reflection_enabled")]
+    pub reflection_enabled: bool,
+    /// Resolution scale for the planar reflection texture relative to the screen.
+    #[serde(default = "default_water_reflection_resolution_scale")]
+    pub reflection_resolution_scale: f32,
 }
 
 impl Default for WaterConfig {
@@ -94,6 +100,8 @@ impl Default for WaterConfig {
             flow_speed_2: default_water_flow_speed_2(),
             secondary_scale: default_water_secondary_scale(),
             specular_power: default_water_specular_power(),
+            reflection_enabled: default_water_reflection_enabled(),
+            reflection_resolution_scale: default_water_reflection_resolution_scale(),
         }
     }
 }
@@ -172,4 +180,12 @@ fn default_water_secondary_scale() -> f32 {
 
 fn default_water_specular_power() -> f32 {
     128.0
+}
+
+fn default_water_reflection_enabled() -> bool {
+    false
+}
+
+fn default_water_reflection_resolution_scale() -> f32 {
+    0.5
 }

@@ -62,10 +62,10 @@ struct WaterUniform {
     _pad4: f32,
     flow_speed: vec2<f32>,
     flow_speed_2: vec2<f32>,
+    reflection_enabled: u32,
+    reflection_resolution_scale: f32,
     _pad5: f32,
     _pad6: f32,
-    _pad7: f32,
-    _pad8: f32,
 };
 
 @group(0) @binding(0) var<uniform> water: WaterUniform;
@@ -73,6 +73,7 @@ struct WaterUniform {
 @group(1) @binding(1) var reflection_texture: texture_2d<f32>;
 @group(1) @binding(2) var tex_sampler: sampler;
 @group(1) @binding(3) var depth_tex: texture_depth_2d;
+@group(1) @binding(4) var planar_reflection: texture_2d<f32>;
 @group(2) @binding(0) var dudv_map: texture_2d<f32>;
 @group(2) @binding(1) var normal_map: texture_2d<f32>;
 @group(2) @binding(2) var water_sampler: sampler;
@@ -202,13 +203,16 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let tinted = refract_color * water_tint;
     let refracted = mix(refract_color, tinted, depth_blend);
 
-    // Reflection: sample SSR reflection texture, also distorted slightly.
+    // Reflection: sample planar reflection when enabled, otherwise fall back to SSR.
     let reflect_uv = clamp(
         screen_uv + normal.xz * water.refraction_scale * 0.5,
         vec2<f32>(0.0),
         vec2<f32>(1.0)
     );
-    let reflection = textureSample(reflection_texture, tex_sampler, reflect_uv).rgb;
+    var reflection = textureSample(reflection_texture, tex_sampler, reflect_uv).rgb;
+    if (water.reflection_enabled != 0u) {
+        reflection = textureSample(planar_reflection, tex_sampler, reflect_uv).rgb;
+    }
 
     // Specular highlight from the directional light, using the perturbed normal.
     let sun_dir = normalize(water.sun_direction.xyz);
@@ -377,6 +381,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             mesh,
             scene_color_handle: None,
             reflection_handle: None,
+            planar_reflection_handle: None,
             depth_handle: None,
             water_color_handle: None,
             has_water: false,
@@ -424,6 +429,16 @@ pub(super) fn create_texture_bind_group_layout(device: &wgpu::Device) -> wgpu::B
                 visibility: wgpu::ShaderStages::FRAGMENT,
                 ty: wgpu::BindingType::Texture {
                     sample_type: wgpu::TextureSampleType::Depth,
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 4,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
                     view_dimension: wgpu::TextureViewDimension::D2,
                     multisampled: false,
                 },

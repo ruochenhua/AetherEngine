@@ -20,3 +20,4 @@ pub mod terrain;
 pub mod tone_mapping;
 pub mod volumetric_cloud;
 pub mod water;
+pub mod water_reflection;

@@ -10,7 +10,9 @@ use crate::asset::mesh::GpuMesh;
 use crate::asset::texture::GpuTexture;
 use crate::renderer::frame::RenderFrame;
 use crate::renderer::pass::{InitContext, Pass, PassSignature, ResHandle};
-use crate::renderer::resource::{GDepth, ReflectionTexture, SceneColor, WaterColor};
+use crate::renderer::resource::{
+    GDepth, ReflectionTexture, SceneColor, WaterColor, WaterReflectionColor,
+};
 use crate::renderer::resource_table::ResourceTable;
 use std::sync::Arc;
 
@@ -36,6 +38,7 @@ pub struct WaterPass {
     mesh: Arc<GpuMesh>,
     scene_color_handle: Option<ResHandle<SceneColor>>,
     reflection_handle: Option<ResHandle<ReflectionTexture>>,
+    planar_reflection_handle: Option<ResHandle<WaterReflectionColor>>,
     depth_handle: Option<ResHandle<GDepth>>,
     water_color_handle: Option<ResHandle<WaterColor>>,
     has_water: bool,
@@ -55,6 +58,7 @@ impl Pass for WaterPass {
         PassSignature::new("Water")
             .read::<SceneColor>()
             .read::<ReflectionTexture>()
+            .read::<WaterReflectionColor>()
             .read::<GDepth>()
             .write::<WaterColor>(wgpu::TextureFormat::Rgba16Float)
     }
@@ -66,6 +70,7 @@ impl Pass for WaterPass {
     fn resolve(&mut self, device: &wgpu::Device, resources: &ResourceTable) {
         self.scene_color_handle = Some(resources.handle::<SceneColor>());
         self.reflection_handle = Some(resources.handle::<ReflectionTexture>());
+        self.planar_reflection_handle = Some(resources.handle::<WaterReflectionColor>());
         self.depth_handle = Some(resources.handle::<GDepth>());
         self.water_color_handle = Some(resources.handle::<WaterColor>());
 
@@ -95,6 +100,12 @@ impl Pass for WaterPass {
                     binding: 3,
                     resource: wgpu::BindingResource::TextureView(
                         resources.get(self.depth_handle.unwrap()),
+                    ),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: wgpu::BindingResource::TextureView(
+                        resources.get(self.planar_reflection_handle.unwrap()),
                     ),
                 },
             ],
@@ -166,10 +177,10 @@ impl Pass for WaterPass {
                 _pad4: 0.0,
                 flow_speed: glam::Vec2::from_array(cfg.flow_speed),
                 flow_speed_2: glam::Vec2::from_array(cfg.flow_speed_2),
+                reflection_enabled: if cfg.reflection_enabled { 1 } else { 0 },
+                reflection_resolution_scale: cfg.reflection_resolution_scale,
                 _pad5: 0.0,
                 _pad6: 0.0,
-                _pad7: 0.0,
-                _pad8: 0.0,
             };
             frame
                 .queue
@@ -283,6 +294,10 @@ mod tests {
         assert!(sig.reads.iter().any(|s| s.name == SceneColor::NAME));
         assert!(sig.reads.iter().any(|s| s.name == GDepth::NAME));
         assert!(sig.reads.iter().any(|s| s.name == ReflectionTexture::NAME));
+        assert!(sig
+            .reads
+            .iter()
+            .any(|s| s.name == WaterReflectionColor::NAME));
         assert_eq!(sig.writes.len(), 1);
         assert_eq!(sig.writes[0].name, WaterColor::NAME);
     }

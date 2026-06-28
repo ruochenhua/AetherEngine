@@ -71,14 +71,14 @@ pub struct WaterUniform {
     pub flow_speed: glam::Vec2,
     /// UV flow speed for the second animated texture layer.
     pub flow_speed_2: glam::Vec2,
-    /// Padding to reach a 336-byte struct size.
+    /// 1 if planar reflection is enabled, 0 otherwise.
+    pub reflection_enabled: u32,
+    /// Resolution scale of the planar reflection texture.
+    pub reflection_resolution_scale: f32,
+    /// Padding.
     pub _pad5: f32,
     /// Padding.
     pub _pad6: f32,
-    /// Padding.
-    pub _pad7: f32,
-    /// Padding.
-    pub _pad8: f32,
 }
 
 impl Default for WaterUniform {
@@ -116,10 +116,10 @@ impl Default for WaterUniform {
             _pad4: 0.0,
             flow_speed: glam::Vec2::new(0.03, 0.01),
             flow_speed_2: glam::Vec2::new(-0.02, 0.015),
+            reflection_enabled: 0,
+            reflection_resolution_scale: 0.5,
             _pad5: 0.0,
             _pad6: 0.0,
-            _pad7: 0.0,
-            _pad8: 0.0,
         }
     }
 }

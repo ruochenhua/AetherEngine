@@ -10,6 +10,7 @@ use aether_engine::renderer::{
         god_ray::GodRayPass, lighting::LightingPass, shadow::ShadowPass, ssao::SSAOPass,
         ssr::SSRPass, terrain::TerrainPass, tone_mapping::ToneMappingPass,
         volumetric_cloud::VolumetricCloudPass, water::WaterPass,
+        water_reflection::WaterReflectionPass,
     },
     pipeline_builder::{PipelineBuildError, PipelineBuilder},
     scheduler::Scheduler,
@@ -70,6 +71,7 @@ pub fn build_pipeline(
         .add_pass(VolumetricCloudPass::init(&ctx))
         .add_pass(SSRPass::init(&ctx))
         .add_pass(GodRayPass::init(&ctx))
+        .add_pass(WaterReflectionPass::init(&ctx))
         .add_pass(WaterPass::init(&ctx))
         .add_pass(CompositePass::init(&ctx))
         .add_pass(BloomPass::init(&ctx))

@@ -527,6 +527,8 @@ mod tests {
                 flow_speed_2: [-0.02, 0.015],
                 secondary_scale: 0.7,
                 specular_power: 128.0,
+                reflection_enabled: true,
+                reflection_resolution_scale: 0.5,
             }),
             clouds: None,
             god_ray: None,

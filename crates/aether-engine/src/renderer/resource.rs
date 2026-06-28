@@ -101,6 +101,14 @@ impl_resource_tag!(SceneColor, "scene_color");
 pub enum WaterColor {}
 impl_resource_tag!(WaterColor, "water_color");
 
+/// Planar water reflection color texture (Rgba16Float).
+pub enum WaterReflectionColor {}
+impl_resource_tag!(WaterReflectionColor, "water_reflection_color");
+
+/// Planar water reflection depth buffer (Depth32Float).
+pub enum WaterReflectionDepth {}
+impl_resource_tag!(WaterReflectionDepth, "water_reflection_depth");
+
 /// Volumetric cloud overlay color/alpha (Rgba16Float).
 pub enum CloudColor {}
 impl_resource_tag!(CloudColor, "cloud_color");
