@@ -415,6 +415,7 @@ pub(crate) fn process_post_ui_ops(app: &mut App) {
                     extent: 256.0,
                     chunk_size: 64,
                     max_lod: 4,
+                    albedo_tiling: 64.0,
                 },
                 material: aether_engine::asset::terrain_material::TerrainMaterial::default(),
                 splatmap_path: None,
@@ -447,6 +448,8 @@ pub(crate) fn process_post_ui_ops(app: &mut App) {
 
             let water = Water {
                 config: aether_engine::scene::WaterConfig::default(),
+                dudv_texture: None,
+                normal_texture: None,
             };
             let entity = world.spawn((Transform::default(), water, Name("Water".into())));
             added_entity = Some(entity);

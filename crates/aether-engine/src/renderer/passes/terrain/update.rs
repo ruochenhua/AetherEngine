@@ -67,6 +67,8 @@ impl TerrainPass {
             &self.terrain_buffer,
             &terrain.material,
             terrain.splatmap_path.is_some(),
+            terrain.geometry.extent,
+            terrain.geometry.albedo_tiling,
             queue,
         );
 
@@ -188,15 +190,19 @@ pub(super) fn write_terrain_uniforms(
     buffer: &wgpu::Buffer,
     material: &TerrainMaterial,
     has_splat_map: bool,
+    extent: f32,
+    albedo_tiling: f32,
     queue: &wgpu::Queue,
 ) {
-    let uniform = terrain_uniform_from_material(material, has_splat_map);
+    let uniform = terrain_uniform_from_material(material, has_splat_map, extent, albedo_tiling);
     queue.write_buffer(buffer, 0, bytemuck::cast_slice(&[uniform]));
 }
 
 fn terrain_uniform_from_material(
     material: &TerrainMaterial,
     has_splat_map: bool,
+    extent: f32,
+    albedo_tiling: f32,
 ) -> TerrainUniform {
     let mut colors = [[0.5, 0.5, 0.5, 1.0]; 4];
     let mut roughness = [0.8; 4];
@@ -206,6 +212,23 @@ fn terrain_uniform_from_material(
         roughness[i] = layer.roughness;
         metallic[i] = layer.metallic;
     }
+
+    // Map world-space XZ positions to splat/albedo UVs.
+    // The `extent` field stored in TerrainGeometry is the half-extent: the
+    // terrain spans [-extent, extent] in both X and Z, so the full width is
+    // `2.0 * extent`. The splat map covers that full width exactly once, and
+    // the albedo textures tile across it at the configured `albedo_tiling` rate.
+    let full_extent = (extent * 2.0).max(0.001);
+    let splat_uv_scale = 1.0 / full_extent;
+    let albedo_uv_scale = albedo_tiling.max(0.001) / full_extent;
+
+    // Per-layer UV scales let each material tile at a different rate so the
+    // patterns do not line up across chunks, breaking the visible grid.
+    let mut layer_uv_scale = [1.0f32; 4];
+    for (i, layer) in material.layers.iter().enumerate() {
+        layer_uv_scale[i] = layer.uv_scale;
+    }
+
     TerrainUniform {
         layer_color_0: colors[0],
         layer_color_1: colors[1],
@@ -214,6 +237,9 @@ fn terrain_uniform_from_material(
         layer_roughness: roughness,
         layer_metallic: metallic,
         has_splat_map: if has_splat_map { 1 } else { 0 },
-        _pad: [0; 3],
+        _pad0: 0,
+        splat_uv_scale,
+        albedo_uv_scale,
+        layer_uv_scale,
     }
 }

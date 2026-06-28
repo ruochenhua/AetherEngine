@@ -92,16 +92,35 @@ pub(super) fn spawn_atmosphere(world: &mut World, atmos_cfg: Option<&AtmosphereC
 }
 
 /// Spawn a single water entity from `WaterConfig`.
-pub(super) fn spawn_water(world: &mut World, water_cfg: Option<&WaterConfig>) {
+pub(super) fn spawn_water(
+    world: &mut World,
+    water_cfg: Option<&WaterConfig>,
+    assets: &mut AssetManager,
+) {
     let cfg = match water_cfg {
         Some(c) => c,
         None => return,
     };
 
+    let dudv_texture = cfg.dudv_map.as_ref().and_then(|path| {
+        assets
+            .load::<CpuTexture>(path)
+            .map_err(|e| tracing::warn!("Failed to load water dudv map '{}': {}", path, e))
+            .ok()
+    });
+    let normal_texture = cfg.normal_map.as_ref().and_then(|path| {
+        assets
+            .load::<CpuTexture>(path)
+            .map_err(|e| tracing::warn!("Failed to load water normal map '{}': {}", path, e))
+            .ok()
+    });
+
     world.spawn((
         Transform::default(),
         Water {
             config: cfg.clone(),
+            dudv_texture,
+            normal_texture,
         },
         Name("Water".into()),
     ));
@@ -201,6 +220,7 @@ pub(super) fn build_terrain_material(
                 .roughness_metallic_texture
                 .as_ref()
                 .and_then(|path| assets.load::<CpuTexture>(path).ok()),
+            uv_scale: layer_cfg.uv_scale,
         };
     }
 

@@ -4,6 +4,8 @@
 
 use crate::asset::mesh::GpuMesh;
 use crate::asset::terrain_material::TerrainMaterial;
+use crate::asset::texture::CpuTexture;
+use crate::asset::Handle;
 use crate::renderer::light::LightType;
 use crate::scene::{TerrainGeometry, TerrainLayerConfig, TerrainSource};
 use glam::{Quat, Vec3};
@@ -227,6 +229,10 @@ pub struct Terrain {
 pub struct Water {
     /// Water configuration data.
     pub config: crate::scene::WaterConfig,
+    /// Optional dudv map handle for refraction distortion.
+    pub dudv_texture: Option<Handle<CpuTexture>>,
+    /// Optional normal map handle for surface normal perturbation.
+    pub normal_texture: Option<Handle<CpuTexture>>,
 }
 
 /// Volumetric cloud component.

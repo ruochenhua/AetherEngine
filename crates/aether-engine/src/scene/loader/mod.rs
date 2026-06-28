@@ -82,7 +82,7 @@ impl SceneLoader {
         spawn::spawn_camera(world, &desc.camera);
         spawn::spawn_light(world, desc.lights.first());
         spawn::spawn_atmosphere(world, desc.atmosphere.as_ref());
-        spawn::spawn_water(world, desc.water.as_ref());
+        spawn::spawn_water(world, desc.water.as_ref(), assets);
         spawn::spawn_clouds(world, desc.clouds.as_ref());
         spawn::spawn_god_ray(world, desc.god_ray.as_ref());
         spawn::spawn_terrain(world, desc.terrain.as_ref(), assets);
@@ -512,6 +512,7 @@ mod tests {
                 extent: 128.0,
                 chunk_size: 32,
                 max_lod: 2,
+                albedo_tiling: 64.0,
             },
             splatmap: None,
             layers: vec![TerrainLayerConfig::default()],

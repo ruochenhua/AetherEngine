@@ -7,6 +7,7 @@
 //! pass mixes over the opaque scene.
 
 use crate::asset::mesh::GpuMesh;
+use crate::asset::texture::GpuTexture;
 use crate::renderer::frame::RenderFrame;
 use crate::renderer::pass::{InitContext, Pass, PassSignature, ResHandle};
 use crate::renderer::resource::{GDepth, ReflectionTexture, SceneColor, WaterColor};
@@ -21,10 +22,17 @@ pub use types::WaterUniform;
 
 /// Water render pass.
 pub struct WaterPass {
+    device: wgpu::Device,
     pipeline: wgpu::RenderPipeline,
     uniform_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
     texture_bind_group: Option<wgpu::BindGroup>,
+    water_texture_bind_group: Option<wgpu::BindGroup>,
+    water_texture_bind_group_layout: wgpu::BindGroupLayout,
+    water_sampler: wgpu::Sampler,
+    scene_sampler: wgpu::Sampler,
+    fallback_dudv: Arc<GpuTexture>,
+    fallback_normal: Arc<GpuTexture>,
     mesh: Arc<GpuMesh>,
     scene_color_handle: Option<ResHandle<SceneColor>>,
     reflection_handle: Option<ResHandle<ReflectionTexture>>,
@@ -32,6 +40,10 @@ pub struct WaterPass {
     water_color_handle: Option<ResHandle<WaterColor>>,
     has_water: bool,
     time: f32,
+    /// Last resolved dudv texture; kept alive so the cached bind group stays valid.
+    last_dudv: Option<Arc<crate::asset::texture::GpuTexture>>,
+    /// Last resolved normal texture; kept alive so the cached bind group stays valid.
+    last_normal: Option<Arc<crate::asset::texture::GpuTexture>>,
 }
 
 impl Pass for WaterPass {
@@ -48,7 +60,7 @@ impl Pass for WaterPass {
     }
 
     fn init(ctx: &InitContext) -> Self {
-        Self::new(ctx.device)
+        Self::new(ctx.device, ctx.queue)
     }
 
     fn resolve(&mut self, device: &wgpu::Device, resources: &ResourceTable) {
@@ -56,15 +68,6 @@ impl Pass for WaterPass {
         self.reflection_handle = Some(resources.handle::<ReflectionTexture>());
         self.depth_handle = Some(resources.handle::<GDepth>());
         self.water_color_handle = Some(resources.handle::<WaterColor>());
-
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("Water Sampler"),
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            ..Default::default()
-        });
 
         let texture_bind_group_layout = pipeline::create_texture_bind_group_layout(device);
 
@@ -86,7 +89,13 @@ impl Pass for WaterPass {
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
+                    resource: wgpu::BindingResource::Sampler(&self.scene_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::TextureView(
+                        resources.get(self.depth_handle.unwrap()),
+                    ),
                 },
             ],
         }));
@@ -104,10 +113,12 @@ impl Pass for WaterPass {
             let proj = frame.camera.projection_matrix(frame.aspect);
             let view = frame.camera.view_matrix();
             let view_proj = proj * view;
+            let inv_view_proj = view_proj.inverse();
 
             let cfg = water.config;
             let uniforms = WaterUniform {
                 view_proj,
+                inv_view_proj,
                 camera_pos: frame.camera.position.extend(0.0),
                 water_color: glam::Vec4::from_array([
                     cfg.water_color[0],
@@ -131,11 +142,30 @@ impl Pass for WaterPass {
                 fresnel_power: cfg.fresnel_power,
                 refraction_scale: cfg.refraction_scale,
                 reflectivity: cfg.reflectivity,
+                texture_scale: cfg.texture_scale,
+                dudv_strength: cfg.dudv_strength,
+                has_dudv: if water.dudv_texture.is_some() { 1 } else { 0 },
+                has_normal: if water.normal_texture.is_some() { 1 } else { 0 },
+                normal_strength: cfg.normal_strength,
                 _pad0: 0.0,
                 _pad1: 0.0,
                 _pad2: 0.0,
                 _pad3: 0.0,
+                sun_direction: {
+                    let d = frame.lighting.light.direction;
+                    glam::Vec4::new(-d[0], -d[1], -d[2], 0.0)
+                },
+                sun_color: {
+                    let c = frame.lighting.light.color;
+                    let i = frame.lighting.light.intensity;
+                    glam::Vec4::new(c[0] * i, c[1] * i, c[2] * i, 0.0)
+                },
+                depth_scale: cfg.depth_scale,
+                specular_power: cfg.specular_power,
+                secondary_scale: cfg.secondary_scale,
                 _pad4: 0.0,
+                flow_speed: glam::Vec2::from_array(cfg.flow_speed),
+                flow_speed_2: glam::Vec2::from_array(cfg.flow_speed_2),
                 _pad5: 0.0,
                 _pad6: 0.0,
                 _pad7: 0.0,
@@ -144,6 +174,53 @@ impl Pass for WaterPass {
             frame
                 .queue
                 .write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
+
+            // Resolve optional dudv / normal textures. Use the pipeline's neutral
+            // fallbacks when no texture is configured so we never sample the cache's
+            // fallback-white and accidentally produce full distortion or tilted normals.
+            let dudv = match water.dudv_texture {
+                Some(handle) => frame
+                    .texture_cache
+                    .get_or_upload(handle, frame.asset_manager),
+                None => self.fallback_dudv.clone(),
+            };
+            let normal = match water.normal_texture {
+                Some(handle) => frame
+                    .texture_cache
+                    .get_or_upload(handle, frame.asset_manager),
+                None => self.fallback_normal.clone(),
+            };
+
+            let needs_rebuild = match (&self.last_dudv, &self.last_normal) {
+                (Some(last_d), Some(last_n)) => {
+                    !Arc::ptr_eq(last_d, &dudv) || !Arc::ptr_eq(last_n, &normal)
+                }
+                _ => true,
+            };
+
+            if needs_rebuild {
+                self.water_texture_bind_group =
+                    Some(self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some("Water Material Bind Group"),
+                        layout: &self.water_texture_bind_group_layout,
+                        entries: &[
+                            wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: wgpu::BindingResource::TextureView(&dudv.view),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 1,
+                                resource: wgpu::BindingResource::TextureView(&normal.view),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 2,
+                                resource: wgpu::BindingResource::Sampler(&self.water_sampler),
+                            },
+                        ],
+                    }));
+                self.last_dudv = Some(dudv);
+                self.last_normal = Some(normal);
+            }
         } else {
             self.has_water = false;
         }
@@ -243,6 +320,8 @@ mod tests {
         let mut world = World::new();
         world.spawn((Water {
             config: WaterConfig::default(),
+            dudv_texture: None,
+            normal_texture: None,
         },));
         let optional = extract_optional_pass_data(&world);
         let camera = FlyCamera::default();

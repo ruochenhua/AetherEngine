@@ -38,6 +38,36 @@ pub struct WaterConfig {
     /// Reflection intensity multiplier.
     #[serde(default = "default_water_reflectivity")]
     pub reflectivity: f32,
+    /// Optional dudv map path for refraction UV distortion.
+    #[serde(default)]
+    pub dudv_map: Option<String>,
+    /// Optional normal map path for surface normal perturbation.
+    #[serde(default)]
+    pub normal_map: Option<String>,
+    /// UV scale for the dudv/normal map tiling.
+    #[serde(default = "default_water_texture_scale")]
+    pub texture_scale: f32,
+    /// Distortion strength contributed by the dudv map.
+    #[serde(default = "default_water_dudv_strength")]
+    pub dudv_strength: f32,
+    /// Strength of the normal-map perturbation (0 = geometry normal only).
+    #[serde(default = "default_water_normal_strength")]
+    pub normal_strength: f32,
+    /// Scale applied to water thickness when computing depth-based color absorption.
+    #[serde(default = "default_water_depth_scale")]
+    pub depth_scale: f32,
+    /// Base UV flow speed for the first animated texture layer [u, v].
+    #[serde(default = "default_water_flow_speed")]
+    pub flow_speed: [f32; 2],
+    /// UV flow speed for the second animated texture layer [u, v].
+    #[serde(default = "default_water_flow_speed_2")]
+    pub flow_speed_2: [f32; 2],
+    /// UV scale multiplier for the second animated texture layer.
+    #[serde(default = "default_water_secondary_scale")]
+    pub secondary_scale: f32,
+    /// Exponent for the Blinn-Phong sun specular highlight.
+    #[serde(default = "default_water_specular_power")]
+    pub specular_power: f32,
 }
 
 impl Default for WaterConfig {
@@ -54,6 +84,16 @@ impl Default for WaterConfig {
             fresnel_power: default_water_fresnel_power(),
             refraction_scale: default_water_refraction_scale(),
             reflectivity: default_water_reflectivity(),
+            dudv_map: None,
+            normal_map: None,
+            texture_scale: default_water_texture_scale(),
+            dudv_strength: default_water_dudv_strength(),
+            normal_strength: default_water_normal_strength(),
+            depth_scale: default_water_depth_scale(),
+            flow_speed: default_water_flow_speed(),
+            flow_speed_2: default_water_flow_speed_2(),
+            secondary_scale: default_water_secondary_scale(),
+            specular_power: default_water_specular_power(),
         }
     }
 }
@@ -100,4 +140,36 @@ fn default_water_refraction_scale() -> f32 {
 
 fn default_water_reflectivity() -> f32 {
     0.6
+}
+
+fn default_water_texture_scale() -> f32 {
+    4.0
+}
+
+fn default_water_dudv_strength() -> f32 {
+    0.02
+}
+
+fn default_water_normal_strength() -> f32 {
+    1.0
+}
+
+fn default_water_depth_scale() -> f32 {
+    0.15
+}
+
+fn default_water_flow_speed() -> [f32; 2] {
+    [0.03, 0.01]
+}
+
+fn default_water_flow_speed_2() -> [f32; 2] {
+    [-0.02, 0.015]
+}
+
+fn default_water_secondary_scale() -> f32 {
+    0.7
+}
+
+fn default_water_specular_power() -> f32 {
+    128.0
 }

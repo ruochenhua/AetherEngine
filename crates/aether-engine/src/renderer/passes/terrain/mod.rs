@@ -56,7 +56,10 @@ struct TerrainUniform {
     layer_roughness: [f32; 4],
     layer_metallic: [f32; 4],
     has_splat_map: u32,
-    _pad: [u32; 3],
+    _pad0: u32,
+    splat_uv_scale: f32,
+    albedo_uv_scale: f32,
+    layer_uv_scale: [f32; 4],
 }
 
 #[repr(C)]

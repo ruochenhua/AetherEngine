@@ -320,6 +320,8 @@ mod tests {
         world.spawn((default_terrain(),));
         world.spawn((Water {
             config: WaterConfig::default(),
+            dudv_texture: None,
+            normal_texture: None,
         },));
         world.spawn((Atmosphere {
             config: AtmosphereConfig::default(),

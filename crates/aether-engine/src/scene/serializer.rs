@@ -466,6 +466,7 @@ mod tests {
                 extent: 256.0,
                 chunk_size: 64,
                 max_lod: 4,
+                albedo_tiling: 64.0,
             },
             material: crate::asset::terrain_material::TerrainMaterial::default(),
             splatmap_path: None,
@@ -522,6 +523,8 @@ mod tests {
                 wave_amplitude: 0.5,
                 ..Default::default()
             },
+            dudv_texture: None,
+            normal_texture: None,
         },));
 
         let lighting = LightingUniforms::default();

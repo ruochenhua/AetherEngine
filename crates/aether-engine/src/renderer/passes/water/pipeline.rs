@@ -6,13 +6,14 @@
 use super::WaterPass;
 use super::WaterUniform;
 use crate::asset::mesh::{CpuMesh, GpuMesh, Vertex};
+use crate::asset::texture::{CpuTexture, GpuTexture};
 use std::borrow::Cow;
 use std::mem::size_of;
 use std::sync::Arc;
 
 impl WaterPass {
     /// Create a new water pass.
-    pub fn new(device: &wgpu::Device) -> Self {
+    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
         let output_format = wgpu::TextureFormat::Rgba16Float;
         let shader_source = r#"
 struct VertexInput {
@@ -43,11 +44,24 @@ struct WaterUniform {
     fresnel_power: f32,
     refraction_scale: f32,
     reflectivity: f32,
+    texture_scale: f32,
+    dudv_strength: f32,
+    has_dudv: u32,
+    has_normal: u32,
+    normal_strength: f32,
     _pad0: f32,
     _pad1: f32,
     _pad2: f32,
     _pad3: f32,
+    sun_direction: vec4<f32>,
+    sun_color: vec4<f32>,
+    inv_view_proj: mat4x4<f32>,
+    depth_scale: f32,
+    specular_power: f32,
+    secondary_scale: f32,
     _pad4: f32,
+    flow_speed: vec2<f32>,
+    flow_speed_2: vec2<f32>,
     _pad5: f32,
     _pad6: f32,
     _pad7: f32,
@@ -58,6 +72,10 @@ struct WaterUniform {
 @group(1) @binding(0) var scene_color: texture_2d<f32>;
 @group(1) @binding(1) var reflection_texture: texture_2d<f32>;
 @group(1) @binding(2) var tex_sampler: sampler;
+@group(1) @binding(3) var depth_tex: texture_depth_2d;
+@group(2) @binding(0) var dudv_map: texture_2d<f32>;
+@group(2) @binding(1) var normal_map: texture_2d<f32>;
+@group(2) @binding(2) var water_sampler: sampler;
 
 const PI: f32 = 3.14159265359;
 
@@ -96,25 +114,93 @@ fn vs_main(in: VertexInput) -> VertexOutput {
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let dims = vec2<f32>(textureDimensions(scene_color, 0));
     let screen_uv = in.clip_position.xy / dims;
+    let screen_coord = vec2<i32>(screen_uv * dims);
+
+    // Manual depth test: discard this water fragment if opaque geometry is in front.
+    let surface_depth = textureLoad(depth_tex, screen_coord, 0);
+    if (surface_depth < in.clip_position.z - 0.0001) {
+        discard;
+    }
+
+    // Two layers of animated texture coordinates for dudv / normal maps.
+    let flow0 = water.time * water.flow_speed;
+    let flow1 = water.time * water.flow_speed_2;
+    let uv0 = in.uv * water.texture_scale + flow0;
+    let uv1 = in.uv * water.texture_scale * water.secondary_scale + flow1;
+
+    // Sample dudv map when configured; otherwise no distortion.
+    var distortion = vec2<f32>(0.0);
+    if (water.has_dudv != 0u) {
+        let dudv0 = textureSample(dudv_map, water_sampler, uv0).rg;
+        let dudv1 = textureSample(dudv_map, water_sampler, uv1).rg;
+        let dudv = (dudv0 + dudv1) * 0.5;
+        distortion = (dudv * 2.0 - 1.0) * water.dudv_strength;
+    }
 
     // Reconstruct surface normal from position derivatives.
     let ddx = dpdx(in.world_pos);
     let ddy = dpdy(in.world_pos);
-    let normal = normalize(cross(ddx, ddy));
+    var normal = normalize(cross(ddx, ddy));
+
+    // Perturb normal using the normal map when configured.
+    if (water.has_normal != 0u) {
+        let normal0 = textureSample(normal_map, water_sampler, uv0).rgb;
+        let normal1 = textureSample(normal_map, water_sampler, uv1).rgb;
+        let normal_sample = normalize((normal0 + normal1) * 0.5);
+        let tangent_normal = normalize(normal_sample * 2.0 - 1.0);
+
+        // Build a robust tangent frame around the geometry normal.
+        let up = select(
+            vec3<f32>(1.0, 0.0, 0.0),
+            vec3<f32>(0.0, 1.0, 0.0),
+            abs(normal.y) < 0.9999
+        );
+        let tangent = normalize(cross(up, normal));
+        let bitangent = cross(normal, tangent);
+        let mapped_normal = tangent_normal.x * tangent
+                          + tangent_normal.y * bitangent
+                          + tangent_normal.z * normal;
+        normal = normalize(mix(normal, mapped_normal, clamp(water.normal_strength, 0.0, 1.0)));
+    }
 
     let view_dir = normalize(water.camera_pos.xyz - in.world_pos);
     let n_dot_v = max(dot(normal, view_dir), 0.0);
     let fresnel = pow(1.0 - n_dot_v, water.fresnel_power);
 
-    // Refraction: sample the lit scene behind the water surface, distorted by the normal.
+    // Refraction: sample the lit scene behind the water surface, distorted by dudv + normal.
     let refract_uv = clamp(
-        screen_uv + normal.xz * water.refraction_scale,
+        screen_uv + distortion + normal.xz * water.refraction_scale,
         vec2<f32>(0.0),
         vec2<f32>(1.0)
     );
     let refract_color = textureSample(scene_color, tex_sampler, refract_uv).rgb;
-    let water_tint = mix(water.water_color, water.deep_color, 0.5).rgb;
-    let refracted = refract_color * water_tint;
+
+    // Reconstruct the underwater hit point from the distorted refract UV and depth buffer.
+    let refract_coord = clamp(
+        vec2<i32>(refract_uv * dims),
+        vec2<i32>(0),
+        vec2<i32>(dims) - vec2<i32>(1)
+    );
+    let refract_depth = textureLoad(depth_tex, refract_coord, 0);
+    var depth_blend = 0.0;
+    if (refract_depth < 0.9999) {
+        let ndc = vec4<f32>(
+            refract_uv.x * 2.0 - 1.0,
+            1.0 - refract_uv.y * 2.0,
+            refract_depth,
+            1.0
+        );
+        let underwater_h = water.inv_view_proj * ndc;
+        let underwater_pos = underwater_h.xyz / underwater_h.w;
+        let thickness = max(in.world_pos.y - underwater_pos.y, 0.0);
+        depth_blend = 1.0 - exp(-thickness * water.depth_scale);
+    }
+
+    // Depth-aware water color: deeper water is more tinted toward deep_color,
+    // but still retains the refracted scene so underwater detail stays visible.
+    let water_tint = mix(water.water_color, water.deep_color, depth_blend).rgb;
+    let tinted = refract_color * water_tint;
+    let refracted = mix(refract_color, tinted, depth_blend);
 
     // Reflection: sample SSR reflection texture, also distorted slightly.
     let reflect_uv = clamp(
@@ -124,9 +210,21 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     );
     let reflection = textureSample(reflection_texture, tex_sampler, reflect_uv).rgb;
 
-    let final_color = mix(refracted, reflection, fresnel * water.reflectivity);
-    let alpha = mix(0.6, 0.95, fresnel);
+    // Specular highlight from the directional light, using the perturbed normal.
+    let sun_dir = normalize(water.sun_direction.xyz);
+    let sun_color = water.sun_color.rgb;
+    let half_vec = normalize(sun_dir + view_dir);
+    let n_dot_h = max(dot(normal, half_vec), 0.0);
+    let specular = pow(n_dot_h, water.specular_power) * sun_color;
 
+    // Sky gradient fallback for grazing angles (visible when SSR misses).
+    let sky_color = mix(vec3<f32>(0.45, 0.65, 0.9), vec3<f32>(0.9, 0.95, 1.0), max(normal.y, 0.0));
+    let reflected = mix(reflection, sky_color, 0.25);
+
+    var final_color = mix(refracted, reflected, fresnel * water.reflectivity);
+    final_color = final_color + specular * (1.0 - fresnel * 0.3);
+
+    let alpha = mix(mix(0.6, 0.8, depth_blend), 0.95, fresnel);
     return vec4<f32>(final_color, alpha);
 }
 "#;
@@ -152,12 +250,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             });
 
         let texture_bind_group_layout = create_texture_bind_group_layout(device);
+        let water_texture_bind_group_layout = create_water_texture_bind_group_layout(device);
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Water Pipeline Layout"),
             bind_group_layouts: &[
                 Some(&uniform_bind_group_layout),
                 Some(&texture_bind_group_layout),
+                Some(&water_texture_bind_group_layout),
             ],
             immediate_size: 0,
         });
@@ -190,13 +290,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                 unclipped_depth: false,
                 conservative: false,
             },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: wgpu::TextureFormat::Depth32Float,
-                depth_write_enabled: Some(false),
-                depth_compare: Some(wgpu::CompareFunction::LessEqual),
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            }),
+            depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
             multiview_mask: None,
             cache: None,
@@ -218,13 +312,68 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             }],
         });
 
+        // Neutral fallback textures: grey dudv (no distortion) and flat normal.
+        let fallback_dudv = Arc::new(GpuTexture::from_cpu(
+            device,
+            queue,
+            &CpuTexture::from_color(128, 128, 0, 255),
+            Some("water_fallback_dudv"),
+        ));
+        let fallback_normal = Arc::new(GpuTexture::from_cpu(
+            device,
+            queue,
+            &CpuTexture::from_color(128, 128, 255, 255),
+            Some("water_fallback_normal"),
+        ));
+        let water_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("Water Texture Sampler"),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            address_mode_u: wgpu::AddressMode::Repeat,
+            address_mode_v: wgpu::AddressMode::Repeat,
+            ..Default::default()
+        });
+        let scene_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("Water Scene Sampler"),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            ..Default::default()
+        });
+        let water_texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Water Material Bind Group"),
+            layout: &water_texture_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&fallback_dudv.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&fallback_normal.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(&water_sampler),
+                },
+            ],
+        });
+
         let mesh = Arc::new(GpuMesh::from_cpu(device, &create_water_plane(128, 256.0)));
 
         Self {
+            device: device.clone(),
             pipeline,
             uniform_buffer,
             uniform_bind_group,
             texture_bind_group: None,
+            water_texture_bind_group: Some(water_texture_bind_group),
+            water_texture_bind_group_layout,
+            water_sampler,
+            scene_sampler,
+            fallback_dudv: fallback_dudv.clone(),
+            fallback_normal: fallback_normal.clone(),
             mesh,
             scene_color_handle: None,
             reflection_handle: None,
@@ -232,15 +381,64 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             water_color_handle: None,
             has_water: false,
             time: 0.0,
+            last_dudv: Some(fallback_dudv),
+            last_normal: Some(fallback_normal),
         }
     }
 }
 
 /// Create the texture bind group layout shared by the water pipeline and
-/// the per-frame texture bind group.
+/// the per-frame texture bind group (scene color + reflection + sampler).
 pub(super) fn create_texture_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
     device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some("Water Texture Bind Group Layout"),
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 3,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Depth,
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
+        ],
+    })
+}
+
+/// Create the bind group layout for water material textures (dudv + normal).
+pub(super) fn create_water_texture_bind_group_layout(
+    device: &wgpu::Device,
+) -> wgpu::BindGroupLayout {
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("Water Material Bind Group Layout"),
         entries: &[
             wgpu::BindGroupLayoutEntry {
                 binding: 0,

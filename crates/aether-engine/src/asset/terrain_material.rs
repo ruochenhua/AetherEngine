@@ -24,6 +24,9 @@ pub struct TerrainLayer {
     pub normal_texture: Option<Handle<CpuTexture>>,
     /// Optional packed roughness/metallic texture.
     pub roughness_metallic_texture: Option<Handle<CpuTexture>>,
+    /// UV scale applied to this layer's albedo texture.
+    /// A value of 1.0 tiles once at the global albedo scale; larger values tile more densely.
+    pub uv_scale: f32,
 }
 
 impl Default for TerrainLayer {
@@ -35,6 +38,7 @@ impl Default for TerrainLayer {
             albedo_texture: None,
             normal_texture: None,
             roughness_metallic_texture: None,
+            uv_scale: 1.0,
         }
     }
 }

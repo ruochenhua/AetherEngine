@@ -309,6 +309,44 @@ fn render_water(ui: &mut egui::Ui, water: &mut Water) {
             .prefix("Refraction Scale: "),
     );
     ui.add(egui::Slider::new(&mut cfg.reflectivity, 0.0..=1.0).text("Reflectivity"));
+    ui.add(
+        egui::DragValue::new(&mut cfg.texture_scale)
+            .speed(0.1)
+            .prefix("Texture Scale: "),
+    );
+    ui.add(
+        egui::DragValue::new(&mut cfg.dudv_strength)
+            .speed(0.001)
+            .prefix("DUDV Strength: "),
+    );
+    ui.add(
+        egui::DragValue::new(&mut cfg.normal_strength)
+            .speed(0.01)
+            .prefix("Normal Strength: "),
+    );
+    ui.add(
+        egui::DragValue::new(&mut cfg.depth_scale)
+            .speed(0.001)
+            .prefix("Depth Scale: "),
+    );
+    ui.add(
+        egui::DragValue::new(&mut cfg.specular_power)
+            .speed(1.0)
+            .prefix("Specular Power: "),
+    );
+    ui.add(
+        egui::DragValue::new(&mut cfg.secondary_scale)
+            .speed(0.01)
+            .prefix("Secondary Scale: "),
+    );
+    ui.label(format!(
+        "DUDV map: {}",
+        cfg.dudv_map.as_deref().unwrap_or("(none)")
+    ));
+    ui.label(format!(
+        "Normal map: {}",
+        cfg.normal_map.as_deref().unwrap_or("(none)")
+    ));
     ui.separator();
 }
 

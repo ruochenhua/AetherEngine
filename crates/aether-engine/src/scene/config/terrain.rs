@@ -48,6 +48,10 @@ pub struct TerrainLayerConfig {
     /// Optional packed roughness/metallic texture path.
     #[serde(default)]
     pub roughness_metallic_texture: Option<String>,
+    /// Per-layer UV scale. A value of 1.0 uses the global albedo tiling rate;
+    /// larger values make this layer's texture tile more densely.
+    #[serde(default = "default_layer_uv_scale")]
+    pub uv_scale: f32,
 }
 
 fn default_layer_albedo() -> [f32; 4] {
@@ -59,6 +63,9 @@ fn default_layer_roughness() -> f32 {
 fn default_layer_metallic() -> f32 {
     0.0
 }
+fn default_layer_uv_scale() -> f32 {
+    1.0
+}
 
 impl Default for TerrainLayerConfig {
     fn default() -> Self {
@@ -69,6 +76,7 @@ impl Default for TerrainLayerConfig {
             albedo_texture: None,
             normal_texture: None,
             roughness_metallic_texture: None,
+            uv_scale: default_layer_uv_scale(),
         }
     }
 }
@@ -145,6 +153,10 @@ pub struct TerrainGeometry {
     /// Maximum LOD level (0 = single chunk).
     #[serde(default = "default_terrain_max_lod")]
     pub max_lod: u32,
+    /// Global albedo texture tiling rate. The number of texture repeats across
+    /// the full terrain width (2 * extent).
+    #[serde(default = "default_terrain_albedo_tiling")]
+    pub albedo_tiling: f32,
 }
 
 fn default_terrain_extent() -> f32 {
@@ -156,6 +168,9 @@ fn default_terrain_chunk_size() -> u32 {
 fn default_terrain_max_lod() -> u32 {
     4
 }
+fn default_terrain_albedo_tiling() -> f32 {
+    64.0
+}
 
 impl Default for TerrainGeometry {
     fn default() -> Self {
@@ -163,6 +178,7 @@ impl Default for TerrainGeometry {
             extent: default_terrain_extent(),
             chunk_size: default_terrain_chunk_size(),
             max_lod: default_terrain_max_lod(),
+            albedo_tiling: default_terrain_albedo_tiling(),
         }
     }
 }

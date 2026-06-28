@@ -17,7 +17,6 @@ pub(super) fn execute(
     }
 
     let water_color_view = resources.get(pass.water_color_handle.unwrap());
-    let depth_view = resources.get(pass.depth_handle.unwrap());
     let texture_bg = pass
         .texture_bind_group
         .as_ref()
@@ -34,14 +33,7 @@ pub(super) fn execute(
                 store: wgpu::StoreOp::Store,
             },
         })],
-        depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-            view: depth_view,
-            depth_ops: Some(wgpu::Operations {
-                load: wgpu::LoadOp::Load,
-                store: wgpu::StoreOp::Store,
-            }),
-            stencil_ops: None,
-        }),
+        depth_stencil_attachment: None,
         timestamp_writes: None,
         occlusion_query_set: None,
         multiview_mask: None,
@@ -50,6 +42,13 @@ pub(super) fn execute(
     rpass.set_pipeline(&pass.pipeline);
     rpass.set_bind_group(0, &pass.uniform_bind_group, &[]);
     rpass.set_bind_group(1, texture_bg, &[]);
+    rpass.set_bind_group(
+        2,
+        pass.water_texture_bind_group
+            .as_ref()
+            .expect("WaterPass: water texture bind group not initialized"),
+        &[],
+    );
     rpass.set_vertex_buffer(0, pass.mesh.vertex_buffer.slice(..));
     if let Some(ref index_buffer) = pass.mesh.index_buffer {
         rpass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint32);
