@@ -4,7 +4,7 @@
 
 **Goal:** Upgrade SSAO from 16-sample hash-rotated kernel to 32-sample stratified hemisphere with 8×8 tiled noise rotation, and expand AOBlur from 3×3 to 5×5 bilateral.
 
-**Architecture:** Two-pass change. SSAOPass gets a 32-sample uniform kernel buffer + 8×8 noise texture in a new bind group 2, and switches GBuffer sampling from Nearest to Linear. AOBlurPass expands kernel radius + exposes `depth_sigma` uniform.
+**Architecture:** Two-pass change. SSAOPass gets a 32-sample uniform kernel buffer + 8×8 noise texture in a new bind group 2, and switches GBuffer sampling from Nearest to Linear. AOBlurPass expands kernel radius + uses existing `depth_sigma` uniform. Pipeline layout and WGSL must change atomically with BGL — no intermediate state.
 
 **Tech Stack:** Rust + wgpu + WGSL
 
@@ -20,16 +20,16 @@
 
 ---
 
-### Task 1: SSAO — 32-sample stratified hemisphere kernel
+### Task 1: SSAO — 32-sample kernel + 8×8 noise + WGSL rewrite + Linear sampler
 
 **Files:**
 - Modify: `crates/aether-engine/src/renderer/passes/ssao.rs`
 
 **Interfaces:**
-- Consumes: `wgpu::Device`, existing `SSAOPass` struct
-- Produces: `SSAOKernelUniform` struct, kernel uniform buffer, bind group 2 layout (kernel-only), updated pipeline layout with 3 bind groups
+- Consumes: `wgpu::Device`, `wgpu::Queue`, existing `SSAOPass` struct
+- Produces: `SSAOKernelUniform` struct, kernel uniform buffer, 8×8 noise texture, bind group 2 (kernel+noise+sampler), 3-group pipeline layout, rewritten WGSL, Linear GBuffer sampler
 
-- [ ] **Step 1: Add kernel uniform struct and precomputed kernel**
+- [ ] **Step 1: Add kernel uniform struct and precomputed 32-sample kernel**
 
 Add after `SSAOFrameUniforms` (before `pub struct SSAOPass`):
 
@@ -64,9 +64,9 @@ const KERNEL_SAMPLES: [[f32; 3]; 32] = [
 ];
 ```
 
-- [ ] **Step 2: Create kernel uniform buffer in `SSAOPass::new()`**
+- [ ] **Step 2: Generate kernel buffer + noise texture in `SSAOPass::new()`**
 
-At the end of `SSAOPass::new()` (after the quad vertex buffer creation, before `Self {`), insert:
+In `SSAOPass::new()`, after the quad vertex buffer creation and before `Self {`, insert kernel buffer creation:
 
 ```rust
         // Build 32-sample kernel uniform buffer (with padding to vec4)
@@ -79,124 +79,8 @@ At the end of `SSAOPass::new()` (after the quad vertex buffer creation, before `
             contents: bytemuck::cast_slice(&kernel_data),
             usage: wgpu::BufferUsages::UNIFORM,
         });
-```
 
-- [ ] **Step 3: Add bind group 2 layout and bind group (kernel-only)**
-
-After the frame bind group layout creation, insert new BGL for group 2:
-
-```rust
-        let kernel_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("SSAO Kernel BGL"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-        });
-```
-
-Update pipeline layout to use 3 bind group layouts:
-
-```rust
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("SSAO Pipeline Layout"),
-            bind_group_layouts: &[Some(&texture_bgl), Some(&frame_bgl), Some(&kernel_bgl)],
-            immediate_size: 0,
-        });
-```
-
-Create kernel bind group:
-
-```rust
-        let kernel_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("SSAO Kernel BG"),
-            layout: &kernel_bgl,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: kernel_buffer.as_entire_binding(),
-            }],
-        });
-```
-
-- [ ] **Step 4: Add fields to `SSAOPass` struct**
-
-Add to struct fields (before `enabled: bool`):
-
-```rust
-    kernel_buffer: wgpu::Buffer,
-    kernel_bind_group: wgpu::BindGroup,
-    #[allow(dead_code)]
-    kernel_bind_group_layout: wgpu::BindGroupLayout,
-```
-
-Add corresponding entries to `Self { }` constructor:
-
-```rust
-            kernel_buffer,
-            kernel_bind_group,
-            kernel_bind_group_layout: kernel_bgl,
-```
-
-- [ ] **Step 5: Update SSAOPass::execute() to bind group 2**
-
-In `execute()`, after `pass.set_bind_group(1, &self.frame_bind_group, &[]);`, add:
-
-```rust
-        pass.set_bind_group(2, &self.kernel_bind_group, &[]);
-```
-
-- [ ] **Step 6: Write unit test — kernel is normalized**
-
-In `mod tests`, add:
-
-```rust
-    #[test]
-    fn kernel_samples_are_normalized() {
-        for s in &KERNEL_SAMPLES {
-            let len = (s[0] * s[0] + s[1] * s[1] + s[2] * s[2]).sqrt();
-            assert!((len - 1.0).abs() < 0.001, "kernel sample not normalized: {:?}", s);
-        }
-    }
-```
-
-- [ ] **Step 7: Run tests**
-
-```bash
-cargo test --lib ssao
-```
-
-Expected: all pass, new `kernel_samples_are_normalized` passes.
-
-- [ ] **Step 8: Commit**
-
-```bash
-git add crates/aether-engine/src/renderer/passes/ssao.rs
-git commit -m "feat(#88): add 32-sample stratified SSAO kernel uniform"
-```
-
----
-
-### Task 2: SSAO — 8×8 noise texture + WGSL rewrite
-
-**Files:**
-- Modify: `crates/aether-engine/src/renderer/passes/ssao.rs`
-
-**Interfaces:**
-- Consumes: kernel bind group layout from Task 1
-- Produces: noise texture + sampler in bind group 2, rewritten WGSL with 32-sample loop, noise-based rotation, Linear depth/normal sampling
-
-- [ ] **Step 1: Generate 8×8 noise texture in `SSAOPass::new()`**
-
-After the kernel buffer creation, add:
-
-```rust
-        // 8×8 tiled rotation noise texture (64 random 2D vectors in tangent space)
+        // 8×8 tiled rotation noise texture (64 random 2D vectors)
         let noise_data: [[f32; 4]; 64] = [
             [0.426, 0.322, 0.0, 0.0], [-0.803, 0.463, 0.0, 0.0],
             [0.121, -0.791, 0.0, 0.0], [-0.477, -0.638, 0.0, 0.0],
@@ -267,9 +151,9 @@ After the kernel buffer creation, add:
         });
 ```
 
-- [ ] **Step 2: Extend bind group 2 to include noise texture + sampler**
+- [ ] **Step 3: Add bind group 2 layout (kernel + noise + sampler) and update pipeline layout**
 
-Replace kernel-only BGL with combined kernel+noise BGL:
+Replace the existing frame bind group layout code block and pipeline layout. Add kernel BGL after existing `frame_bgl`:
 
 ```rust
         let kernel_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -305,7 +189,17 @@ Replace kernel-only BGL with combined kernel+noise BGL:
         });
 ```
 
-Update kernel bind group to include noise:
+Update pipeline layout from 2 to 3 bind groups:
+
+```rust
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("SSAO Pipeline Layout"),
+            bind_group_layouts: &[Some(&texture_bgl), Some(&frame_bgl), Some(&kernel_bgl)],
+            immediate_size: 0,
+        });
+```
+
+Create kernel bind group:
 
 ```rust
         let kernel_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -328,27 +222,9 @@ Update kernel bind group to include noise:
         });
 ```
 
-- [ ] **Step 3: Add noise fields to struct**
-
-Add to `SSAOPass` struct fields:
-
-```rust
-    noise_texture: wgpu::Texture,
-    noise_view: wgpu::TextureView,
-    noise_sampler: wgpu::Sampler,
-```
-
-Add to `Self { }`:
-
-```rust
-            noise_texture,
-            noise_view,
-            noise_sampler,
-```
-
 - [ ] **Step 4: Update GBuffer sampler from Nearest to Linear**
 
-In `resolve()`, change `SSAO GBuffer Sampler`:
+In `resolve()`, change the `SSAO GBuffer Sampler`:
 
 ```rust
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -359,19 +235,34 @@ In `resolve()`, change `SSAO GBuffer Sampler`:
         });
 ```
 
-- [ ] **Step 5: Rewrite WGSL shader — 32-sample loop, noise texture, kernel uniform**
+- [ ] **Step 5: Add fields to `SSAOPass` struct**
 
-Replace the entire WGSL `shader_source` string. The vertex shader stays the same. Replace the fragment shader section from `@fragment` onward:
+Add fields before `enabled: bool`:
 
-The WGSL changes:
-1. Add `SSAOKernel` uniform struct and `@group(2) @binding(0) var<uniform> kernel: SSAOKernel;`
-2. Add `@group(2) @binding(1) var noise_tex: texture_2d<f32>;` and `@group(2) @binding(2) var noise_sampler: sampler;`
-3. Replace `const KERNEL: array<vec3<f32>, 16>` with kernel uniform
-4. Replace `hash2`-based rotation with noise texture lookup
-5. Change `for (var i: u32 = 0u; i < 16u; ...)` → `for (var i: u32 = 0u; i < 32u; ...)`
-6. Change `occlusion / 16.0` → `occlusion / 32.0`
+```rust
+    kernel_buffer: wgpu::Buffer,
+    kernel_bind_group: wgpu::BindGroup,
+    #[allow(dead_code)]
+    kernel_bind_group_layout: wgpu::BindGroupLayout,
+    noise_texture: wgpu::Texture,
+    noise_view: wgpu::TextureView,
+    noise_sampler: wgpu::Sampler,
+```
 
-Full replacement shader source:
+Add corresponding entries to `Self { }`:
+
+```rust
+            kernel_buffer,
+            kernel_bind_group,
+            kernel_bind_group_layout: kernel_bgl,
+            noise_texture,
+            noise_view,
+            noise_sampler,
+```
+
+- [ ] **Step 6: Rewrite WGSL shader — 32-sample loop, noise texture rotation, kernel uniform**
+
+Replace the entire `shader_source` with:
 
 ```rust
         let shader_source = r#"
@@ -483,11 +374,27 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 "#;
 ```
 
-- [ ] **Step 6: Write unit test — noise texture dimensions**
+- [ ] **Step 7: Update execute() to bind group 2**
 
-In `mod tests`, add:
+In `execute()`, after `pass.set_bind_group(1, &self.frame_bind_group, &[]);`, add:
 
 ```rust
+        pass.set_bind_group(2, &self.kernel_bind_group, &[]);
+```
+
+- [ ] **Step 8: Write unit tests**
+
+In `mod tests`, add two new tests before the closing `}` of the test module:
+
+```rust
+    #[test]
+    fn kernel_samples_are_normalized() {
+        for s in &KERNEL_SAMPLES {
+            let len = (s[0] * s[0] + s[1] * s[1] + s[2] * s[2]).sqrt();
+            assert!((len - 1.0).abs() < 0.001, "kernel sample not normalized: {:?}", s);
+        }
+    }
+
     #[test]
     fn noise_texture_is_8x8() {
         let pass = SSAOPass::new(&headless_device());
@@ -496,15 +403,15 @@ In `mod tests`, add:
     }
 ```
 
-- [ ] **Step 7: Run tests**
+- [ ] **Step 9: Run tests**
 
 ```bash
 cargo test --lib ssao
 ```
 
-Expected: all pass.
+Expected: all pass. New tests `kernel_samples_are_normalized` and `noise_texture_is_8x8` pass.
 
-- [ ] **Step 8: Run clippy**
+- [ ] **Step 10: Run clippy**
 
 ```bash
 cargo clippy --workspace --all-targets -- -D warnings
@@ -512,52 +419,35 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 Expected: no warnings.
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 11: Run full workspace tests**
+
+```bash
+cargo test --workspace --lib
+```
+
+Expected: all tests pass.
+
+- [ ] **Step 12: Commit**
 
 ```bash
 git add crates/aether-engine/src/renderer/passes/ssao.rs
-git commit -m "feat(#88): add 8x8 noise texture and rewrite SSAO shader for 32 samples"
+git commit -m "feat(#88): 32-sample stratified SSAO with 8x8 tiled noise and Linear sampler"
 ```
 
 ---
 
-### Task 3: AOBlur — 5×5 bilateral + depth_sigma
+### Task 2: AOBlur — 5×5 bilateral gaussian
 
 **Files:**
 - Modify: `crates/aether-engine/src/renderer/passes/ao_blur.rs`
 
 **Interfaces:**
 - Consumes: existing `AOBlurPass`, `BlurParams`
-- Produces: updated `BlurParams` with `depth_sigma`, 5×5 kernel WGSL
+- Produces: 5×5 gaussian kernel weights in WGSL, updated loop bounds, no Rust struct changes (depth_sigma already in BlurParams)
 
-- [ ] **Step 1: Update `BlurParams` struct to include `depth_sigma`**
+- [ ] **Step 1: Expand WGSL kernel from 3×3 to 5×5**
 
-Replace the current `BlurParams` struct (which already has `depth_sigma`) with the field exposed properly. The struct already has it — just update the WGSL `BlurParams` to match Rust layout exactly.
-
-Verify the Rust `BlurParams` (already exists from Task 0):
-```rust
-#[repr(C)]
-#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-struct BlurParams {
-    depth_sigma: f32,
-    _pad0: f32,
-    texel_size: [f32; 2],
-    _pad1: [f32; 8],  // 32 bytes after texel_size to match std140
-}
-```
-
-The current `_pad0` is misleading. The WGSL `BlurParams` says `_pad1: vec3<f32>`, `_pad2: f32` after texel_size — correct the layout to match std140 precisely.
-
-Actually, looking at the current code more carefully, the Rust struct and WGSL struct both have `depth_sigma` already. The WGSL comment says `_pad0`, `_pad1`, `_pad2`. The key change is the kernel size expansion. Let me focus on what actually needs to change:
-
-1. `KERNEL_SIZE: 1` → `2` in WGSL
-2. New 25-weight array
-3. Keep `depth_sigma` as-is (it's already there)
-4. Update loop bounds
-
-- [ ] **Step 2: Expand WGSL kernel from 3×3 to 5×5**
-
-In the WGSL shader string, replace:
+In the WGSL shader string, replace 3×3 kernel constants with 5×5:
 
 Old:
 ```wgsl
@@ -581,115 +471,47 @@ const KERNEL_WEIGHTS: array<f32, 25> = array<f32, 25>(
 );
 ```
 
-Replace loop bounds. Old:
+Replace loop bounds in fs_main. Find:
+
 ```wgsl
     for (var y: i32 = -KERNEL_SIZE; y <= KERNEL_SIZE; y = y + 1) {
         for (var x: i32 = -KERNEL_SIZE; x <= KERNEL_SIZE; x = x + 1) {
             let idx = (y + KERNEL_SIZE) * 3 + (x + KERNEL_SIZE);
 ```
 
-New:
+Replace with:
+
 ```wgsl
     for (var y: i32 = -KERNEL_RADIUS; y <= KERNEL_RADIUS; y = y + 1) {
         for (var x: i32 = -KERNEL_RADIUS; x <= KERNEL_RADIUS; x = x + 1) {
             let idx = (y + KERNEL_RADIUS) * 5 + (x + KERNEL_RADIUS);
 ```
 
-Update the comment at top of file from "Applies a 5×5 bilateral" — actually it already says 5×5. Keep the comment.
-
-- [ ] **Step 3: Update `apply_frame` to set `depth_sigma` properly**
-
-Current `apply_frame` does:
-```rust
-        let p = BlurParams {
-            depth_sigma: 0.5,
-            _pad0: 0.0,
-            texel_size: [texel_w, texel_h],
-            _pad1: [0.0; 8],
-        };
-```
-
-Keep as-is — `depth_sigma: 0.5` is the correct default. No change needed except the WGSL side already supports it.
-
-- [ ] **Step 4: Verify WGSL struct layout matches Rust**
-
-The WGSL `BlurParams` should be:
-
-```wgsl
-struct BlurParams {
-    depth_sigma: f32,   // offset 0
-    _pad0: f32,         // offset 4
-    texel_size: vec2<f32>, // offset 8
-    _pad1: vec4<f32>,   // offset 16
-    _pad2: vec4<f32>,   // offset 32
-};
-// Total: 48 bytes
-
-@group(1) @binding(0) var<uniform> params: BlurParams;
-```
-
-The current WGSL has `_pad1: vec3<f32>, _pad2: f32` which is misleading. Replace with:
-
-```wgsl
-struct BlurParams {
-    depth_sigma: f32,
-    texel_size: vec2<f32>,
-    _pad0: f32,
-    _pad1: vec4<f32>,
-    _pad2: vec4<f32>,
-};
-```
-
-Actually wait — std140 layout: `f32` at 0, `f32` at 4, `vec2<f32>` must be at 8-byte aligned = offset 8, then `vec4<f32>` at 16, `vec4<f32>` at 32. The original WGSL layout with `_pad1: vec3<f32>` at 16 + `_pad2: f32` at 28 is actually 44 bytes, not 48. But the Rust struct has `[f32; 8]` which is 32 bytes after texel_size offset 8 = total 48. That's 4 bytes mismatch.
-
-Let me check. The Rust `BlurParams` is:
-```rust
-struct BlurParams {
-    depth_sigma: f32,     // offset 0, 4 bytes
-    _pad0: f32,           // offset 4, 4 bytes
-    texel_size: [f32; 2], // offset 8, 8 bytes
-    _pad1: [f32; 8],      // offset 16, 32 bytes
-}
-// Total: 48 bytes
-```
-
-The WGSL side needs padding after `texel_size` to match. Currently:
-```wgsl
-struct BlurParams {
-    depth_sigma: f32,
-    texel_size: vec2<f32>,
-    _pad0: f32,       // offset 12 — wrong! This is the pad between depth_sigma and texel_size
-```
-
-Actually the WGSL is correct as-is if we look at the original:
-```
-depth_sigma: f32,       // 0-3
-texel_size: vec2<f32>,  // 4-11 — but vec2 must be 8-aligned! So there's implicit padding
-```
-
-Wait, no. wgpu naga handles this. The Rust struct puts `_pad0` between depth_sigma and texel_size to ensure texel_size starts at offset 8. The WGSL doesn't need to match byte-for-byte — wgpu handles alignment. The important thing is total size is 48 bytes on both sides.
-
-Let me just keep the WGSL struct matching the current Rust layout exactly and not overthink this. The original WGSL has `depth_sigma: f32, texel_size: vec2<f32>, _pad0: f32, _pad1: vec3<f32>, _pad2: f32`. This compiles fine. Let me leave it as-is and only change the kernel size.
-
-Actually, I'm overcomplicating this. Let me just specify the changes needed:
-1. Kernel size + weights (the real change)
-2. Leave the BlurParams struct as-is (it already has depth_sigma and compiles fine)
-
-- [ ] **Step 5: Run tests**
+- [ ] **Step 2: Run tests**
 
 ```bash
 cargo test --lib ao_blur
 ```
 
-- [ ] **Step 6: Run full workspace tests**
+Expected: existing tests pass.
+
+- [ ] **Step 3: Run full workspace tests**
 
 ```bash
 cargo test --workspace --lib
 ```
 
-Expected: all 183+ tests pass.
+Expected: all tests pass.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 4: Run clippy**
+
+```bash
+cargo clippy --workspace --all-targets -- -D warnings
+```
+
+Expected: no warnings.
+
+- [ ] **Step 5: Commit**
 
 ```bash
 git add crates/aether-engine/src/renderer/passes/ao_blur.rs
@@ -698,7 +520,7 @@ git commit -m "feat(#88): expand AOBlur to 5x5 bilateral gaussian kernel"
 
 ---
 
-### Task 4: Visual verification
+### Task 3: Visual verification
 
 **Files:**
 - Modify: `tests/reference/06_ssao_extreme_mode14.png` (update reference)
@@ -709,7 +531,7 @@ git commit -m "feat(#88): expand AOBlur to 5x5 bilateral gaussian kernel"
 cargo build --release
 ```
 
-- [ ] **Step 2: Run visual test scene**
+- [ ] **Step 2: Capture screenshot**
 
 ```bash
 cargo run --bin aether-launcher --release -- \
@@ -720,44 +542,57 @@ cargo run --bin aether-launcher --release -- \
   --freeze-time
 ```
 
-- [ ] **Step 3: Compare**
+- [ ] **Step 3: Visual inspection checklist**
+  - [ ] Screenshot shows visible AO with reduced noise compared to old reference
+  - [ ] Contact shadows present near CubeA/CubeB crevice
+  - [ ] No banding artifacts on flat surfaces
+  - [ ] No moiré patterns
 
-```bash
-python3 .claude/skills/aether-visual-test/scripts/compare_images.py \
-  tests/reference/06_ssao_extreme_mode14.png \
-  tests/output/06_ssao_extreme_mode14.png \
-  --threshold 0.95
-```
-
-- [ ] **Step 4: If SSIM < 0.95, mark test as validation change**
-
-Since output quality changed, SSIM will fail against old reference. This is expected — we're improving quality. Instead of comparison, do visual inspection:
-
-1. Verify screenshot shows visible AO with reduced noise
-2. Contact shadows present near CubeA/CubeB crevice
-3. No banding artifacts
-4. No moiré patterns
-
-- [ ] **Step 5: Update reference image**
+- [ ] **Step 4: Update reference image**
 
 ```bash
 cp tests/output/06_ssao_extreme_mode14.png tests/reference/06_ssao_extreme_mode14.png
 ```
 
-- [ ] **Step 6: Generate visual test report**
+- [ ] **Step 5: Commit**
 
 ```bash
-python3 .claude/skills/aether-visual-test/scripts/generate_report.py \
-  --scene scenes/06_ssao_extreme.ron \
-  --output tests/output/06_ssao_extreme_mode14.png \
-  --report tests/reports/2026-06-29-ssao-quality.md
+git add tests/reference/06_ssao_extreme_mode14.png
+git commit -m "test(#88): update SSAO visual reference for 32-sample kernel"
 ```
 
-- [ ] **Step 7: Commit visual test artifacts**
+- [ ] **Step 6: Write visual verification report**
+
+Save to `tests/reports/2026-06-29-ssao-quality.md`:
+
+```markdown
+# Visual Verification Report — SSAO Quality Enhancement
+
+**Issue:** [#88](https://github.com/ruochenhua/AetherEngine/issues/88)
+**Date:** 2026-06-29
+**Scene:** `scenes/06_ssao_extreme.ron`
+
+## Changes
+- SSAO: 16-sample → 32-sample stratified hemisphere kernel
+- SSAO: hash-based rotation → 8×8 tiled noise texture
+- SSAO: Nearest → Linear GBuffer sampling
+- AOBlur: 3×3 → 5×5 bilateral gaussian
+
+## Results
+- [ ] Noise visibly reduced
+- [ ] Contact shadows tighter
+- [ ] No banding or moiré
+- [ ] SSIM vs old reference: N/A (quality change, new reference captured)
+
+## Conclusion
+Phase 5.5 SSAO quality enhancement complete. Ready to close #88.
+```
+
+- [ ] **Step 7: Commit report**
 
 ```bash
-git add tests/reference/06_ssao_extreme_mode14.png tests/reports/2026-06-29-ssao-quality.md
-git commit -m "test(#88): update SSAO visual reference for 32-sample kernel"
+git add tests/reports/2026-06-29-ssao-quality.md
+git commit -m "docs(#88): SSAO quality enhancement visual verification report"
 ```
 
 ---
