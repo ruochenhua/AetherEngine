@@ -18,12 +18,21 @@ struct CloudUniform {
     sun_direction: vec4<f32>,
     cloud_bounds: vec4<f32>,
     wind_time: vec4<f32>,
+    quality_params: vec4<f32>,
+    cloud_color_low: vec4<f32>,
+    cloud_color_high: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> clouds: CloudUniform;
 @group(1) @binding(0) var depth_tex: texture_depth_2d;
 @group(1) @binding(1) var noise_tex: texture_3d<f32>;
 @group(1) @binding(2) var noise_sampler: sampler;
+
+@group(2) @binding(0) var worley_tex: texture_3d<f32>;
+@group(2) @binding(1) var perlin_worley_tex: texture_3d<f32>;
+@group(2) @binding(2) var curl_tex: texture_3d<f32>;
+@group(2) @binding(3) var weather_tex: texture_2d<f32>;
+@group(2) @binding(4) var multi_noise_sampler: sampler;
 
 const PI: f32 = 3.14159265359;
 
@@ -173,11 +182,65 @@ fn fs_main(@builtin(position) frag_coord: vec4<f32>) -> @location(0) vec4<f32> {
                 ],
             });
 
+        let noise_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Cloud Noise Bind Group Layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D3,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D3,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D3,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 3,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 4,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
+
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Volumetric Cloud Pipeline Layout"),
             bind_group_layouts: &[
                 Some(&uniform_bind_group_layout),
                 Some(&texture_bind_group_layout),
+                Some(&noise_bind_group_layout),
             ],
             immediate_size: 0,
         });
@@ -238,24 +301,42 @@ fn fs_main(@builtin(position) frag_coord: vec4<f32>) -> @location(0) vec4<f32> {
             usage: wgpu::BufferUsages::VERTEX,
         });
 
-        let (noise_texture, noise_view) = {
-            let texture = device.create_texture(&wgpu::TextureDescriptor {
-                label: Some("Cloud Noise Texture"),
-                size: wgpu::Extent3d {
-                    width: NOISE_SIZE,
-                    height: NOISE_SIZE,
-                    depth_or_array_layers: NOISE_SIZE,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D3,
-                format: wgpu::TextureFormat::R8Unorm,
-                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                view_formats: &[],
-            });
-            let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-            (texture, view)
-        };
+        let (noise_texture, noise_view) = create_texture_3d(
+            device,
+            NOISE_SIZE,
+            wgpu::TextureFormat::R8Unorm,
+            "Cloud Noise Texture",
+        );
+
+        let worley_size: u32 = 128;
+        let perlin_worley_size: u32 = 128;
+        let curl_size: u32 = 16;
+        let weather_size: u32 = 64;
+
+        let (worley_texture, worley_view) = create_texture_3d(
+            device,
+            worley_size,
+            wgpu::TextureFormat::R8Unorm,
+            "Cloud Worley Texture",
+        );
+        let (perlin_worley_texture, perlin_worley_view) = create_texture_3d(
+            device,
+            perlin_worley_size,
+            wgpu::TextureFormat::R8Unorm,
+            "Cloud Perlin-Worley Texture",
+        );
+        let (curl_texture, curl_view) = create_texture_3d(
+            device,
+            curl_size,
+            wgpu::TextureFormat::Rg8Snorm,
+            "Cloud Curl Texture",
+        );
+        let (weather_texture, weather_view) = create_texture_2d(
+            device,
+            weather_size,
+            wgpu::TextureFormat::R8Unorm,
+            "Cloud Weather Texture",
+        );
 
         let noise_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("Cloud Noise Sampler"),
@@ -267,12 +348,51 @@ fn fs_main(@builtin(position) frag_coord: vec4<f32>) -> @location(0) vec4<f32> {
             ..Default::default()
         });
 
+        let multi_noise_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("Cloud Multi-Noise Sampler"),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            address_mode_u: wgpu::AddressMode::Repeat,
+            address_mode_v: wgpu::AddressMode::Repeat,
+            address_mode_w: wgpu::AddressMode::Repeat,
+            ..Default::default()
+        });
+
+        let noise_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Cloud Noise Bind Group"),
+            layout: &noise_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&worley_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&perlin_worley_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(&curl_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::TextureView(&weather_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: wgpu::BindingResource::Sampler(&multi_noise_sampler),
+                },
+            ],
+        });
+
         Self {
             pipeline,
             uniform_buffer,
             uniform_bind_group,
             texture_bind_group_layout,
             texture_bind_group: None,
+            noise_bind_group_layout,
+            noise_bind_group,
             quad_vertex_buffer,
             quad_vertex_count: 6,
             noise_texture,
@@ -280,12 +400,78 @@ fn fs_main(@builtin(position) frag_coord: vec4<f32>) -> @location(0) vec4<f32> {
             noise_sampler,
             noise_data: generate_cloud_noise_data(NOISE_SIZE),
             noise_uploaded: false,
+            worley_texture,
+            worley_view,
+            perlin_worley_texture,
+            perlin_worley_view,
+            curl_texture,
+            curl_view,
+            weather_texture,
+            weather_view,
+            multi_noise_sampler,
+            worley_data: crate::renderer::clouds::worley::worley_noise_3d(worley_size),
+            perlin_worley_data: crate::renderer::clouds::perlin_worley::perlin_worley_noise_3d(
+                perlin_worley_size,
+            ),
+            curl_data: crate::renderer::clouds::curl::curl_noise_3d(curl_size),
+            weather_data: crate::renderer::clouds::weather::generate_weather_map_2d(weather_size),
+            multi_noise_uploaded: false,
             depth_handle: None,
             cloud_color_handle: None,
             has_clouds: false,
             time: 0.0,
         }
     }
+}
+
+/// Create a 3D texture suitable for noise data.
+fn create_texture_3d(
+    device: &wgpu::Device,
+    size: u32,
+    format: wgpu::TextureFormat,
+    label: &str,
+) -> (wgpu::Texture, wgpu::TextureView) {
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some(label),
+        size: wgpu::Extent3d {
+            width: size,
+            height: size,
+            depth_or_array_layers: size,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D3,
+        format,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+    (texture, view)
+}
+
+/// Create a 2D texture suitable for weather data.
+fn create_texture_2d(
+    device: &wgpu::Device,
+    size: u32,
+    format: wgpu::TextureFormat,
+    label: &str,
+) -> (wgpu::Texture, wgpu::TextureView) {
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some(label),
+        size: wgpu::Extent3d {
+            width: size,
+            height: size,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+    (texture, view)
 }
 
 /// Generate cloud noise data without uploading to the GPU.

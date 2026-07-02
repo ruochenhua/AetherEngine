@@ -21,19 +21,38 @@ use glam::{Vec3, Vec4};
 use types::NOISE_SIZE;
 
 /// Volumetric cloud render pass.
+#[allow(dead_code)]
 pub struct VolumetricCloudPass {
     pipeline: wgpu::RenderPipeline,
     uniform_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
     texture_bind_group_layout: wgpu::BindGroupLayout,
     texture_bind_group: Option<wgpu::BindGroup>,
+    noise_bind_group_layout: wgpu::BindGroupLayout,
+    noise_bind_group: wgpu::BindGroup,
     quad_vertex_buffer: wgpu::Buffer,
     quad_vertex_count: u32,
+    // Legacy single noise texture used by the old shader (bind group 1).
     noise_texture: wgpu::Texture,
     noise_view: wgpu::TextureView,
     noise_sampler: wgpu::Sampler,
     noise_data: Vec<u8>,
     noise_uploaded: bool,
+    // Multi-noise textures (bind group 2).
+    worley_texture: wgpu::Texture,
+    worley_view: wgpu::TextureView,
+    perlin_worley_texture: wgpu::Texture,
+    perlin_worley_view: wgpu::TextureView,
+    curl_texture: wgpu::Texture,
+    curl_view: wgpu::TextureView,
+    weather_texture: wgpu::Texture,
+    weather_view: wgpu::TextureView,
+    multi_noise_sampler: wgpu::Sampler,
+    worley_data: Vec<u8>,
+    perlin_worley_data: Vec<u8>,
+    curl_data: Vec<[i8; 2]>,
+    weather_data: Vec<u8>,
+    multi_noise_uploaded: bool,
     depth_handle: Option<ResHandle<GDepth>>,
     cloud_color_handle: Option<ResHandle<CloudColor>>,
     has_clouds: bool,
@@ -111,6 +130,9 @@ impl Pass for VolumetricCloudPass {
                     cfg.density,
                 ),
                 wind_time: Vec4::new(cfg.wind_direction[0], cfg.wind_direction[1], 0.0, self.time),
+                quality_params: CloudUniform::default().quality_params,
+                cloud_color_low: CloudUniform::default().cloud_color_low,
+                cloud_color_high: CloudUniform::default().cloud_color_high,
             };
 
             frame
@@ -119,26 +141,10 @@ impl Pass for VolumetricCloudPass {
 
             // Upload the noise texture the first time we have a valid queue.
             if !self.noise_uploaded {
-                frame.queue.write_texture(
-                    wgpu::TexelCopyTextureInfo {
-                        texture: &self.noise_texture,
-                        mip_level: 0,
-                        origin: wgpu::Origin3d::ZERO,
-                        aspect: wgpu::TextureAspect::All,
-                    },
-                    &self.noise_data,
-                    wgpu::TexelCopyBufferLayout {
-                        offset: 0,
-                        bytes_per_row: Some(NOISE_SIZE),
-                        rows_per_image: Some(NOISE_SIZE),
-                    },
-                    wgpu::Extent3d {
-                        width: NOISE_SIZE,
-                        height: NOISE_SIZE,
-                        depth_or_array_layers: NOISE_SIZE,
-                    },
-                );
-                self.noise_uploaded = true;
+                self.upload_legacy_noise(frame.queue);
+            }
+            if !self.multi_noise_uploaded {
+                self.upload_multi_noise(frame.queue);
             }
         } else {
             self.has_clouds = false;
@@ -160,14 +166,20 @@ impl VolumetricCloudPass {
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
         let mut pass = Self::new_without_upload(device);
         // Immediately upload noise so the first frame is ready.
+        pass.upload_legacy_noise(queue);
+        pass.upload_multi_noise(queue);
+        pass
+    }
+
+    fn upload_legacy_noise(&mut self, queue: &wgpu::Queue) {
         queue.write_texture(
             wgpu::TexelCopyTextureInfo {
-                texture: &pass.noise_texture,
+                texture: &self.noise_texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
-            &pass.noise_data,
+            &self.noise_data,
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some(NOISE_SIZE),
@@ -179,8 +191,95 @@ impl VolumetricCloudPass {
                 depth_or_array_layers: NOISE_SIZE,
             },
         );
-        pass.noise_uploaded = true;
-        pass
+        self.noise_uploaded = true;
+    }
+
+    fn upload_multi_noise(&mut self, queue: &wgpu::Queue) {
+        let worley_size = self.worley_texture.width();
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.worley_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &self.worley_data,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(worley_size),
+                rows_per_image: Some(worley_size),
+            },
+            wgpu::Extent3d {
+                width: worley_size,
+                height: worley_size,
+                depth_or_array_layers: worley_size,
+            },
+        );
+
+        let perlin_worley_size = self.perlin_worley_texture.width();
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.perlin_worley_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &self.perlin_worley_data,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(perlin_worley_size),
+                rows_per_image: Some(perlin_worley_size),
+            },
+            wgpu::Extent3d {
+                width: perlin_worley_size,
+                height: perlin_worley_size,
+                depth_or_array_layers: perlin_worley_size,
+            },
+        );
+
+        let curl_size = self.curl_texture.width();
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.curl_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            bytemuck::cast_slice(&self.curl_data),
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(curl_size * 2),
+                rows_per_image: Some(curl_size),
+            },
+            wgpu::Extent3d {
+                width: curl_size,
+                height: curl_size,
+                depth_or_array_layers: curl_size,
+            },
+        );
+
+        let weather_size = self.weather_texture.width();
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.weather_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &self.weather_data,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(weather_size),
+                rows_per_image: Some(weather_size),
+            },
+            wgpu::Extent3d {
+                width: weather_size,
+                height: weather_size,
+                depth_or_array_layers: 1,
+            },
+        );
+
+        self.multi_noise_uploaded = true;
     }
 }
 
@@ -214,6 +313,25 @@ mod tests {
         assert_eq!(pass.noise_texture.height(), NOISE_SIZE);
         assert_eq!(pass.noise_texture.depth_or_array_layers(), NOISE_SIZE);
         assert_eq!(pass.noise_texture.format(), wgpu::TextureFormat::R8Unorm);
+
+        assert_eq!(pass.worley_texture.width(), 128);
+        assert_eq!(pass.worley_texture.depth_or_array_layers(), 128);
+        assert_eq!(pass.worley_texture.format(), wgpu::TextureFormat::R8Unorm);
+
+        assert_eq!(pass.perlin_worley_texture.width(), 128);
+        assert_eq!(pass.perlin_worley_texture.depth_or_array_layers(), 128);
+        assert_eq!(
+            pass.perlin_worley_texture.format(),
+            wgpu::TextureFormat::R8Unorm
+        );
+
+        assert_eq!(pass.curl_texture.width(), 16);
+        assert_eq!(pass.curl_texture.depth_or_array_layers(), 16);
+        assert_eq!(pass.curl_texture.format(), wgpu::TextureFormat::Rg8Snorm);
+
+        assert_eq!(pass.weather_texture.width(), 64);
+        assert_eq!(pass.weather_texture.height(), 64);
+        assert_eq!(pass.weather_texture.format(), wgpu::TextureFormat::R8Unorm);
     }
 
     #[test]
