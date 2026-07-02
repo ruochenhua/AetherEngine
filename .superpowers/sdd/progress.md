@@ -12,7 +12,7 @@ Base: aaac6b1
 - [x] Task 4: Multi-noise upload + bind group in VolumetricCloudPass (f2e96f8, review approved)
 - [x] Task 5: New WGSL shader with HG phase + self-shadowing (a531423, review approved)
 - [x] Task 6: CloudQuality presets in execute + scene update (2e5db74, review approved)
-- [x] Task 7: Integration — variable noise texture sizes per quality (TBD, pending review)
+- [x] Task 7: Integration — variable noise texture sizes per quality (7335f32, final review fixes complete)
 
 ## Notes
 - Task 1 implementation intentionally deviates from brief Step 6's reference formula: the brief's all-Perlin base did not actually use Worley despite the function name/docstring. Review fix made it a true Worley + Perlin blend, which matches the project goal of Nubis-style multi-noise clouds.

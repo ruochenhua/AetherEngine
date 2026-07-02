@@ -165,3 +165,72 @@ Result: **Finished `release` profile** with only the same pre-existing warnings.
 - `crates/aether-engine/src/renderer/clouds/worley.rs`
 - `crates/aether-engine/src/scene/config/clouds.rs`
 - `.superpowers/sdd/task-7-report.md`
+
+
+---
+
+# Final Review Fix Report: Volumetric Cloud Redesign
+
+**Date:** 2026-07-02
+
+**Commit:** `7335f32`
+
+**Status:** DONE
+
+## Findings Addressed
+
+### Important
+
+1. **Density clamped to non-negative**
+   - File: `crates/aether-engine/src/renderer/passes/volumetric_cloud/shader.rs`
+   - `sample_density` now returns `max(..., 0.0)` so shadow marches that sample outside the cloud slab no longer produce negative density.
+
+2. **Runtime `CloudQuality` selects noise texture sizes**
+   - Files: `crates/aether-engine/src/renderer/passes/volumetric_cloud/mod.rs`, `pipeline.rs`
+   - Removed `quality` from `new()` and `new_without_upload()`.
+   - `new_without_upload()` now creates only the pipeline, uniform buffer/bind group, bind group layouts, and an empty group-2 placeholder.
+   - Added `ensure_noise_textures(device, queue, quality)` in `mod.rs`:
+     - No-op if already created for the same quality.
+     - Otherwise creates textures via `textures.rs` helpers, generates/upload noise, and creates the group-2 bind group.
+   - `apply_frame()` calls `ensure_noise_textures` when `frame.optional.clouds` is present, using `clouds.config.quality`.
+   - `init()` calls `new_without_upload(ctx.device)` without a default quality.
+   - Quality table matches the spec:
+     - Low: Worley 64³, Perlin-Worley 64³, Curl 16³, Weather 32²
+     - Medium: Worley 128³, Perlin-Worley 128³, Curl 16³, Weather 64²
+     - High: Worley 128³, Perlin-Worley 128³, Curl 32³, Weather 64²
+
+3. **Worley generated only once**
+   - File: `crates/aether-engine/src/renderer/clouds/perlin_worley.rs`
+   - Added `perlin_worley_from_worley(worley_data, size)` which reuses a supplied Worley buffer.
+   - `perlin_worley_noise_3d(size)` remains a convenience wrapper that generates Worley and delegates to the new helper.
+   - `VolumetricCloudPass::ensure_noise_textures()` generates Worley once and feeds it to Perlin-Worley.
+
+### Minor
+
+4. **Quality-routing test improved**
+   - File: `crates/aether-engine/src/renderer/passes/volumetric_cloud/mod.rs`
+   - `cloud_pass_applies_frame_with_high_quality` now reads back the uniform buffer and asserts `quality_params.x == 128.0`.
+   - The uniform buffer was updated to include `COPY_SRC` usage for readback.
+
+5. **Weather hash consistency**
+   - File: `crates/aether-engine/src/renderer/clouds/weather.rs`
+   - Hash closure now uses `n as u32 as f32 / u32::MAX as f32`, matching Worley/Perlin-Worley.
+
+6. **Curl range test**
+   - File: `crates/aether-engine/src/renderer/clouds/curl.rs`
+   - Added upper-bound asserts cast to `i32` to avoid `unused_comparisons`.
+
+## Verification
+
+```bash
+cargo test --workspace --lib
+```
+
+Result: **202 passed; 0 failed**.
+
+```bash
+cargo build --release
+cargo build --release -p aether-launcher
+```
+
+Result: **Finished `release` profile** with only pre-existing deprecated-glam warnings.
