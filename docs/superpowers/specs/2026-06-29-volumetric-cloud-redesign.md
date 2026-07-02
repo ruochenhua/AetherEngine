@@ -95,8 +95,8 @@ Serialized in RON as `"Low"`, `"Medium"`, or `"High"` (serde string variant name
 | Perlin-Worley size | 64³ | 128³ | 128³ |
 | Curl noise | 16³ | 16³ | 32³ |
 | Weather map | 32² | 64² | 64² |
-| Powder effect | No | Yes | Yes |
-| Ambient approx | No | Yes | Yes |
+| Powder effect | Deferred | Deferred | Deferred |
+| Ambient approx | Deferred | Deferred | Deferred |
 
 **Powder effect**: `density = 1.0 - exp(-density * 2.0)` applied after all noise
 sampling but before extinction. Creates dark edges on cloud silhouettes.

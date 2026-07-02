@@ -59,7 +59,7 @@ fn hash3(x: i32, y: i32, z: i32) -> f32 {
     let mut n = x.wrapping_mul(374761393) ^ y.wrapping_mul(668265263) ^ z.wrapping_mul(2086444801);
     n = (n ^ (n >> 13)).wrapping_mul(1274126177);
     n = n ^ (n >> 16);
-    (n as f32 / u32::MAX as f32).clamp(0.0, 1.0)
+    n as u32 as f32 / u32::MAX as f32
 }
 
 /// Polynomial smoothstep (`3t² - 2t³`).

@@ -118,6 +118,7 @@ impl Pass for VolumetricCloudPass {
                 ),
                 wind_time: Vec4::new(cfg.wind_direction[0], cfg.wind_direction[1], 0.0, self.time),
                 quality_params,
+                // Fixed defaults until scene config exposes cloud color fields.
                 cloud_color_low: CloudUniform::default().cloud_color_low,
                 cloud_color_high: CloudUniform::default().cloud_color_high,
             };

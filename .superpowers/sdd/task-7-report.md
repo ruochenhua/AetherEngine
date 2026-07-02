@@ -317,3 +317,57 @@ Result: **Finished `release` profile** for both targets with only pre-existing d
 ```
 4b4170d fix(cloud): address final-review findings for volumetric cloud redesign
 ```
+
+---
+
+## Final-Review Fixes (Post-Report)
+
+Date: 2026-07-02
+
+### Important Fixes
+
+1. **Fixed `value_noise.rs` hash regression**
+   - File: `crates/aether-engine/src/renderer/clouds/value_noise.rs:62`
+   - Changed `(n as f32 / u32::MAX as f32).clamp(0.0, 1.0)` to `n as u32 as f32 / u32::MAX as f32`.
+   - The old cast from a signed hash to `f32` clamped negative hashes to 0.0, biasing the noise output. Reinterpreting the final hash bits as `u32` before casting preserves the full `[0, 1]` range and removes the need for clamping.
+
+2. **Guarded against missing noise bind group in `execute.rs`**
+   - File: `crates/aether-engine/src/renderer/passes/volumetric_cloud/execute.rs:44`
+   - Replaced the `expect("noise textures not initialized")` with a defensive `let Some(noise_bg) = self.noise_bind_group.as_ref() else { return; };` early return.
+   - This prevents a panic if the render pass is recorded before `apply_frame` has populated the multi-noise textures.
+
+### Minor Fixes
+
+3. **Updated spec table for deferred features**
+   - File: `docs/superpowers/specs/2026-06-29-volumetric-cloud-redesign.md:98-99`
+   - Changed the "Powder effect" and "Ambient approx" rows from `No | Yes | Yes` to `Deferred | Deferred | Deferred` to reflect that these features are not implemented in the shader for any preset.
+
+4. **Noted hard-coded cloud colors**
+   - File: `crates/aether-engine/src/renderer/passes/volumetric_cloud/mod.rs:121`
+   - Added an inline comment above the `cloud_color_low`/`cloud_color_high` assignments: "Fixed defaults until scene config exposes cloud color fields."
+
+### Files Changed
+
+- `crates/aether-engine/src/renderer/clouds/value_noise.rs`
+- `crates/aether-engine/src/renderer/passes/volumetric_cloud/execute.rs`
+- `crates/aether-engine/src/renderer/passes/volumetric_cloud/mod.rs`
+- `docs/superpowers/specs/2026-06-29-volumetric-cloud-redesign.md`
+- `.superpowers/sdd/task-7-report.md`
+
+### Verification
+
+```bash
+cargo test --workspace --lib
+```
+
+Result: **200 passed; 0 failed** (only pre-existing deprecated-glam warnings).
+
+```bash
+cargo build --release
+cargo build --release -p aether-launcher
+```
+
+Result: **Finished `release` profile** for both targets with only pre-existing deprecated-glam warnings.
+
+### Commit
+

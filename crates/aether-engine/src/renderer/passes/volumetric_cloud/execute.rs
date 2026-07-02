@@ -41,13 +41,11 @@ impl VolumetricCloudPass {
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &self.uniform_bind_group, &[]);
         pass.set_bind_group(1, texture_bg, &[]);
-        pass.set_bind_group(
-            2,
-            self.noise_bind_group
-                .as_ref()
-                .expect("noise textures not initialized"),
-            &[],
-        );
+
+        let Some(noise_bg) = self.noise_bind_group.as_ref() else {
+            return;
+        };
+        pass.set_bind_group(2, noise_bg, &[]);
         pass.set_vertex_buffer(0, self.quad_vertex_buffer.slice(..));
         pass.draw(0..self.quad_vertex_count, 0..1);
     }
