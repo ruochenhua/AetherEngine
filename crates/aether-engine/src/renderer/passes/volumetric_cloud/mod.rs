@@ -8,6 +8,8 @@
 
 mod execute;
 mod pipeline;
+mod shader;
+mod textures;
 mod types;
 
 /// GPU uniform data for the volumetric cloud shader.
@@ -21,14 +23,15 @@ use glam::{Vec3, Vec4};
 use types::NOISE_SIZE;
 
 /// Volumetric cloud render pass.
-#[allow(dead_code)]
 pub struct VolumetricCloudPass {
     pipeline: wgpu::RenderPipeline,
     uniform_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
     texture_bind_group_layout: wgpu::BindGroupLayout,
     texture_bind_group: Option<wgpu::BindGroup>,
+    #[allow(dead_code)]
     noise_bind_group_layout: wgpu::BindGroupLayout,
+    #[allow(dead_code)]
     noise_bind_group: wgpu::BindGroup,
     quad_vertex_buffer: wgpu::Buffer,
     quad_vertex_count: u32,
@@ -40,13 +43,18 @@ pub struct VolumetricCloudPass {
     noise_uploaded: bool,
     // Multi-noise textures (bind group 2).
     worley_texture: wgpu::Texture,
+    #[allow(dead_code)]
     worley_view: wgpu::TextureView,
     perlin_worley_texture: wgpu::Texture,
+    #[allow(dead_code)]
     perlin_worley_view: wgpu::TextureView,
     curl_texture: wgpu::Texture,
+    #[allow(dead_code)]
     curl_view: wgpu::TextureView,
     weather_texture: wgpu::Texture,
+    #[allow(dead_code)]
     weather_view: wgpu::TextureView,
+    #[allow(dead_code)]
     multi_noise_sampler: wgpu::Sampler,
     worley_data: Vec<u8>,
     perlin_worley_data: Vec<u8>,
