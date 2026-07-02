@@ -4,14 +4,48 @@ use super::shader::SHADER;
 use super::textures::{create_texture_2d, create_texture_3d};
 use super::types::{CloudUniform, NOISE_SIZE};
 use super::VolumetricCloudPass;
+use crate::scene::config::CloudQuality;
 use glam::{IVec3, Vec3};
 use std::borrow::Cow;
 use std::mem::size_of;
 use wgpu::util::DeviceExt;
 
+/// Noise texture dimensions for a volumetric cloud quality preset.
+struct NoiseSizes {
+    worley: u32,
+    perlin_worley: u32,
+    curl: u32,
+    weather: u32,
+}
+
+impl From<&CloudQuality> for NoiseSizes {
+    fn from(quality: &CloudQuality) -> Self {
+        match quality {
+            CloudQuality::Low => Self {
+                worley: 64,
+                perlin_worley: 64,
+                curl: 16,
+                weather: 32,
+            },
+            CloudQuality::Medium => Self {
+                worley: 128,
+                perlin_worley: 128,
+                curl: 16,
+                weather: 64,
+            },
+            CloudQuality::High => Self {
+                worley: 192,
+                perlin_worley: 192,
+                curl: 32,
+                weather: 128,
+            },
+        }
+    }
+}
+
 impl VolumetricCloudPass {
     /// Build a cloud pass without uploading the initial noise texture.
-    pub(super) fn new_without_upload(device: &wgpu::Device) -> Self {
+    pub(super) fn new_without_upload(device: &wgpu::Device, quality: &CloudQuality) -> Self {
         let output_format = wgpu::TextureFormat::Rgba16Float;
         let shader_source = SHADER;
 
@@ -210,10 +244,11 @@ impl VolumetricCloudPass {
             "Cloud Noise Texture",
         );
 
-        let worley_size: u32 = 128;
-        let perlin_worley_size: u32 = 128;
-        let curl_size: u32 = 16;
-        let weather_size: u32 = 64;
+        let sizes = NoiseSizes::from(quality);
+        let worley_size = sizes.worley;
+        let perlin_worley_size = sizes.perlin_worley;
+        let curl_size = sizes.curl;
+        let weather_size = sizes.weather;
 
         let (worley_texture, worley_view) = create_texture_3d(
             device,

@@ -19,7 +19,7 @@ use crate::renderer::frame::RenderFrame;
 use crate::renderer::pass::{InitContext, Pass, PassSignature, ResHandle};
 use crate::renderer::resource::{CloudColor, GDepth};
 use crate::renderer::resource_table::ResourceTable;
-use crate::scene::config::{CloudConfig, CloudQuality};
+use crate::scene::config::CloudQuality;
 use glam::{Vec3, Vec4};
 use types::NOISE_SIZE;
 
@@ -80,7 +80,7 @@ impl Pass for VolumetricCloudPass {
     }
 
     fn init(ctx: &InitContext) -> Self {
-        Self::new_without_upload(ctx.device)
+        Self::new_without_upload(ctx.device, &CloudQuality::Medium)
     }
 
     fn resolve(&mut self, device: &wgpu::Device, resources: &ResourceTable) {
@@ -187,8 +187,8 @@ impl VolumetricCloudPass {
     }
 
     /// Create a new cloud pass, including a CPU-generated 3D noise texture.
-    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
-        let mut pass = Self::new_without_upload(device);
+    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, quality: CloudQuality) -> Self {
+        let mut pass = Self::new_without_upload(device, &quality);
         // Immediately upload noise so the first frame is ready.
         pass.upload_legacy_noise(queue);
         pass.upload_multi_noise(queue);
@@ -316,6 +316,7 @@ mod tests {
     use crate::renderer::extract::extract_optional_pass_data;
     use crate::renderer::frame::{FrameConfig, RenderFrame};
     use crate::renderer::light::LightingUniforms;
+    use crate::scene::config::CloudConfig;
     use std::sync::Arc;
 
     fn headless_device_queue() -> (wgpu::Device, wgpu::Queue) {
@@ -330,7 +331,7 @@ mod tests {
     #[test]
     fn cloud_pass_signature_reads_depth_and_writes_cloud_color() {
         let (device, queue) = headless_device_queue();
-        let sig = VolumetricCloudPass::new(&device, &queue).signature();
+        let sig = VolumetricCloudPass::new(&device, &queue, CloudQuality::Medium).signature();
         assert_eq!(sig.name, "VolumetricCloud");
         assert_eq!(sig.reads.len(), 1);
         assert_eq!(sig.writes.len(), 1);
@@ -339,7 +340,7 @@ mod tests {
     #[test]
     fn cloud_noise_texture_has_expected_dimensions() {
         let (device, queue) = headless_device_queue();
-        let pass = VolumetricCloudPass::new(&device, &queue);
+        let pass = VolumetricCloudPass::new(&device, &queue, CloudQuality::Medium);
         assert_eq!(pass.noise_texture.width(), NOISE_SIZE);
         assert_eq!(pass.noise_texture.height(), NOISE_SIZE);
         assert_eq!(pass.noise_texture.depth_or_array_layers(), NOISE_SIZE);
@@ -366,9 +367,39 @@ mod tests {
     }
 
     #[test]
+    fn cloud_noise_texture_dimensions_vary_by_quality() {
+        fn assert_sizes(pass: &VolumetricCloudPass, worley: u32, curl: u32, weather: u32) {
+            assert_eq!(pass.worley_texture.width(), worley);
+            assert_eq!(pass.worley_texture.height(), worley);
+            assert_eq!(pass.worley_texture.depth_or_array_layers(), worley);
+
+            assert_eq!(pass.perlin_worley_texture.width(), worley);
+            assert_eq!(pass.perlin_worley_texture.height(), worley);
+            assert_eq!(pass.perlin_worley_texture.depth_or_array_layers(), worley);
+
+            assert_eq!(pass.curl_texture.width(), curl);
+            assert_eq!(pass.curl_texture.height(), curl);
+            assert_eq!(pass.curl_texture.depth_or_array_layers(), curl);
+
+            assert_eq!(pass.weather_texture.width(), weather);
+            assert_eq!(pass.weather_texture.height(), weather);
+        }
+
+        let (device, queue) = headless_device_queue();
+        let low = VolumetricCloudPass::new(&device, &queue, CloudQuality::Low);
+        assert_sizes(&low, 64, 16, 32);
+
+        let medium = VolumetricCloudPass::new(&device, &queue, CloudQuality::Medium);
+        assert_sizes(&medium, 128, 16, 64);
+
+        let high = VolumetricCloudPass::new(&device, &queue, CloudQuality::High);
+        assert_sizes(&high, 192, 32, 128);
+    }
+
+    #[test]
     fn cloud_pass_runs_when_cloud_component_present() {
         let (device, queue) = headless_device_queue();
-        let pass = VolumetricCloudPass::new(&device, &queue);
+        let pass = VolumetricCloudPass::new(&device, &queue, CloudQuality::Medium);
         assert!(pass
             .signature()
             .writes
@@ -384,7 +415,7 @@ mod tests {
     #[test]
     fn cloud_pass_skipped_without_component() {
         let (device, queue) = headless_device_queue();
-        let pass = VolumetricCloudPass::new(&device, &queue);
+        let pass = VolumetricCloudPass::new(&device, &queue, CloudQuality::Medium);
         // Without apply_frame being called, has_clouds remains false.
         assert!(!pass.has_clouds);
     }
@@ -401,7 +432,7 @@ mod tests {
     #[test]
     fn cloud_pass_writes_quality_to_uniform() {
         let (device, queue) = headless_device_queue();
-        let mut pass = VolumetricCloudPass::new(&device, &queue);
+        let mut pass = VolumetricCloudPass::new(&device, &queue, CloudQuality::Medium);
         let mut world = World::new();
         world.spawn((Clouds {
             config: CloudConfig {
