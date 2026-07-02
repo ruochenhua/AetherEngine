@@ -371,3 +371,72 @@ Result: **Finished `release` profile** for both targets with only pre-existing d
 
 ### Commit
 
+Commit SHA: aa227e9fc78ca550142c51760f6ff9f463b62e26
+
+---
+
+# Final Review Fix Report: Volumetric Cloud Redesign (Round 3)
+
+**Date:** 2026-07-02
+
+**Status:** DONE
+
+## Findings Addressed
+
+### Important
+
+1. **Shared 2D value-noise helpers**
+   - File: `crates/aether-engine/src/renderer/clouds/value_noise.rs`
+   - Added `pub(crate) fn value_noise_2d(p: Vec2) -> f32` and `pub(crate) fn fbm_perlin_2d(...)` using the same hash/smoothstep pattern as the existing 3D helpers.
+   - File: `crates/aether-engine/src/renderer/clouds/weather.rs`
+   - Replaced the local `value_noise_2d` / `fbm_2d` implementations with calls to the shared helpers.
+
+2. **Uniform buffer `COPY_SRC` gated behind test config**
+   - File: `crates/aether-engine/src/renderer/passes/volumetric_cloud/pipeline.rs`
+   - The uniform buffer now only includes `wgpu::BufferUsages::COPY_SRC` in `#[cfg(test)]` builds.
+   - Production builds use only `UNIFORM | COPY_DST`.
+
+3. **Curl documentation corrected**
+   - File: `crates/aether-engine/src/renderer/clouds/curl.rs`
+   - Module and function docstrings now describe the output as a "pseudo-curl" / "ad-hoc 2D warp field derived from finite differences of a scalar potential", not a true 3D curl.
+
+4. **Synchronous Medium noise generation scoped to tests**
+   - File: `crates/aether-engine/src/renderer/passes/volumetric_cloud/mod.rs`
+   - Renamed the synchronous constructor to `new_with_quality(device, queue, quality)`.
+   - Added a `#[cfg(test)]` convenience `new(device, queue)` that calls `new_with_quality(..., CloudQuality::Medium)`.
+   - `Pass::init()` continues to call `new_without_upload()` for lazy production initialization.
+
+5. **Value-noise module visibility reduced**
+   - File: `crates/aether-engine/src/renderer/clouds/mod.rs`
+   - Changed `pub mod value_noise;` to `pub(crate) mod value_noise;` to match the `pub(crate)` exports.
+
+## Files Changed
+
+- `crates/aether-engine/src/renderer/clouds/value_noise.rs`
+- `crates/aether-engine/src/renderer/clouds/weather.rs`
+- `crates/aether-engine/src/renderer/passes/volumetric_cloud/pipeline.rs`
+- `crates/aether-engine/src/renderer/clouds/curl.rs`
+- `crates/aether-engine/src/renderer/passes/volumetric_cloud/mod.rs`
+- `crates/aether-engine/src/renderer/clouds/mod.rs`
+- `.superpowers/sdd/task-7-report.md`
+
+## Verification
+
+```bash
+cargo test --workspace --lib
+```
+
+Result: **200 passed; 0 failed** (only pre-existing deprecated-glam warnings).
+
+```bash
+cargo build --release
+cargo build --release -p aether-launcher
+```
+
+Result: **Finished `release` profile** for both targets with only pre-existing deprecated-glam warnings.
+
+## Commit
+
+```
+fix(cloud): final-review fixes for volumetric cloud redesign
+```

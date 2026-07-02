@@ -154,13 +154,6 @@ impl VolumetricCloudPass {
         }
     }
 
-    /// Create a new cloud pass with Medium-quality noise textures.
-    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
-        let mut pass = Self::new_without_upload(device);
-        pass.ensure_noise_textures(queue, CloudQuality::Medium);
-        pass
-    }
-
     /// Create a new cloud pass with the requested quality noise textures.
     #[cfg(test)]
     pub fn new_with_quality(
@@ -171,6 +164,12 @@ impl VolumetricCloudPass {
         let mut pass = Self::new_without_upload(device);
         pass.ensure_noise_textures(queue, quality);
         pass
+    }
+
+    /// Create a new cloud pass with Medium-quality noise textures.
+    #[cfg(test)]
+    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
+        Self::new_with_quality(device, queue, CloudQuality::Medium)
     }
 
     /// Lazily create (or recreate) the noise textures and bind group for the

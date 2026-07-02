@@ -50,12 +50,14 @@ impl VolumetricCloudPass {
             source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(shader_source)),
         });
 
+        let usage = wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST;
+        #[cfg(test)]
+        let usage = usage | wgpu::BufferUsages::COPY_SRC;
+
         let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Cloud Uniform Buffer"),
             size: size_of::<CloudUniform>() as wgpu::BufferAddress,
-            usage: wgpu::BufferUsages::UNIFORM
-                | wgpu::BufferUsages::COPY_DST
-                | wgpu::BufferUsages::COPY_SRC,
+            usage,
             mapped_at_creation: false,
         });
 

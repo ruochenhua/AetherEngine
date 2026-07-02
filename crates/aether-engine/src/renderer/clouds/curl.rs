@@ -1,13 +1,15 @@
-//! Curl noise for volumetric cloud displacement.
+//! Pseudo-curl noise for volumetric cloud displacement.
 //!
-//! Curl of a 3D Perlin-like potential field.
-//! Output is RG8Snorm: 2D curl vector (perpendicular to gradient) per voxel.
+//! An ad-hoc 2D warp field derived from finite differences of a scalar
+//! potential. This is not a true 3D curl; it produces a 2D displacement
+//! vector perpendicular to the local gradient of the potential field.
+//! Output is RG8Snorm: a 2D warp vector per voxel.
 
 use super::value_noise::fbm_perlin_3d;
 use glam::Vec3;
 
-/// Generate a 3D curl noise field. Each voxel gets a 2D curl vector
-/// (x-component of curl, y-component of curl) stored as signed bytes.
+/// Generate a 3D pseudo-curl warp field. Each voxel gets a 2D warp vector
+/// derived from finite differences of a scalar potential, stored as signed bytes.
 ///
 /// The shader uses these to warp the sampling position of the density
 /// textures, creating wispy, swirling cloud edges.
