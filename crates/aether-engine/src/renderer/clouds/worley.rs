@@ -1,7 +1,7 @@
 //! 3D Cellular / Worley noise for cloud shapes.
 //!
 //! Uses a 3D grid of feature points with random jitter.
-//! At each voxel, computes distance to the 3 nearest feature points
+//! At each voxel, computes distance to the 2 nearest feature points
 //! and returns F2 - F1 (edge-like cellular pattern) mapped to [0, 1].
 
 use glam::{IVec3, Vec3};
@@ -86,8 +86,7 @@ fn hash3_jitter(cell: IVec3) -> Vec3 {
     let h = |n: i32| -> f32 {
         let mut h = (n.wrapping_mul(374761393) ^ (n >> 13)).wrapping_mul(1274126177);
         h = h ^ (h >> 16);
-        let v = (h as f32 / u32::MAX as f32 + 1.0) * 0.5;
-        v.clamp(0.0, 1.0)
+        h as u32 as f32 / u32::MAX as f32
     };
     Vec3::new(h(cell.x), h(cell.y), h(cell.z))
 }
