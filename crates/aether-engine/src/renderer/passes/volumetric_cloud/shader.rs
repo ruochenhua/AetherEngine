@@ -107,7 +107,7 @@ fn fs_main(@builtin(position) frag_coord: vec4<f32>) -> @location(0) vec4<f32> {
         // Multi-noise density sampling
         let noise_pos = pos * 0.008 + wind * 0.01;
         let curl_sample = textureSample(curl_tex, noise_sampler, noise_pos * 0.02).rg;
-        let warp = vec3<f32>(curl_sample.r * 2.0 - 1.0, 0.0, curl_sample.g * 2.0 - 1.0);
+        let warp = vec3<f32>(curl_sample.r, 0.0, curl_sample.g);
         let warped_pos = noise_pos + warp * 4.0;
 
         let worley_v = textureSample(worley_tex, noise_sampler, warped_pos * 1.0).r;
@@ -128,8 +128,8 @@ fn fs_main(@builtin(position) frag_coord: vec4<f32>) -> @location(0) vec4<f32> {
             for (var s: f32 = 0.0; s < shadow_steps; s += 1.0) {
                 let sp = pos + sun_dir * ((s + 0.5) * shadow_dt);
                 let s_noise = sp * 0.008 + wind * 0.01;
-                let s_worley = textureSample(worley_tex, noise_sampler, s_noise).r;
-                let s_detail = textureSample(perlin_worley_tex, noise_sampler, s_noise * 3.0).r;
+                let s_worley = textureSampleLevel(worley_tex, noise_sampler, s_noise, 0.0).r;
+                let s_detail = textureSampleLevel(perlin_worley_tex, noise_sampler, s_noise * 3.0, 0.0).r;
                 let s_base_d = max(s_worley - (1.0 - coverage), 0.0);
                 let s_d = (s_base_d + s_detail * 0.4) * weather_val * density_scale;
                 shadow_od += s_d * shadow_dt;
