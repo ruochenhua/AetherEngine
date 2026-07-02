@@ -60,8 +60,10 @@ fn fs_main(@builtin(position) frag_coord: vec4<f32>) -> @location(0) vec4<f32> {
         return vec4<f32>(0.0);
     }
 
-    let t_min = (min_y - clouds.camera_pos.y) / ray_dir.y;
-    let t_max = (max_y - clouds.camera_pos.y) / ray_dir.y;
+    let t1 = (min_y - clouds.camera_pos.y) / ray_dir.y;
+    let t2 = (max_y - clouds.camera_pos.y) / ray_dir.y;
+    let t_min = min(t1, t2);
+    let t_max = max(t1, t2);
     if (t_max < 0.0) {
         return vec4<f32>(0.0);
     }

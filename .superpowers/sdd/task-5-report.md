@@ -81,4 +81,53 @@ Result: **Finished `release` profile successfully** (only pre-existing deprecati
 - Bind group declarations align with the layout created in `pipeline.rs`:
   - Group 1 binding 2 is declared as `depth_sampler` in WGSL and remains unused; the pipeline layout still exposes a filtering sampler at that binding.
   - Group 2 binding 4 sampler is renamed `noise_sampler` in WGSL; the Rust-side resource bound there is `multi_noise_sampler`, which is fine because only the binding index matters.
-- No functional concerns; all tests and release build pass.
+### Fix 3: Slab entry/exit distances for upward and downward rays
+
+The original slab intersection computed the lower and upper ray distances as fixed `t_min` and `t_max` without accounting for the sign of `ray_dir.y`:
+
+```wgsl
+let t_min = (min_y - clouds.camera_pos.y) / ray_dir.y;
+let t_max = (max_y - clouds.camera_pos.y) / ray_dir.y;
+```
+
+When `ray_dir.y` is negative, the division flips the ordering, so the computed `t_min` can be larger than `t_max`. This caused downward-looking rays (e.g., looking toward the ground) to miss the cloud slab or to compute a negative/empty interval.
+
+The logic at `shader.rs:63-73` was replaced with the signed-correct version that sorts the two distances after division:
+
+```wgsl
+let t1 = (min_y - clouds.camera_pos.y) / ray_dir.y;
+let t2 = (max_y - clouds.camera_pos.y) / ray_dir.y;
+let t_min = min(t1, t2);
+let t_max = max(t1, t2);
+if (t_max < 0.0) {
+    return vec4<f32>(0.0);
+}
+
+var t_enter = max(t_min, 0.0);
+var t_exit = t_max;
+if (t_enter > t_exit) {
+    return vec4<f32>(0.0);
+}
+```
+
+This now correctly handles both upward (`ray_dir.y > 0`) and downward (`ray_dir.y < 0`) rays by always entering at the nearer signed distance and exiting at the farther one, then clamping the entry to the camera plane (`max(t_min, 0.0)`).
+
+### Re-verification
+
+```bash
+cargo test --workspace --lib
+```
+
+Result: **199 passed; 0 failed; 0 ignored**.
+
+```bash
+cargo build --release
+```
+
+Result: **Finished `release` profile successfully** (only pre-existing deprecation warnings).
+
+### Files touched
+
+- `crates/aether-engine/src/renderer/passes/volumetric_cloud/shader.rs`
+- `.superpowers/sdd/task-5-report.md` (this report)
+
