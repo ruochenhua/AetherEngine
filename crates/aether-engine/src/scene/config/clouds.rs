@@ -3,20 +3,15 @@
 use serde::{Deserialize, Serialize};
 
 /// Volumetric cloud quality preset.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub enum CloudQuality {
     /// Low quality — reduced noise resolution and step counts.
     Low,
     /// Medium quality — balanced quality and performance.
+    #[default]
     Medium,
     /// High quality — increased noise resolution and step counts.
     High,
-}
-
-impl Default for CloudQuality {
-    fn default() -> Self {
-        Self::Medium
-    }
 }
 
 /// Volumetric cloud configuration.

@@ -1,10 +1,10 @@
 //! Volumetric Cloud Pass — ray-marched cloud overlay.
 //!
 //! A full-screen pass that runs after the atmosphere pass and before water/
-//! composite. It ray-marches through a horizontal cloud slab, samples a 3D
-//! procedural noise texture for density, and writes the result as a separate
-//! `CloudColor` overlay. The composite pass blends this overlay over the lit
-//! scene.
+//! composite. It ray-marches through a horizontal cloud slab, sampling
+//! Worley, Perlin-Worley, curl and weather noise textures for density,
+//! and writes the result as a separate `CloudColor` overlay. The composite
+//! pass blends this overlay over the lit scene.
 
 mod execute;
 mod pipeline;
@@ -21,7 +21,6 @@ use crate::renderer::resource::{CloudColor, GDepth};
 use crate::renderer::resource_table::ResourceTable;
 use crate::scene::config::CloudQuality;
 use glam::{Vec3, Vec4};
-use types::NOISE_SIZE;
 
 /// Volumetric cloud render pass.
 pub struct VolumetricCloudPass {
@@ -32,16 +31,9 @@ pub struct VolumetricCloudPass {
     texture_bind_group: Option<wgpu::BindGroup>,
     #[allow(dead_code)]
     noise_bind_group_layout: wgpu::BindGroupLayout,
-    #[allow(dead_code)]
     noise_bind_group: wgpu::BindGroup,
     quad_vertex_buffer: wgpu::Buffer,
     quad_vertex_count: u32,
-    // Legacy single noise texture used by the old shader (bind group 1).
-    noise_texture: wgpu::Texture,
-    noise_view: wgpu::TextureView,
-    noise_sampler: wgpu::Sampler,
-    noise_data: Vec<u8>,
-    noise_uploaded: bool,
     // Multi-noise textures (bind group 2).
     worley_texture: wgpu::Texture,
     #[allow(dead_code)]
@@ -90,24 +82,14 @@ impl Pass for VolumetricCloudPass {
         let depth_view = resources.get(self.depth_handle.unwrap());
         let _cloud_color_view = resources.get(self.cloud_color_handle.unwrap());
 
-        // Create the texture bind group: depth + noise + sampler.
+        // Create the texture bind group: depth only.
         self.texture_bind_group = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Volumetric Cloud Texture Bind Group"),
             layout: &self.texture_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(depth_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&self.noise_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::Sampler(&self.noise_sampler),
-                },
-            ],
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(depth_view),
+            }],
         }));
     }
 
@@ -151,10 +133,7 @@ impl Pass for VolumetricCloudPass {
                 .queue
                 .write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
 
-            // Upload the noise texture the first time we have a valid queue.
-            if !self.noise_uploaded {
-                self.upload_legacy_noise(frame.queue);
-            }
+            // Upload the multi-noise textures the first time we have a valid queue.
             if !self.multi_noise_uploaded {
                 self.upload_multi_noise(frame.queue);
             }
@@ -186,36 +165,12 @@ impl VolumetricCloudPass {
         }
     }
 
-    /// Create a new cloud pass, including a CPU-generated 3D noise texture.
+    /// Create a new cloud pass, including CPU-generated multi-noise textures.
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, quality: CloudQuality) -> Self {
         let mut pass = Self::new_without_upload(device, &quality);
         // Immediately upload noise so the first frame is ready.
-        pass.upload_legacy_noise(queue);
         pass.upload_multi_noise(queue);
         pass
-    }
-
-    fn upload_legacy_noise(&mut self, queue: &wgpu::Queue) {
-        queue.write_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: &self.noise_texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            &self.noise_data,
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(NOISE_SIZE),
-                rows_per_image: Some(NOISE_SIZE),
-            },
-            wgpu::Extent3d {
-                width: NOISE_SIZE,
-                height: NOISE_SIZE,
-                depth_or_array_layers: NOISE_SIZE,
-            },
-        );
-        self.noise_uploaded = true;
     }
 
     fn upload_multi_noise(&mut self, queue: &wgpu::Queue) {
@@ -341,10 +296,6 @@ mod tests {
     fn cloud_noise_texture_has_expected_dimensions() {
         let (device, queue) = headless_device_queue();
         let pass = VolumetricCloudPass::new(&device, &queue, CloudQuality::Medium);
-        assert_eq!(pass.noise_texture.width(), NOISE_SIZE);
-        assert_eq!(pass.noise_texture.height(), NOISE_SIZE);
-        assert_eq!(pass.noise_texture.depth_or_array_layers(), NOISE_SIZE);
-        assert_eq!(pass.noise_texture.format(), wgpu::TextureFormat::R8Unorm);
 
         assert_eq!(pass.worley_texture.width(), 128);
         assert_eq!(pass.worley_texture.depth_or_array_layers(), 128);
@@ -393,7 +344,7 @@ mod tests {
         assert_sizes(&medium, 128, 16, 64);
 
         let high = VolumetricCloudPass::new(&device, &queue, CloudQuality::High);
-        assert_sizes(&high, 192, 32, 128);
+        assert_sizes(&high, 128, 32, 64);
     }
 
     #[test]
@@ -430,7 +381,7 @@ mod tests {
     }
 
     #[test]
-    fn cloud_pass_writes_quality_to_uniform() {
+    fn cloud_pass_applies_frame_with_high_quality() {
         let (device, queue) = headless_device_queue();
         let mut pass = VolumetricCloudPass::new(&device, &queue, CloudQuality::Medium);
         let mut world = World::new();

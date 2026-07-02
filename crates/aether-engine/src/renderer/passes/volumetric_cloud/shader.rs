@@ -15,8 +15,6 @@ struct CloudUniform {
 
 @group(0) @binding(0) var<uniform> clouds: CloudUniform;
 @group(1) @binding(0) var depth_tex: texture_depth_2d;
-@group(1) @binding(1) var noise_tex: texture_3d<f32>; // legacy, unused in new path
-@group(1) @binding(2) var depth_sampler: sampler;     // unused
 @group(2) @binding(0) var worley_tex: texture_3d<f32>;
 @group(2) @binding(1) var perlin_worley_tex: texture_3d<f32>;
 @group(2) @binding(2) var curl_tex: texture_3d<f32>;
@@ -32,6 +30,42 @@ fn henyey_greenstein(cos_theta: f32, g: f32) -> f32 {
 
 fn beer_transmittance(optical_depth: f32) -> f32 {
     return exp(-optical_depth);
+}
+
+/// Sample the multi-noise density model at `pos`.
+///
+/// Applies the same curl warp, coverage threshold, detail, weather mask and
+/// height shaping for both the primary march and the self-shadow march.
+fn sample_density(
+    pos: vec3<f32>,
+    coverage: f32,
+    density_scale: f32,
+    wind: vec3<f32>,
+    min_y: f32,
+    max_y: f32,
+    with_detail: bool,
+) -> f32 {
+    let weather_uv = pos.xz * 0.002;
+    let weather_val = textureSampleLevel(weather_tex, noise_sampler, weather_uv, 0.0).r;
+
+    let height_norm = (pos.y - min_y) / (max_y - min_y);
+    let height_factor = 1.0 - abs(height_norm - 0.5) * 2.0;
+
+    let noise_pos = pos * 0.008 + wind * 0.01;
+    let curl_sample = textureSampleLevel(curl_tex, noise_sampler, noise_pos * 0.02, 0.0).rg;
+    let warp = vec3<f32>(curl_sample.r, 0.0, curl_sample.g);
+    let warped_pos = noise_pos + warp * 4.0;
+
+    let worley_v = textureSampleLevel(worley_tex, noise_sampler, warped_pos * 1.0, 0.0).r;
+    let base_density = max(worley_v - (1.0 - coverage), 0.0);
+
+    var detail_density = 0.0;
+    if (with_detail) {
+        let detail_v = textureSampleLevel(perlin_worley_tex, noise_sampler, warped_pos * 3.0, 0.0).r;
+        detail_density = detail_v * 0.4;
+    }
+
+    return (base_density + detail_density) * height_factor * weather_val * density_scale;
 }
 
 @vertex
@@ -93,35 +127,13 @@ fn fs_main(@builtin(position) frag_coord: vec4<f32>) -> @location(0) vec4<f32> {
     let dt = (t_exit - t_enter) / primary_steps;
 
     var transmittance = 1.0;
-    var light_energy = 0.0;
+    var light_energy = vec3<f32>(0.0);
 
     for (var i: f32 = 0.0; i < primary_steps; i += 1.0) {
         let t = t_enter + (i + 0.5) * dt;
         let pos = clouds.camera_pos.xyz + ray_dir * t;
 
-        // Sample weather map for coverage
-        let weather_uv = pos.xz * 0.002;
-        let weather_val = textureSampleLevel(weather_tex, noise_sampler, weather_uv, 0.0).r;
-
-        // Height-based blend (0 at bottom, 1 at top)
-        let height_norm = (pos.y - min_y) / (max_y - min_y);
-
-        // Multi-noise density sampling
-        let noise_pos = pos * 0.008 + wind * 0.01;
-        let curl_sample = textureSample(curl_tex, noise_sampler, noise_pos * 0.02).rg;
-        let warp = vec3<f32>(curl_sample.r, 0.0, curl_sample.g);
-        let warped_pos = noise_pos + warp * 4.0;
-
-        let worley_v = textureSample(worley_tex, noise_sampler, warped_pos * 1.0).r;
-        let detail_v = textureSample(perlin_worley_tex, noise_sampler, warped_pos * 3.0).r;
-
-        // Density model: coverage threshold + detail
-        let base_density = max(worley_v - (1.0 - coverage), 0.0);
-        let detail_density = detail_v * 0.4;
-
-        // Height shaping: stronger clouds at mid-altitude
-        let height_factor = 1.0 - abs(height_norm - 0.5) * 2.0;
-        let density = (base_density + detail_density) * height_factor * weather_val * density_scale;
+        let density = sample_density(pos, coverage, density_scale, wind, min_y, max_y, true);
 
         if (density > 0.001) {
             // --- Self-shadowing: secondary march toward sun ---
@@ -129,12 +141,7 @@ fn fs_main(@builtin(position) frag_coord: vec4<f32>) -> @location(0) vec4<f32> {
             var shadow_od: f32 = 0.0;
             for (var s: f32 = 0.0; s < shadow_steps; s += 1.0) {
                 let sp = pos + sun_dir * ((s + 0.5) * shadow_dt);
-                let s_noise = sp * 0.008 + wind * 0.01;
-                let s_worley = textureSampleLevel(worley_tex, noise_sampler, s_noise, 0.0).r;
-                let s_detail = textureSampleLevel(perlin_worley_tex, noise_sampler, s_noise * 3.0, 0.0).r;
-                let s_base_d = max(s_worley - (1.0 - coverage), 0.0);
-                let s_d = (s_base_d + s_detail * 0.4) * weather_val * density_scale;
-                shadow_od += s_d * shadow_dt;
+                shadow_od += sample_density(sp, coverage, density_scale, wind, min_y, max_y, true) * shadow_dt;
             }
             let sun_trans = beer_transmittance(shadow_od * 0.3);
 
@@ -148,16 +155,15 @@ fn fs_main(@builtin(position) frag_coord: vec4<f32>) -> @location(0) vec4<f32> {
             let phase_back = henyey_greenstein(cos_theta, -g_back);
             let phase = phase_forward * 0.7 + phase_back * 0.3;
 
-            light_energy += density * dt * sun_trans * phase * 3.0 * transmittance;
+            // --- Cloud color: per-sample height gradient ---
+            let height_norm = (pos.y - min_y) / (max_y - min_y);
+            let cloud_color = mix(clouds.cloud_color_low.rgb, clouds.cloud_color_high.rgb, height_norm);
+
+            light_energy += density * dt * sun_trans * phase * 3.0 * transmittance * cloud_color;
         }
     }
 
     let alpha = 1.0 - transmittance;
-
-    // Cloud color: blend between low-altitude warm and high-altitude cool
-    let height_norm = (0.5 * (min_y + max_y) - min_y) / (max_y - min_y); // mid-slab
-    let cloud_color = mix(clouds.cloud_color_low.rgb, clouds.cloud_color_high.rgb, height_norm);
-
-    return vec4<f32>(light_energy * cloud_color, alpha);
+    return vec4<f32>(light_energy, alpha);
 }
 "#;

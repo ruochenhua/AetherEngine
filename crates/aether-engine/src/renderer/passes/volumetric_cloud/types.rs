@@ -3,9 +3,6 @@
 use bytemuck::{Pod, Zeroable};
 use glam::Mat4;
 
-/// Size of the generated 3D noise texture (NxNxN).
-pub(super) const NOISE_SIZE: u32 = 64;
-
 /// GPU uniform data for the volumetric cloud shader.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]

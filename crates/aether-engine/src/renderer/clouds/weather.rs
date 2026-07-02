@@ -76,10 +76,10 @@ mod tests {
     }
 
     #[test]
-    fn weather_map_values_in_range() {
+    fn weather_map_values_have_dynamic_range() {
         let data = generate_weather_map_2d(16);
-        for &v in &data {
-            assert!(v <= 255u8);
-        }
+        let min = *data.iter().min().unwrap();
+        let max = *data.iter().max().unwrap();
+        assert!(min < max, "expected non-empty dynamic range");
     }
 }

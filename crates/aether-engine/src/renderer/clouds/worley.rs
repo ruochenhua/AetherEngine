@@ -107,11 +107,11 @@ mod tests {
     }
 
     #[test]
-    fn worley_output_in_u8_range() {
+    fn worley_output_has_dynamic_range() {
         let data = worley_noise_3d(16);
-        for &v in &data {
-            assert!(v >= 0, "value out of u8 range");
-        }
+        let min = *data.iter().min().unwrap();
+        let max = *data.iter().max().unwrap();
+        assert!(min < max, "expected non-empty dynamic range");
     }
 
     #[test]

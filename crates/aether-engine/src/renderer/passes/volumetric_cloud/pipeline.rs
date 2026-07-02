@@ -2,18 +2,18 @@
 
 use super::shader::SHADER;
 use super::textures::{create_texture_2d, create_texture_3d};
-use super::types::{CloudUniform, NOISE_SIZE};
+use super::types::CloudUniform;
 use super::VolumetricCloudPass;
 use crate::scene::config::CloudQuality;
-use glam::{IVec3, Vec3};
 use std::borrow::Cow;
 use std::mem::size_of;
 use wgpu::util::DeviceExt;
 
 /// Noise texture dimensions for a volumetric cloud quality preset.
+///
+/// Worley and Perlin-Worley share the same resolution for all presets.
 struct NoiseSizes {
     worley: u32,
-    perlin_worley: u32,
     curl: u32,
     weather: u32,
 }
@@ -23,21 +23,18 @@ impl From<&CloudQuality> for NoiseSizes {
         match quality {
             CloudQuality::Low => Self {
                 worley: 64,
-                perlin_worley: 64,
                 curl: 16,
                 weather: 32,
             },
             CloudQuality::Medium => Self {
                 worley: 128,
-                perlin_worley: 128,
                 curl: 16,
                 weather: 64,
             },
             CloudQuality::High => Self {
-                worley: 192,
-                perlin_worley: 192,
+                worley: 128,
                 curl: 32,
-                weather: 128,
+                weather: 64,
             },
         }
     }
@@ -85,39 +82,23 @@ impl VolumetricCloudPass {
             }],
         });
 
+        // Group 1: GBuffer depth only.
         let texture_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("Cloud Texture Bind Group Layout"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Depth,
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Depth,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
                     },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            view_dimension: wgpu::TextureViewDimension::D3,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 2,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                ],
+                    count: None,
+                }],
             });
 
+        // Group 2: Worley, Perlin-Worley, curl and weather textures.
         let noise_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("Cloud Noise Bind Group Layout"),
@@ -237,16 +218,8 @@ impl VolumetricCloudPass {
             usage: wgpu::BufferUsages::VERTEX,
         });
 
-        let (noise_texture, noise_view) = create_texture_3d(
-            device,
-            NOISE_SIZE,
-            wgpu::TextureFormat::R8Unorm,
-            "Cloud Noise Texture",
-        );
-
         let sizes = NoiseSizes::from(quality);
         let worley_size = sizes.worley;
-        let perlin_worley_size = sizes.perlin_worley;
         let curl_size = sizes.curl;
         let weather_size = sizes.weather;
 
@@ -258,7 +231,7 @@ impl VolumetricCloudPass {
         );
         let (perlin_worley_texture, perlin_worley_view) = create_texture_3d(
             device,
-            perlin_worley_size,
+            worley_size,
             wgpu::TextureFormat::R8Unorm,
             "Cloud Perlin-Worley Texture",
         );
@@ -274,16 +247,6 @@ impl VolumetricCloudPass {
             wgpu::TextureFormat::R8Unorm,
             "Cloud Weather Texture",
         );
-
-        let noise_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("Cloud Noise Sampler"),
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            address_mode_u: wgpu::AddressMode::Repeat,
-            address_mode_v: wgpu::AddressMode::Repeat,
-            address_mode_w: wgpu::AddressMode::Repeat,
-            ..Default::default()
-        });
 
         let multi_noise_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("Cloud Multi-Noise Sampler"),
@@ -332,11 +295,7 @@ impl VolumetricCloudPass {
             noise_bind_group,
             quad_vertex_buffer,
             quad_vertex_count: 6,
-            noise_texture,
-            noise_view,
-            noise_sampler,
-            noise_data: generate_cloud_noise_data(NOISE_SIZE),
-            noise_uploaded: false,
+            // Multi-noise textures (bind group 2).
             worley_texture,
             worley_view,
             perlin_worley_texture,
@@ -348,7 +307,7 @@ impl VolumetricCloudPass {
             multi_noise_sampler,
             worley_data: crate::renderer::clouds::worley::worley_noise_3d(worley_size),
             perlin_worley_data: crate::renderer::clouds::perlin_worley::perlin_worley_noise_3d(
-                perlin_worley_size,
+                worley_size,
             ),
             curl_data: crate::renderer::clouds::curl::curl_noise_3d(curl_size),
             weather_data: crate::renderer::clouds::weather::generate_weather_map_2d(weather_size),
@@ -359,62 +318,4 @@ impl VolumetricCloudPass {
             time: 0.0,
         }
     }
-}
-
-/// Generate cloud noise data without uploading to the GPU.
-fn generate_cloud_noise_data(size: u32) -> Vec<u8> {
-    let mut data = vec![0u8; (size * size * size) as usize];
-    for z in 0..size {
-        for y in 0..size {
-            for x in 0..size {
-                let p = Vec3::new(x as f32, y as f32, z as f32) / size as f32;
-                let value = fbm_value_noise(p, 4, 2.0, 0.5);
-                let idx = ((z * size * size) + (y * size) + x) as usize;
-                data[idx] = (value.clamp(0.0, 1.0) * 255.0) as u8;
-            }
-        }
-    }
-    data
-}
-
-fn fbm_value_noise(p: Vec3, octaves: u32, lacunarity: f32, gain: f32) -> f32 {
-    let mut total = 0.0;
-    let mut amplitude = 0.5;
-    let mut frequency = 1.0;
-    let mut max_value = 0.0;
-    for _ in 0..octaves {
-        total += amplitude * trilinear_value_noise(p * frequency);
-        max_value += amplitude;
-        amplitude *= gain;
-        frequency *= lacunarity;
-    }
-    total / max_value
-}
-
-fn trilinear_value_noise(p: Vec3) -> f32 {
-    let i = p.floor().as_ivec3();
-    let f = p.fract();
-    let u = f * f * (3.0 - 2.0 * f);
-    let mut value = 0.0;
-    for z in 0..2 {
-        for y in 0..2 {
-            for x in 0..2 {
-                let corner = i + IVec3::new(x, y, z);
-                let hash = lattice_hash(corner);
-                let wx = if x == 0 { 1.0 - u.x } else { u.x };
-                let wy = if y == 0 { 1.0 - u.y } else { u.y };
-                let wz = if z == 0 { 1.0 - u.z } else { u.z };
-                value += hash * wx * wy * wz;
-            }
-        }
-    }
-    value
-}
-
-fn lattice_hash(p: IVec3) -> f32 {
-    let mut n =
-        p.x.wrapping_mul(374761393) ^ p.y.wrapping_mul(668265263) ^ p.z.wrapping_mul(2086444801);
-    n = (n ^ (n >> 13)).wrapping_mul(1274126177);
-    n = n ^ (n >> 16);
-    (n as f32 / u32::MAX as f32).clamp(0.0, 1.0)
 }

@@ -31,7 +31,7 @@ pub fn curl_noise_3d(size: u32) -> Vec<[i8; 2]> {
                 let curl_x = dp_dy - dp_dz;
                 let curl_y = dp_dz - dp_dx;
 
-                // Map [-1, 1] to [-128, 127]
+                // Map [-1, 1] to [-127, 127]
                 let ix = (curl_x.clamp(-1.0, 1.0) * 127.0) as i8;
                 let iy = (curl_y.clamp(-1.0, 1.0) * 127.0) as i8;
                 data.push([ix, iy]);
@@ -114,8 +114,8 @@ mod tests {
     fn curl_values_in_i8_range() {
         let data = curl_noise_3d(16);
         for &[x, y] in &data {
-            assert!(x >= -128 && x <= 127);
-            assert!(y >= -128 && y <= 127);
+            assert!(x >= -127);
+            assert!(y >= -127);
         }
     }
 
