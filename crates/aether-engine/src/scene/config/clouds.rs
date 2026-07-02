@@ -2,6 +2,23 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Volumetric cloud quality preset.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum CloudQuality {
+    /// Low quality — reduced noise resolution and step counts.
+    Low,
+    /// Medium quality — balanced quality and performance.
+    Medium,
+    /// High quality — increased noise resolution and step counts.
+    High,
+}
+
+impl Default for CloudQuality {
+    fn default() -> Self {
+        Self::Medium
+    }
+}
+
 /// Volumetric cloud configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CloudConfig {
@@ -23,6 +40,9 @@ pub struct CloudConfig {
     /// Wind speed in world units per second.
     #[serde(default = "default_cloud_wind_speed")]
     pub wind_speed: f32,
+    /// Quality preset controlling noise resolution and step counts.
+    #[serde(default)]
+    pub quality: CloudQuality,
 }
 
 impl Default for CloudConfig {
@@ -34,6 +54,7 @@ impl Default for CloudConfig {
             density: default_cloud_density(),
             wind_direction: default_cloud_wind_direction(),
             wind_speed: default_cloud_wind_speed(),
+            quality: CloudQuality::default(),
         }
     }
 }
