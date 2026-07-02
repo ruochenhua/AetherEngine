@@ -38,6 +38,7 @@ SceneDescription(
         density: 3.0,
         wind_direction: (1.0, 0.3),
         wind_speed: 1.0,
+        quality: High,
     )),
     objects: [],
 )

@@ -19,6 +19,7 @@ use crate::renderer::frame::RenderFrame;
 use crate::renderer::pass::{InitContext, Pass, PassSignature, ResHandle};
 use crate::renderer::resource::{CloudColor, GDepth};
 use crate::renderer::resource_table::ResourceTable;
+use crate::scene::config::{CloudConfig, CloudQuality};
 use glam::{Vec3, Vec4};
 use types::NOISE_SIZE;
 
@@ -119,6 +120,9 @@ impl Pass for VolumetricCloudPass {
             self.has_clouds = true;
             self.time += frame.delta_time * clouds.config.wind_speed;
 
+            let quality = clouds.config.quality;
+            let quality_params = Self::quality_params(&quality);
+
             let proj = frame.camera.projection_matrix(frame.aspect);
             let view = frame.camera.view_matrix();
             let inv_view_proj = (proj * view).inverse();
@@ -138,7 +142,7 @@ impl Pass for VolumetricCloudPass {
                     cfg.density,
                 ),
                 wind_time: Vec4::new(cfg.wind_direction[0], cfg.wind_direction[1], 0.0, self.time),
-                quality_params: CloudUniform::default().quality_params,
+                quality_params,
                 cloud_color_low: CloudUniform::default().cloud_color_low,
                 cloud_color_high: CloudUniform::default().cloud_color_high,
             };
@@ -170,6 +174,18 @@ impl Pass for VolumetricCloudPass {
 }
 
 impl VolumetricCloudPass {
+    /// Map a `CloudQuality` preset to the shader `quality_params` uniform.
+    ///
+    /// X = primary ray-march steps, Y = shadow steps, Z = forward Henyey-Greenstein
+    /// g, W = back-scattering g.
+    fn quality_params(quality: &CloudQuality) -> glam::Vec4 {
+        match quality {
+            CloudQuality::Low => glam::Vec4::new(32.0, 4.0, 0.85, 0.3),
+            CloudQuality::Medium => glam::Vec4::new(64.0, 6.0, 0.85, 0.3),
+            CloudQuality::High => glam::Vec4::new(128.0, 8.0, 0.85, 0.3),
+        }
+    }
+
     /// Create a new cloud pass, including a CPU-generated 3D noise texture.
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
         let mut pass = Self::new_without_upload(device);
@@ -294,6 +310,13 @@ impl VolumetricCloudPass {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ecs::components::Clouds;
+    use crate::ecs::World;
+    use crate::renderer::camera::FlyCamera;
+    use crate::renderer::extract::extract_optional_pass_data;
+    use crate::renderer::frame::{FrameConfig, RenderFrame};
+    use crate::renderer::light::LightingUniforms;
+    use std::sync::Arc;
 
     fn headless_device_queue() -> (wgpu::Device, wgpu::Queue) {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
@@ -364,5 +387,48 @@ mod tests {
         let pass = VolumetricCloudPass::new(&device, &queue);
         // Without apply_frame being called, has_clouds remains false.
         assert!(!pass.has_clouds);
+    }
+
+    #[test]
+    fn quality_preset_maps_to_step_counts() {
+        let low = VolumetricCloudPass::quality_params(&CloudQuality::Low);
+        let med = VolumetricCloudPass::quality_params(&CloudQuality::Medium);
+        let high = VolumetricCloudPass::quality_params(&CloudQuality::High);
+        assert!(low.x < med.x);
+        assert!(med.x < high.x);
+    }
+
+    #[test]
+    fn cloud_pass_writes_quality_to_uniform() {
+        let (device, queue) = headless_device_queue();
+        let mut pass = VolumetricCloudPass::new(&device, &queue);
+        let mut world = World::new();
+        world.spawn((Clouds {
+            config: CloudConfig {
+                quality: CloudQuality::High,
+                ..CloudConfig::default()
+            },
+        },));
+        let optional = extract_optional_pass_data(&world);
+
+        let camera = FlyCamera::default();
+        let lighting = LightingUniforms::default();
+        let assets = crate::asset::AssetManager::new();
+        let texture_cache = crate::asset::texture_cache::GpuTextureCache::new(&device, &queue);
+        let frame = RenderFrame {
+            batches: Arc::from([]),
+            camera: &camera,
+            lighting: &lighting,
+            queue: &queue,
+            aspect: 1.0,
+            delta_time: 0.016,
+            config: &FrameConfig::default(),
+            optional: &optional,
+            texture_cache: &texture_cache,
+            asset_manager: &assets,
+        };
+
+        pass.apply_frame(&frame);
+        assert!(pass.has_clouds);
     }
 }
