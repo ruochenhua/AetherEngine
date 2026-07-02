@@ -86,7 +86,8 @@ fn hash3_jitter(cell: IVec3) -> Vec3 {
     let h = |n: i32| -> f32 {
         let mut h = (n.wrapping_mul(374761393) ^ (n >> 13)).wrapping_mul(1274126177);
         h = h ^ (h >> 16);
-        h as f32 / u32::MAX as f32
+        let v = (h as f32 / u32::MAX as f32 + 1.0) * 0.5;
+        v.clamp(0.0, 1.0)
     };
     Vec3::new(h(cell.x), h(cell.y), h(cell.z))
 }
@@ -110,7 +111,7 @@ mod tests {
     fn worley_output_in_u8_range() {
         let data = worley_noise_3d(16);
         for &v in &data {
-            assert!(v <= 255u8, "value out of u8 range");
+            assert!(v >= 0, "value out of u8 range");
         }
     }
 

@@ -3,6 +3,7 @@
 //! Output = Worley * detail_weight + Perlin * (1 - detail_weight)
 //! where detail_weight = 0.7, creating eroded cloud edges with internal structure.
 
+use super::worley::worley_noise_3d;
 use glam::Vec3;
 
 /// Generate a 3D R8Unorm Perlin-Worley blend noise texture.
@@ -10,19 +11,17 @@ pub fn perlin_worley_noise_3d(size: u32) -> Vec<u8> {
     let detail_weight: f32 = 0.7;
     let mut data = vec![0u8; (size * size * size) as usize];
 
+    let worley = worley_noise_3d(size);
+
     for z in 0..size {
         for y in 0..size {
             for x in 0..size {
                 let p = Vec3::new(x as f32, y as f32, z as f32) / size as f32;
 
-                // Low-freq Perlin for base structure (2 octaves)
-                let perlin_low = fbm_perlin(p * 4.0, 2, 2.0, 0.5);
+                // Worley from the companion generator as base structure
+                let base = worley[(z * size * size + y * size + x) as usize] as f32 / 255.0;
                 // High-freq Perlin for detail (3 octaves)
-                let perlin_high = fbm_perlin(p * 16.0, 3, 2.0, 0.5);
-
-                // Remap: subtract coverage threshold, amplify detail
-                let base = perlin_low.clamp(0.0, 1.0);
-                let detail = perlin_high.clamp(0.0, 1.0);
+                let detail = fbm_perlin(p * 16.0, 3, 2.0, 0.5).clamp(0.0, 1.0);
 
                 let value = base * detail_weight + detail * (1.0 - detail_weight);
                 let idx = (z * size * size + y * size + x) as usize;
@@ -68,7 +67,7 @@ fn value_noise_3d(p: Vec3) -> f32 {
         let mut n = x.wrapping_mul(374761393) ^ y.wrapping_mul(668265263) ^ z.wrapping_mul(2086444801);
         n = (n ^ (n >> 13)).wrapping_mul(1274126177);
         n = n ^ (n >> 16);
-        n as f32 / u32::MAX as f32
+        (n as f32 / u32::MAX as f32).clamp(0.0, 1.0)
     };
 
     let c000 = hash(ix, iy, iz);
@@ -105,7 +104,7 @@ mod tests {
     fn perlin_worley_output_in_u8_range() {
         let data = perlin_worley_noise_3d(16);
         for &v in &data {
-            assert!(v <= 255u8);
+            assert!(v >= 0);
         }
     }
 
