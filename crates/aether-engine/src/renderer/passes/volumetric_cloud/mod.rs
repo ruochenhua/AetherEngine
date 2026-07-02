@@ -12,8 +12,6 @@ mod shader;
 mod textures;
 mod types;
 
-use textures::{create_texture_2d, create_texture_3d};
-
 /// GPU uniform data for the volumetric cloud shader.
 pub use types::CloudUniform;
 
@@ -32,7 +30,6 @@ pub struct VolumetricCloudPass {
     uniform_bind_group: wgpu::BindGroup,
     texture_bind_group_layout: wgpu::BindGroupLayout,
     texture_bind_group: Option<wgpu::BindGroup>,
-    #[allow(dead_code)]
     noise_bind_group_layout: wgpu::BindGroupLayout,
     noise_bind_group: Option<wgpu::BindGroup>,
     quad_vertex_buffer: wgpu::Buffer,
@@ -97,8 +94,7 @@ impl Pass for VolumetricCloudPass {
             self.time += frame.delta_time * clouds.config.wind_speed;
 
             let quality = clouds.config.quality;
-            let device = self.device.clone();
-            self.ensure_noise_textures(&device, frame.queue, quality);
+            self.ensure_noise_textures(frame.queue, quality);
 
             let quality_params = Self::quality_params(&quality);
 
@@ -160,8 +156,7 @@ impl VolumetricCloudPass {
     /// Create a new cloud pass with Medium-quality noise textures.
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
         let mut pass = Self::new_without_upload(device);
-        let device = device.clone();
-        pass.ensure_noise_textures(&device, queue, CloudQuality::Medium);
+        pass.ensure_noise_textures(queue, CloudQuality::Medium);
         pass
     }
 
@@ -173,8 +168,7 @@ impl VolumetricCloudPass {
         quality: CloudQuality,
     ) -> Self {
         let mut pass = Self::new_without_upload(device);
-        let device = device.clone();
-        pass.ensure_noise_textures(&device, queue, quality);
+        pass.ensure_noise_textures(queue, quality);
         pass
     }
 
@@ -183,7 +177,6 @@ impl VolumetricCloudPass {
     /// this is a no-op.
     fn ensure_noise_textures(
         &mut self,
-        device: &wgpu::Device,
         queue: &wgpu::Queue,
         quality: CloudQuality,
     ) {
@@ -191,180 +184,23 @@ impl VolumetricCloudPass {
             return;
         }
 
-        let sizes = pipeline::NoiseSizes::from(&quality);
-
-        let (worley_texture, worley_view) = create_texture_3d(
-            device,
-            sizes.worley,
-            wgpu::TextureFormat::R8Unorm,
-            "Cloud Worley Texture",
-        );
-        let (perlin_worley_texture, perlin_worley_view) = create_texture_3d(
-            device,
-            sizes.worley,
-            wgpu::TextureFormat::R8Unorm,
-            "Cloud Perlin-Worley Texture",
-        );
-        let (curl_texture, curl_view) = create_texture_3d(
-            device,
-            sizes.curl,
-            wgpu::TextureFormat::Rg8Snorm,
-            "Cloud Curl Texture",
-        );
-        let (weather_texture, weather_view) = create_texture_2d(
-            device,
-            sizes.weather,
-            wgpu::TextureFormat::R8Unorm,
-            "Cloud Weather Texture",
+        let resources = textures::create_noise_resources(
+            &self.device,
+            queue,
+            quality,
+            &self.noise_bind_group_layout,
         );
 
-        let multi_noise_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("Cloud Multi-Noise Sampler"),
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            address_mode_u: wgpu::AddressMode::Repeat,
-            address_mode_v: wgpu::AddressMode::Repeat,
-            address_mode_w: wgpu::AddressMode::Repeat,
-            ..Default::default()
-        });
-
-        // Generate noise data. Worley is reused as the base for Perlin-Worley
-        // so the expensive cellular pass is only evaluated once.
-        let worley_data = crate::renderer::clouds::worley::worley_noise_3d(sizes.worley);
-        let perlin_worley_data =
-            crate::renderer::clouds::perlin_worley::perlin_worley_from_worley(
-                &worley_data,
-                sizes.worley,
-            );
-        let curl_data = crate::renderer::clouds::curl::curl_noise_3d(sizes.curl);
-        let weather_data =
-            crate::renderer::clouds::weather::generate_weather_map_2d(sizes.weather);
-
-        queue.write_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: &worley_texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            &worley_data,
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(sizes.worley),
-                rows_per_image: Some(sizes.worley),
-            },
-            wgpu::Extent3d {
-                width: sizes.worley,
-                height: sizes.worley,
-                depth_or_array_layers: sizes.worley,
-            },
-        );
-
-        queue.write_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: &perlin_worley_texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            &perlin_worley_data,
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(sizes.worley),
-                rows_per_image: Some(sizes.worley),
-            },
-            wgpu::Extent3d {
-                width: sizes.worley,
-                height: sizes.worley,
-                depth_or_array_layers: sizes.worley,
-            },
-        );
-
-        queue.write_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: &curl_texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            bytemuck::cast_slice(&curl_data),
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(sizes.curl * 2),
-                rows_per_image: Some(sizes.curl),
-            },
-            wgpu::Extent3d {
-                width: sizes.curl,
-                height: sizes.curl,
-                depth_or_array_layers: sizes.curl,
-            },
-        );
-
-        queue.write_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: &weather_texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            &weather_data,
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(sizes.weather),
-                rows_per_image: Some(sizes.weather),
-            },
-            wgpu::Extent3d {
-                width: sizes.weather,
-                height: sizes.weather,
-                depth_or_array_layers: 1,
-            },
-        );
-
-        let noise_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Cloud Noise Bind Group"),
-            layout: &self.noise_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&worley_view,
-                    ),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(
-                        &perlin_worley_view,
-                    ),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::TextureView(&curl_view,
-                    ),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: wgpu::BindingResource::TextureView(
-                        &weather_view,
-                    ),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 4,
-                    resource: wgpu::BindingResource::Sampler(
-                        &multi_noise_sampler,
-                    ),
-                },
-            ],
-        });
-
-        self.worley_texture = Some(worley_texture);
-        self.worley_view = Some(worley_view);
-        self.perlin_worley_texture = Some(perlin_worley_texture);
-        self.perlin_worley_view = Some(perlin_worley_view);
-        self.curl_texture = Some(curl_texture);
-        self.curl_view = Some(curl_view);
-        self.weather_texture = Some(weather_texture);
-        self.weather_view = Some(weather_view);
-        self.multi_noise_sampler = Some(multi_noise_sampler);
-        self.noise_bind_group = Some(noise_bind_group);
+        self.worley_texture = Some(resources.worley_texture);
+        self.worley_view = Some(resources.worley_view);
+        self.perlin_worley_texture = Some(resources.perlin_worley_texture);
+        self.perlin_worley_view = Some(resources.perlin_worley_view);
+        self.curl_texture = Some(resources.curl_texture);
+        self.curl_view = Some(resources.curl_view);
+        self.weather_texture = Some(resources.weather_texture);
+        self.weather_view = Some(resources.weather_view);
+        self.multi_noise_sampler = Some(resources.sampler);
+        self.noise_bind_group = Some(resources.bind_group);
         self.current_noise_quality = Some(quality);
     }
 }

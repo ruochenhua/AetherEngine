@@ -234,3 +234,86 @@ cargo build --release -p aether-launcher
 ```
 
 Result: **Finished `release` profile** with only pre-existing deprecated-glam warnings.
+
+---
+
+# Final Review Fix Report: Volumetric Cloud Redesign (Round 2)
+
+**Date:** 2026-07-02
+
+**Status:** DONE
+
+## Findings Addressed
+
+### Critical
+
+1. **`mod.rs` kept under 500 physical lines**
+   - File: `crates/aether-engine/src/renderer/passes/volumetric_cloud/mod.rs`
+   - Moved the entire body of `ensure_noise_textures` into `textures::create_noise_resources(device, queue, quality, layout) -> NoiseResources`.
+   - `NoiseResources` bundles the four textures, four views, sampler, and bind group.
+   - `ensure_noise_textures` now only checks the cached quality, calls the helper, and assigns the returned fields.
+   - Removed the now-unused `use textures::{create_texture_2d, create_texture_3d};` import.
+   - Result: `mod.rs` reduced from 573 to 409 physical lines.
+
+### Important
+
+2. **Orphaned `clouds/noise.rs` refactored into shared utility**
+   - Deleted `crates/aether-engine/src/renderer/clouds/noise.rs` (contained dead `generate_cloud_noise_texture` / `generate_noise_data` API).
+   - Added `crates/aether-engine/src/renderer/clouds/value_noise.rs` exporting:
+     - `pub(crate) fn value_noise_3d(p: Vec3) -> f32`
+     - `pub(crate) fn fbm_perlin_3d(p: Vec3, octaves, lacunarity, gain) -> f32`
+   - Updated `clouds/mod.rs` to expose `pub mod value_noise` instead of `pub mod noise`.
+   - Updated `perlin_worley.rs` and `curl.rs` to import and use the shared helpers, removing their duplicated `value_noise_3d` / `fbm_perlin_3d` implementations.
+
+3. **Shadow march skips detail noise**
+   - File: `crates/aether-engine/src/renderer/passes/volumetric_cloud/shader.rs`
+   - Changed the secondary sun march's `sample_density(...)` call from `with_detail: true` to `with_detail: false` to reduce per-pixel cost.
+
+### Minor
+
+4. **Removed unnecessary `#[allow(dead_code)]`**
+   - File: `crates/aether-engine/src/renderer/passes/volumetric_cloud/mod.rs`
+   - Removed the `#[allow(dead_code)]` attribute from `noise_bind_group_layout` since it is actively used when creating the noise bind group.
+
+5. **Simplified `ensure_noise_textures` signature**
+   - File: `crates/aether-engine/src/renderer/passes/volumetric_cloud/mod.rs`
+   - Removed the redundant `device: &wgpu::Device` argument; the method now uses `&self.device`.
+   - Updated callers in `new()`, `new_with_quality()`, and `apply_frame()` accordingly.
+
+## Files Changed
+
+- `crates/aether-engine/src/renderer/passes/volumetric_cloud/mod.rs`
+- `crates/aether-engine/src/renderer/passes/volumetric_cloud/textures.rs`
+- `crates/aether-engine/src/renderer/passes/volumetric_cloud/shader.rs`
+- `crates/aether-engine/src/renderer/clouds/mod.rs`
+- `crates/aether-engine/src/renderer/clouds/value_noise.rs` (new)
+- `crates/aether-engine/src/renderer/clouds/perlin_worley.rs`
+- `crates/aether-engine/src/renderer/clouds/curl.rs`
+- `crates/aether-engine/src/renderer/clouds/noise.rs` (deleted)
+
+## Verification
+
+```bash
+wc -l crates/aether-engine/src/renderer/passes/volumetric_cloud/mod.rs
+```
+
+Result: **409 lines** (target: under 500, preferably under 400).
+
+```bash
+cargo test --workspace --lib
+```
+
+Result: **200 passed; 0 failed**.
+
+```bash
+cargo build --release
+cargo build --release -p aether-launcher
+```
+
+Result: **Finished `release` profile** for both targets with only pre-existing deprecated-glam warnings.
+
+## Commit
+
+```
+4b4170d fix(cloud): address final-review findings for volumetric cloud redesign
+```

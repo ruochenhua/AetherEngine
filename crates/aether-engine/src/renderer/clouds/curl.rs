@@ -3,6 +3,7 @@
 //! Curl of a 3D Perlin-like potential field.
 //! Output is RG8Snorm: 2D curl vector (perpendicular to gradient) per voxel.
 
+use super::value_noise::fbm_perlin_3d;
 use glam::Vec3;
 
 /// Generate a 3D curl noise field. Each voxel gets a 2D curl vector
@@ -44,60 +45,6 @@ pub fn curl_noise_3d(size: u32) -> Vec<[i8; 2]> {
 
 fn potential(p: Vec3) -> f32 {
     fbm_perlin_3d(p, 3, 2.0, 0.5)
-}
-
-fn fbm_perlin_3d(p: Vec3, octaves: u32, lacunarity: f32, gain: f32) -> f32 {
-    let mut total = 0.0;
-    let mut amplitude = 0.5;
-    let mut frequency = 1.0;
-    let mut max_value = 0.0;
-
-    for _ in 0..octaves {
-        total += amplitude * value_noise_3d(p * frequency);
-        max_value += amplitude;
-        amplitude *= gain;
-        frequency *= lacunarity;
-    }
-
-    total / max_value
-}
-
-fn value_noise_3d(p: Vec3) -> f32 {
-    let i = p.floor();
-    let f = p - i;
-    let ix = i.x as i32;
-    let iy = i.y as i32;
-    let iz = i.z as i32;
-
-    let u = f.x * f.x * (3.0 - 2.0 * f.x);
-    let v = f.y * f.y * (3.0 - 2.0 * f.y);
-    let w = f.z * f.z * (3.0 - 2.0 * f.z);
-
-    let hash = |x: i32, y: i32, z: i32| -> f32 {
-        let mut n = x.wrapping_mul(374761393) ^ y.wrapping_mul(668265263) ^ z.wrapping_mul(2086444801);
-        n = (n ^ (n >> 13)).wrapping_mul(1274126177);
-        n = n ^ (n >> 16);
-        n as f32 / u32::MAX as f32
-    };
-
-    let c000 = hash(ix, iy, iz);
-    let c100 = hash(ix + 1, iy, iz);
-    let c010 = hash(ix, iy + 1, iz);
-    let c110 = hash(ix + 1, iy + 1, iz);
-    let c001 = hash(ix, iy, iz + 1);
-    let c101 = hash(ix + 1, iy, iz + 1);
-    let c011 = hash(ix, iy + 1, iz + 1);
-    let c111 = hash(ix + 1, iy + 1, iz + 1);
-
-    let c00 = c000 + (c100 - c000) * u;
-    let c01 = c001 + (c101 - c001) * u;
-    let c10 = c010 + (c110 - c010) * u;
-    let c11 = c011 + (c111 - c011) * u;
-
-    let c0 = c00 + (c10 - c00) * v;
-    let c1 = c01 + (c11 - c01) * v;
-
-    c0 + (c1 - c0) * w
 }
 
 #[cfg(test)]

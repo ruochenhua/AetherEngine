@@ -141,7 +141,7 @@ fn fs_main(@builtin(position) frag_coord: vec4<f32>) -> @location(0) vec4<f32> {
             var shadow_od: f32 = 0.0;
             for (var s: f32 = 0.0; s < shadow_steps; s += 1.0) {
                 let sp = pos + sun_dir * ((s + 0.5) * shadow_dt);
-                shadow_od += sample_density(sp, coverage, density_scale, wind, min_y, max_y, true) * shadow_dt;
+                shadow_od += sample_density(sp, coverage, density_scale, wind, min_y, max_y, false) * shadow_dt;
             }
             let sun_trans = beer_transmittance(shadow_od * 0.3);
 
