@@ -1,7 +1,6 @@
 //! Pipeline and resource creation for the volumetric cloud pass.
 
 use super::shader::SHADER;
-use super::textures::{create_texture_2d, create_texture_3d};
 use super::types::CloudUniform;
 use super::VolumetricCloudPass;
 use crate::scene::config::CloudQuality;
@@ -12,10 +11,10 @@ use wgpu::util::DeviceExt;
 /// Noise texture dimensions for a volumetric cloud quality preset.
 ///
 /// Worley and Perlin-Worley share the same resolution for all presets.
-struct NoiseSizes {
-    worley: u32,
-    curl: u32,
-    weather: u32,
+pub(super) struct NoiseSizes {
+    pub worley: u32,
+    pub curl: u32,
+    pub weather: u32,
 }
 
 impl From<&CloudQuality> for NoiseSizes {
@@ -42,7 +41,7 @@ impl From<&CloudQuality> for NoiseSizes {
 
 impl VolumetricCloudPass {
     /// Build a cloud pass without uploading the initial noise texture.
-    pub(super) fn new_without_upload(device: &wgpu::Device, quality: &CloudQuality) -> Self {
+    pub(super) fn new_without_upload(device: &wgpu::Device) -> Self {
         let output_format = wgpu::TextureFormat::Rgba16Float;
         let shader_source = SHADER;
 
@@ -54,7 +53,9 @@ impl VolumetricCloudPass {
         let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Cloud Uniform Buffer"),
             size: size_of::<CloudUniform>() as wgpu::BufferAddress,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            usage: wgpu::BufferUsages::UNIFORM
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
 
@@ -218,100 +219,29 @@ impl VolumetricCloudPass {
             usage: wgpu::BufferUsages::VERTEX,
         });
 
-        let sizes = NoiseSizes::from(quality);
-        let worley_size = sizes.worley;
-        let curl_size = sizes.curl;
-        let weather_size = sizes.weather;
-
-        let (worley_texture, worley_view) = create_texture_3d(
-            device,
-            worley_size,
-            wgpu::TextureFormat::R8Unorm,
-            "Cloud Worley Texture",
-        );
-        let (perlin_worley_texture, perlin_worley_view) = create_texture_3d(
-            device,
-            worley_size,
-            wgpu::TextureFormat::R8Unorm,
-            "Cloud Perlin-Worley Texture",
-        );
-        let (curl_texture, curl_view) = create_texture_3d(
-            device,
-            curl_size,
-            wgpu::TextureFormat::Rg8Snorm,
-            "Cloud Curl Texture",
-        );
-        let (weather_texture, weather_view) = create_texture_2d(
-            device,
-            weather_size,
-            wgpu::TextureFormat::R8Unorm,
-            "Cloud Weather Texture",
-        );
-
-        let multi_noise_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("Cloud Multi-Noise Sampler"),
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            address_mode_u: wgpu::AddressMode::Repeat,
-            address_mode_v: wgpu::AddressMode::Repeat,
-            address_mode_w: wgpu::AddressMode::Repeat,
-            ..Default::default()
-        });
-
-        let noise_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Cloud Noise Bind Group"),
-            layout: &noise_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&worley_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&perlin_worley_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::TextureView(&curl_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: wgpu::BindingResource::TextureView(&weather_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 4,
-                    resource: wgpu::BindingResource::Sampler(&multi_noise_sampler),
-                },
-            ],
-        });
-
         Self {
+            device: device.clone(),
             pipeline,
             uniform_buffer,
             uniform_bind_group,
             texture_bind_group_layout,
             texture_bind_group: None,
             noise_bind_group_layout,
-            noise_bind_group,
+            noise_bind_group: None,
             quad_vertex_buffer,
             quad_vertex_count: 6,
-            // Multi-noise textures (bind group 2).
-            worley_texture,
-            worley_view,
-            perlin_worley_texture,
-            perlin_worley_view,
-            curl_texture,
-            curl_view,
-            weather_texture,
-            weather_view,
-            multi_noise_sampler,
-            worley_data: crate::renderer::clouds::worley::worley_noise_3d(worley_size),
-            perlin_worley_data: crate::renderer::clouds::perlin_worley::perlin_worley_noise_3d(
-                worley_size,
-            ),
-            curl_data: crate::renderer::clouds::curl::curl_noise_3d(curl_size),
-            weather_data: crate::renderer::clouds::weather::generate_weather_map_2d(weather_size),
-            multi_noise_uploaded: false,
+            // Multi-noise textures (bind group 2) are created lazily from the
+            // scene's CloudQuality on the first frame that clouds are present.
+            worley_texture: None,
+            worley_view: None,
+            perlin_worley_texture: None,
+            perlin_worley_view: None,
+            curl_texture: None,
+            curl_view: None,
+            weather_texture: None,
+            weather_view: None,
+            multi_noise_sampler: None,
+            current_noise_quality: None,
             depth_handle: None,
             cloud_color_handle: None,
             has_clouds: false,

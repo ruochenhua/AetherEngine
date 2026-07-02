@@ -51,7 +51,7 @@ fn value_noise_2d(p: Vec2) -> f32 {
         let mut n = x.wrapping_mul(374761393) ^ y.wrapping_mul(668265263);
         n = (n ^ (n >> 13)).wrapping_mul(1274126177);
         n = n ^ (n >> 16);
-        n as f32 / u32::MAX as f32
+        n as u32 as f32 / u32::MAX as f32
     };
 
     let n00 = hash(ix, iy);

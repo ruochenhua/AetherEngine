@@ -6,20 +6,19 @@
 use super::worley::worley_noise_3d;
 use glam::Vec3;
 
-/// Generate a 3D R8Unorm Perlin-Worley blend noise texture.
-pub fn perlin_worley_noise_3d(size: u32) -> Vec<u8> {
+/// Generate a 3D R8Unorm Perlin-Worley blend noise texture from an existing
+/// Worley noise buffer. The `worley_data` slice must have length `size³`.
+pub fn perlin_worley_from_worley(worley_data: &[u8], size: u32) -> Vec<u8> {
     let detail_weight: f32 = 0.7;
     let mut data = vec![0u8; (size * size * size) as usize];
-
-    let worley = worley_noise_3d(size);
 
     for z in 0..size {
         for y in 0..size {
             for x in 0..size {
                 let p = Vec3::new(x as f32, y as f32, z as f32) / size as f32;
 
-                // Worley from the companion generator as base structure
-                let base = worley[(z * size * size + y * size + x) as usize] as f32 / 255.0;
+                // Worley from the provided buffer as base structure.
+                let base = worley_data[(z * size * size + y * size + x) as usize] as f32 / 255.0;
                 // High-freq Perlin for detail (3 octaves)
                 let detail = fbm_perlin(p * 16.0, 3, 2.0, 0.5).clamp(0.0, 1.0);
 
@@ -31,6 +30,12 @@ pub fn perlin_worley_noise_3d(size: u32) -> Vec<u8> {
     }
 
     data
+}
+
+/// Generate a 3D R8Unorm Perlin-Worley blend noise texture.
+pub fn perlin_worley_noise_3d(size: u32) -> Vec<u8> {
+    let worley = worley_noise_3d(size);
+    perlin_worley_from_worley(&worley, size)
 }
 
 /// Simple FBM (Fractal Brownian Motion) using 3D Perlin-like value noise.

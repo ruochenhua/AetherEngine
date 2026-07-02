@@ -65,7 +65,7 @@ fn sample_density(
         detail_density = detail_v * 0.4;
     }
 
-    return (base_density + detail_density) * height_factor * weather_val * density_scale;
+    return max((base_density + detail_density) * height_factor * weather_val * density_scale, 0.0);
 }
 
 @vertex

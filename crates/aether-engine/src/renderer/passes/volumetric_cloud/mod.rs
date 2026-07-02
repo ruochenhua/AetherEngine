@@ -12,6 +12,8 @@ mod shader;
 mod textures;
 mod types;
 
+use textures::{create_texture_2d, create_texture_3d};
+
 /// GPU uniform data for the volumetric cloud shader.
 pub use types::CloudUniform;
 
@@ -24,6 +26,7 @@ use glam::{Vec3, Vec4};
 
 /// Volumetric cloud render pass.
 pub struct VolumetricCloudPass {
+    device: wgpu::Device,
     pipeline: wgpu::RenderPipeline,
     uniform_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
@@ -31,29 +34,20 @@ pub struct VolumetricCloudPass {
     texture_bind_group: Option<wgpu::BindGroup>,
     #[allow(dead_code)]
     noise_bind_group_layout: wgpu::BindGroupLayout,
-    noise_bind_group: wgpu::BindGroup,
+    noise_bind_group: Option<wgpu::BindGroup>,
     quad_vertex_buffer: wgpu::Buffer,
     quad_vertex_count: u32,
-    // Multi-noise textures (bind group 2).
-    worley_texture: wgpu::Texture,
-    #[allow(dead_code)]
-    worley_view: wgpu::TextureView,
-    perlin_worley_texture: wgpu::Texture,
-    #[allow(dead_code)]
-    perlin_worley_view: wgpu::TextureView,
-    curl_texture: wgpu::Texture,
-    #[allow(dead_code)]
-    curl_view: wgpu::TextureView,
-    weather_texture: wgpu::Texture,
-    #[allow(dead_code)]
-    weather_view: wgpu::TextureView,
-    #[allow(dead_code)]
-    multi_noise_sampler: wgpu::Sampler,
-    worley_data: Vec<u8>,
-    perlin_worley_data: Vec<u8>,
-    curl_data: Vec<[i8; 2]>,
-    weather_data: Vec<u8>,
-    multi_noise_uploaded: bool,
+    // Multi-noise textures (bind group 2), created lazily from scene quality.
+    worley_texture: Option<wgpu::Texture>,
+    worley_view: Option<wgpu::TextureView>,
+    perlin_worley_texture: Option<wgpu::Texture>,
+    perlin_worley_view: Option<wgpu::TextureView>,
+    curl_texture: Option<wgpu::Texture>,
+    curl_view: Option<wgpu::TextureView>,
+    weather_texture: Option<wgpu::Texture>,
+    weather_view: Option<wgpu::TextureView>,
+    multi_noise_sampler: Option<wgpu::Sampler>,
+    current_noise_quality: Option<CloudQuality>,
     depth_handle: Option<ResHandle<GDepth>>,
     cloud_color_handle: Option<ResHandle<CloudColor>>,
     has_clouds: bool,
@@ -72,7 +66,7 @@ impl Pass for VolumetricCloudPass {
     }
 
     fn init(ctx: &InitContext) -> Self {
-        Self::new_without_upload(ctx.device, &CloudQuality::Medium)
+        Self::new_without_upload(ctx.device)
     }
 
     fn resolve(&mut self, device: &wgpu::Device, resources: &ResourceTable) {
@@ -103,6 +97,9 @@ impl Pass for VolumetricCloudPass {
             self.time += frame.delta_time * clouds.config.wind_speed;
 
             let quality = clouds.config.quality;
+            let device = self.device.clone();
+            self.ensure_noise_textures(&device, frame.queue, quality);
+
             let quality_params = Self::quality_params(&quality);
 
             let proj = frame.camera.projection_matrix(frame.aspect);
@@ -132,11 +129,6 @@ impl Pass for VolumetricCloudPass {
             frame
                 .queue
                 .write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
-
-            // Upload the multi-noise textures the first time we have a valid queue.
-            if !self.multi_noise_uploaded {
-                self.upload_multi_noise(frame.queue);
-            }
         } else {
             self.has_clouds = false;
         }
@@ -165,100 +157,215 @@ impl VolumetricCloudPass {
         }
     }
 
-    /// Create a new cloud pass, including CPU-generated multi-noise textures.
-    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, quality: CloudQuality) -> Self {
-        let mut pass = Self::new_without_upload(device, &quality);
-        // Immediately upload noise so the first frame is ready.
-        pass.upload_multi_noise(queue);
+    /// Create a new cloud pass with Medium-quality noise textures.
+    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
+        let mut pass = Self::new_without_upload(device);
+        let device = device.clone();
+        pass.ensure_noise_textures(&device, queue, CloudQuality::Medium);
         pass
     }
 
-    fn upload_multi_noise(&mut self, queue: &wgpu::Queue) {
-        let worley_size = self.worley_texture.width();
+    /// Create a new cloud pass with the requested quality noise textures.
+    #[cfg(test)]
+    pub fn new_with_quality(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        quality: CloudQuality,
+    ) -> Self {
+        let mut pass = Self::new_without_upload(device);
+        let device = device.clone();
+        pass.ensure_noise_textures(&device, queue, quality);
+        pass
+    }
+
+    /// Lazily create (or recreate) the noise textures and bind group for the
+    /// requested quality. If the textures already exist with the same quality,
+    /// this is a no-op.
+    fn ensure_noise_textures(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        quality: CloudQuality,
+    ) {
+        if self.current_noise_quality == Some(quality) {
+            return;
+        }
+
+        let sizes = pipeline::NoiseSizes::from(&quality);
+
+        let (worley_texture, worley_view) = create_texture_3d(
+            device,
+            sizes.worley,
+            wgpu::TextureFormat::R8Unorm,
+            "Cloud Worley Texture",
+        );
+        let (perlin_worley_texture, perlin_worley_view) = create_texture_3d(
+            device,
+            sizes.worley,
+            wgpu::TextureFormat::R8Unorm,
+            "Cloud Perlin-Worley Texture",
+        );
+        let (curl_texture, curl_view) = create_texture_3d(
+            device,
+            sizes.curl,
+            wgpu::TextureFormat::Rg8Snorm,
+            "Cloud Curl Texture",
+        );
+        let (weather_texture, weather_view) = create_texture_2d(
+            device,
+            sizes.weather,
+            wgpu::TextureFormat::R8Unorm,
+            "Cloud Weather Texture",
+        );
+
+        let multi_noise_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("Cloud Multi-Noise Sampler"),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            address_mode_u: wgpu::AddressMode::Repeat,
+            address_mode_v: wgpu::AddressMode::Repeat,
+            address_mode_w: wgpu::AddressMode::Repeat,
+            ..Default::default()
+        });
+
+        // Generate noise data. Worley is reused as the base for Perlin-Worley
+        // so the expensive cellular pass is only evaluated once.
+        let worley_data = crate::renderer::clouds::worley::worley_noise_3d(sizes.worley);
+        let perlin_worley_data =
+            crate::renderer::clouds::perlin_worley::perlin_worley_from_worley(
+                &worley_data,
+                sizes.worley,
+            );
+        let curl_data = crate::renderer::clouds::curl::curl_noise_3d(sizes.curl);
+        let weather_data =
+            crate::renderer::clouds::weather::generate_weather_map_2d(sizes.weather);
+
         queue.write_texture(
             wgpu::TexelCopyTextureInfo {
-                texture: &self.worley_texture,
+                texture: &worley_texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
-            &self.worley_data,
+            &worley_data,
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
-                bytes_per_row: Some(worley_size),
-                rows_per_image: Some(worley_size),
+                bytes_per_row: Some(sizes.worley),
+                rows_per_image: Some(sizes.worley),
             },
             wgpu::Extent3d {
-                width: worley_size,
-                height: worley_size,
-                depth_or_array_layers: worley_size,
+                width: sizes.worley,
+                height: sizes.worley,
+                depth_or_array_layers: sizes.worley,
             },
         );
 
-        let perlin_worley_size = self.perlin_worley_texture.width();
         queue.write_texture(
             wgpu::TexelCopyTextureInfo {
-                texture: &self.perlin_worley_texture,
+                texture: &perlin_worley_texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
-            &self.perlin_worley_data,
+            &perlin_worley_data,
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
-                bytes_per_row: Some(perlin_worley_size),
-                rows_per_image: Some(perlin_worley_size),
+                bytes_per_row: Some(sizes.worley),
+                rows_per_image: Some(sizes.worley),
             },
             wgpu::Extent3d {
-                width: perlin_worley_size,
-                height: perlin_worley_size,
-                depth_or_array_layers: perlin_worley_size,
+                width: sizes.worley,
+                height: sizes.worley,
+                depth_or_array_layers: sizes.worley,
             },
         );
 
-        let curl_size = self.curl_texture.width();
         queue.write_texture(
             wgpu::TexelCopyTextureInfo {
-                texture: &self.curl_texture,
+                texture: &curl_texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
-            bytemuck::cast_slice(&self.curl_data),
+            bytemuck::cast_slice(&curl_data),
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
-                bytes_per_row: Some(curl_size * 2),
-                rows_per_image: Some(curl_size),
+                bytes_per_row: Some(sizes.curl * 2),
+                rows_per_image: Some(sizes.curl),
             },
             wgpu::Extent3d {
-                width: curl_size,
-                height: curl_size,
-                depth_or_array_layers: curl_size,
+                width: sizes.curl,
+                height: sizes.curl,
+                depth_or_array_layers: sizes.curl,
             },
         );
 
-        let weather_size = self.weather_texture.width();
         queue.write_texture(
             wgpu::TexelCopyTextureInfo {
-                texture: &self.weather_texture,
+                texture: &weather_texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
-            &self.weather_data,
+            &weather_data,
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
-                bytes_per_row: Some(weather_size),
-                rows_per_image: Some(weather_size),
+                bytes_per_row: Some(sizes.weather),
+                rows_per_image: Some(sizes.weather),
             },
             wgpu::Extent3d {
-                width: weather_size,
-                height: weather_size,
+                width: sizes.weather,
+                height: sizes.weather,
                 depth_or_array_layers: 1,
             },
         );
 
-        self.multi_noise_uploaded = true;
+        let noise_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Cloud Noise Bind Group"),
+            layout: &self.noise_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&worley_view,
+                    ),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(
+                        &perlin_worley_view,
+                    ),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(&curl_view,
+                    ),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::TextureView(
+                        &weather_view,
+                    ),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: wgpu::BindingResource::Sampler(
+                        &multi_noise_sampler,
+                    ),
+                },
+            ],
+        });
+
+        self.worley_texture = Some(worley_texture);
+        self.worley_view = Some(worley_view);
+        self.perlin_worley_texture = Some(perlin_worley_texture);
+        self.perlin_worley_view = Some(perlin_worley_view);
+        self.curl_texture = Some(curl_texture);
+        self.curl_view = Some(curl_view);
+        self.weather_texture = Some(weather_texture);
+        self.weather_view = Some(weather_view);
+        self.multi_noise_sampler = Some(multi_noise_sampler);
+        self.noise_bind_group = Some(noise_bind_group);
+        self.current_noise_quality = Some(quality);
     }
 }
 
@@ -286,7 +393,7 @@ mod tests {
     #[test]
     fn cloud_pass_signature_reads_depth_and_writes_cloud_color() {
         let (device, queue) = headless_device_queue();
-        let sig = VolumetricCloudPass::new(&device, &queue, CloudQuality::Medium).signature();
+        let sig = VolumetricCloudPass::new(&device, &queue).signature();
         assert_eq!(sig.name, "VolumetricCloud");
         assert_eq!(sig.reads.len(), 1);
         assert_eq!(sig.writes.len(), 1);
@@ -295,62 +402,77 @@ mod tests {
     #[test]
     fn cloud_noise_texture_has_expected_dimensions() {
         let (device, queue) = headless_device_queue();
-        let pass = VolumetricCloudPass::new(&device, &queue, CloudQuality::Medium);
-
-        assert_eq!(pass.worley_texture.width(), 128);
-        assert_eq!(pass.worley_texture.depth_or_array_layers(), 128);
-        assert_eq!(pass.worley_texture.format(), wgpu::TextureFormat::R8Unorm);
-
-        assert_eq!(pass.perlin_worley_texture.width(), 128);
-        assert_eq!(pass.perlin_worley_texture.depth_or_array_layers(), 128);
-        assert_eq!(
-            pass.perlin_worley_texture.format(),
-            wgpu::TextureFormat::R8Unorm
+        let pass = VolumetricCloudPass::new_with_quality(
+            &device,
+            &queue,
+            CloudQuality::Medium,
         );
 
-        assert_eq!(pass.curl_texture.width(), 16);
-        assert_eq!(pass.curl_texture.depth_or_array_layers(), 16);
-        assert_eq!(pass.curl_texture.format(), wgpu::TextureFormat::Rg8Snorm);
+        let worley = pass.worley_texture.as_ref().unwrap();
+        assert_eq!(worley.width(), 128);
+        assert_eq!(worley.depth_or_array_layers(), 128);
+        assert_eq!(worley.format(), wgpu::TextureFormat::R8Unorm);
 
-        assert_eq!(pass.weather_texture.width(), 64);
-        assert_eq!(pass.weather_texture.height(), 64);
-        assert_eq!(pass.weather_texture.format(), wgpu::TextureFormat::R8Unorm);
+        let perlin_worley = pass.perlin_worley_texture.as_ref().unwrap();
+        assert_eq!(perlin_worley.width(), 128);
+        assert_eq!(perlin_worley.depth_or_array_layers(), 128);
+        assert_eq!(perlin_worley.format(), wgpu::TextureFormat::R8Unorm);
+
+        let curl = pass.curl_texture.as_ref().unwrap();
+        assert_eq!(curl.width(), 16);
+        assert_eq!(curl.depth_or_array_layers(), 16);
+        assert_eq!(curl.format(), wgpu::TextureFormat::Rg8Snorm);
+
+        let weather = pass.weather_texture.as_ref().unwrap();
+        assert_eq!(weather.width(), 64);
+        assert_eq!(weather.height(), 64);
+        assert_eq!(weather.format(), wgpu::TextureFormat::R8Unorm);
     }
 
     #[test]
     fn cloud_noise_texture_dimensions_vary_by_quality() {
         fn assert_sizes(pass: &VolumetricCloudPass, worley: u32, curl: u32, weather: u32) {
-            assert_eq!(pass.worley_texture.width(), worley);
-            assert_eq!(pass.worley_texture.height(), worley);
-            assert_eq!(pass.worley_texture.depth_or_array_layers(), worley);
+            let w = pass.worley_texture.as_ref().unwrap();
+            assert_eq!(w.width(), worley);
+            assert_eq!(w.height(), worley);
+            assert_eq!(w.depth_or_array_layers(), worley);
 
-            assert_eq!(pass.perlin_worley_texture.width(), worley);
-            assert_eq!(pass.perlin_worley_texture.height(), worley);
-            assert_eq!(pass.perlin_worley_texture.depth_or_array_layers(), worley);
+            let pw = pass.perlin_worley_texture.as_ref().unwrap();
+            assert_eq!(pw.width(), worley);
+            assert_eq!(pw.height(), worley);
+            assert_eq!(pw.depth_or_array_layers(), worley);
 
-            assert_eq!(pass.curl_texture.width(), curl);
-            assert_eq!(pass.curl_texture.height(), curl);
-            assert_eq!(pass.curl_texture.depth_or_array_layers(), curl);
+            let c = pass.curl_texture.as_ref().unwrap();
+            assert_eq!(c.width(), curl);
+            assert_eq!(c.height(), curl);
+            assert_eq!(c.depth_or_array_layers(), curl);
 
-            assert_eq!(pass.weather_texture.width(), weather);
-            assert_eq!(pass.weather_texture.height(), weather);
+            let wt = pass.weather_texture.as_ref().unwrap();
+            assert_eq!(wt.width(), weather);
+            assert_eq!(wt.height(), weather);
         }
 
         let (device, queue) = headless_device_queue();
-        let low = VolumetricCloudPass::new(&device, &queue, CloudQuality::Low);
+        let low = VolumetricCloudPass::new_with_quality(
+            &device, &queue, CloudQuality::Low,
+        );
         assert_sizes(&low, 64, 16, 32);
 
-        let medium = VolumetricCloudPass::new(&device, &queue, CloudQuality::Medium);
+        let medium = VolumetricCloudPass::new_with_quality(
+            &device, &queue, CloudQuality::Medium,
+        );
         assert_sizes(&medium, 128, 16, 64);
 
-        let high = VolumetricCloudPass::new(&device, &queue, CloudQuality::High);
+        let high = VolumetricCloudPass::new_with_quality(
+            &device, &queue, CloudQuality::High,
+        );
         assert_sizes(&high, 128, 32, 64);
     }
 
     #[test]
     fn cloud_pass_runs_when_cloud_component_present() {
         let (device, queue) = headless_device_queue();
-        let pass = VolumetricCloudPass::new(&device, &queue, CloudQuality::Medium);
+        let pass = VolumetricCloudPass::new(&device, &queue);
         assert!(pass
             .signature()
             .writes
@@ -366,7 +488,7 @@ mod tests {
     #[test]
     fn cloud_pass_skipped_without_component() {
         let (device, queue) = headless_device_queue();
-        let pass = VolumetricCloudPass::new(&device, &queue, CloudQuality::Medium);
+        let pass = VolumetricCloudPass::new(&device, &queue);
         // Without apply_frame being called, has_clouds remains false.
         assert!(!pass.has_clouds);
     }
@@ -383,7 +505,7 @@ mod tests {
     #[test]
     fn cloud_pass_applies_frame_with_high_quality() {
         let (device, queue) = headless_device_queue();
-        let mut pass = VolumetricCloudPass::new(&device, &queue, CloudQuality::Medium);
+        let mut pass = VolumetricCloudPass::new(&device, &queue);
         let mut world = World::new();
         world.spawn((Clouds {
             config: CloudConfig {
@@ -396,7 +518,8 @@ mod tests {
         let camera = FlyCamera::default();
         let lighting = LightingUniforms::default();
         let assets = crate::asset::AssetManager::new();
-        let texture_cache = crate::asset::texture_cache::GpuTextureCache::new(&device, &queue);
+        let texture_cache = crate::asset::texture_cache::GpuTextureCache::new(&device, &queue,
+        );
         let frame = RenderFrame {
             batches: Arc::from([]),
             camera: &camera,
@@ -412,5 +535,39 @@ mod tests {
 
         pass.apply_frame(&frame);
         assert!(pass.has_clouds);
+
+        // Read back the uniform buffer and verify the high-quality step count
+        // was written.
+        let uniform_size = std::mem::size_of::<CloudUniform>() as wgpu::BufferAddress;
+        let staging = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("cloud uniform readback"),
+                size: uniform_size,
+                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                mapped_at_creation: false,
+            },
+        );
+        let mut encoder = device.create_command_encoder(
+            &wgpu::CommandEncoderDescriptor {
+                label: Some("cloud uniform readback"),
+            },
+        );
+        encoder.copy_buffer_to_buffer(
+            &pass.uniform_buffer,
+            0,
+            &staging,
+            0,
+            uniform_size,
+        );
+        queue.submit(Some(encoder.finish()));
+
+        let slice = staging.slice(..);
+        slice.map_async(wgpu::MapMode::Read, |result| {
+            result.expect("failed to map uniform readback buffer");
+        });
+        device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+
+        let data = slice.get_mapped_range();
+        let uniforms: &[CloudUniform] = bytemuck::cast_slice(&data);
+        assert_eq!(uniforms[0].quality_params.x, 128.0);
     }
 }

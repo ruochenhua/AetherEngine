@@ -116,6 +116,8 @@ mod tests {
         for &[x, y] in &data {
             assert!(x >= -127);
             assert!(y >= -127);
+            assert!(i32::from(x) <= 127);
+            assert!(i32::from(y) <= 127);
         }
     }
 
