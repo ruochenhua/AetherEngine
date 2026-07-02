@@ -1,5 +1,6 @@
 //! Volumetric cloud helpers.
 
+pub mod curl;
 pub mod noise;
-pub mod worley;
 pub mod perlin_worley;
+pub mod worley;
