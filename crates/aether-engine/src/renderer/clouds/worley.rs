@@ -69,9 +69,9 @@ pub fn worley_noise_3d(size: u32) -> Vec<u8> {
                     }
                 }
 
-                // F2 - F1 edge distance (creates cellular boundaries)
-                let value = (d1 - d0).clamp(0.0, cell_size);
-                let normalized = value / cell_size;
+                // Inverted F1 distance creates billowy blob shapes suitable for cumulus clouds.
+                let value = 1.0 - (d0 / cell_size);
+                let normalized = value.clamp(0.0, 1.0);
                 let idx = (z * size * size + y * size + x) as usize;
                 data[idx] = (normalized * 255.0) as u8;
             }

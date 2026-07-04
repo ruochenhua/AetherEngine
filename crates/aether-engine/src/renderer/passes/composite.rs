@@ -250,7 +250,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         lit = mix(scene.rgb, refl.rgb, reflectance);
     }
 
-    let with_clouds = mix(lit, cloud.rgb, cloud.a);
+    // Volumetric clouds are integrated as background * transmittance + in-scattered light.
+    // cloud.rgb already contains the accumulated scattered light; cloud.a = 1 - transmittance.
+    let with_clouds = lit * (1.0 - cloud.a) + cloud.rgb;
     let with_god_rays = with_clouds + god_ray.rgb;
     let final_color = mix(with_god_rays, water.rgb, water.a);
     return vec4<f32>(final_color, 1.0);

@@ -34,8 +34,8 @@ impl Default for CloudUniform {
             cloud_bounds: glam::Vec4::new(80.0, 120.0, 0.5, 1.0),
             wind_time: glam::Vec4::new(1.0, 0.0, 0.0, 0.0),
             quality_params: glam::Vec4::new(64.0, 6.0, 0.85, 0.3),
-            cloud_color_low: glam::Vec4::new(1.0, 0.98, 0.95, 0.0),
-            cloud_color_high: glam::Vec4::new(0.85, 0.90, 0.95, 0.0),
+            cloud_color_low: glam::Vec4::new(0.92, 0.92, 0.95, 0.0),
+            cloud_color_high: glam::Vec4::new(0.98, 0.98, 1.0, 0.0),
         }
     }
 }
