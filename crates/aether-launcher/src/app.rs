@@ -504,7 +504,27 @@ impl ApplicationHandler for App {
 
 // ── Main ────────────────────────────────────────────────────────────
 
+/// Locate the project root from the executable path and set it as the current
+/// working directory so that relative asset paths (e.g. `assets/hdr/...`)
+/// resolve correctly regardless of where the launcher is launched from.
+fn set_working_dir_to_project_root() {
+    if let Ok(exe) = std::env::current_exe() {
+        let mut dir = exe.parent().map(std::path::PathBuf::from);
+        while let Some(current) = dir {
+            if current.join("Cargo.toml").is_file() && current.join("assets").is_dir() {
+                if let Err(e) = std::env::set_current_dir(&current) {
+                    eprintln!("Warning: failed to set working directory to {:?}: {}", current, e);
+                }
+                return;
+            }
+            dir = current.parent().map(std::path::PathBuf::from);
+        }
+    }
+}
+
 pub fn run() {
+    set_working_dir_to_project_root();
+
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
         .init();
