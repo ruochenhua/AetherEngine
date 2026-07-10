@@ -11,6 +11,7 @@
 #![warn(missing_docs)]
 
 pub mod asset;
+pub mod clouds;
 pub mod ecs;
 /// Input state manager.
 pub mod input;

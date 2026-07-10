@@ -3,41 +3,9 @@
 use super::shader::SHADER;
 use super::types::CloudUniform;
 use super::VolumetricCloudPass;
-use crate::scene::config::CloudQuality;
 use std::borrow::Cow;
 use std::mem::size_of;
 use wgpu::util::DeviceExt;
-
-/// Noise texture dimensions for a volumetric cloud quality preset.
-///
-/// Worley and Perlin-Worley share the same resolution for all presets.
-pub(super) struct NoiseSizes {
-    pub worley: u32,
-    pub curl: u32,
-    pub weather: u32,
-}
-
-impl From<&CloudQuality> for NoiseSizes {
-    fn from(quality: &CloudQuality) -> Self {
-        match quality {
-            CloudQuality::Low => Self {
-                worley: 64,
-                curl: 16,
-                weather: 32,
-            },
-            CloudQuality::Medium => Self {
-                worley: 128,
-                curl: 16,
-                weather: 64,
-            },
-            CloudQuality::High => Self {
-                worley: 128,
-                curl: 32,
-                weather: 64,
-            },
-        }
-    }
-}
 
 impl VolumetricCloudPass {
     /// Build a cloud pass without uploading the initial noise texture.
@@ -101,7 +69,7 @@ impl VolumetricCloudPass {
                 }],
             });
 
-        // Group 2: Worley, Perlin-Worley, curl and weather textures.
+        // Group 2: Perlin-Worley, Worley, weather textures and shared sampler.
         let noise_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("Cloud Noise Bind Group Layout"),
@@ -131,23 +99,13 @@ impl VolumetricCloudPass {
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Texture {
                             sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            view_dimension: wgpu::TextureViewDimension::D3,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 3,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
                             view_dimension: wgpu::TextureViewDimension::D2,
                             multisampled: false,
                         },
                         count: None,
                     },
                     wgpu::BindGroupLayoutEntry {
-                        binding: 4,
+                        binding: 3,
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                         count: None,
@@ -238,8 +196,6 @@ impl VolumetricCloudPass {
             worley_view: None,
             perlin_worley_texture: None,
             perlin_worley_view: None,
-            curl_texture: None,
-            curl_view: None,
             weather_texture: None,
             weather_view: None,
             multi_noise_sampler: None,

@@ -38,6 +38,24 @@ pub struct CloudConfig {
     /// Quality preset controlling noise resolution and step counts.
     #[serde(default)]
     pub quality: CloudQuality,
+    /// Large-scale weather map frequency (world-space scale).
+    #[serde(default = "default_cloud_weather_scale")]
+    pub weather_scale: f32,
+    /// Base shape noise frequency (world-space scale).
+    #[serde(default = "default_cloud_base_noise_scale")]
+    pub base_noise_scale: f32,
+    /// High-frequency erosion noise frequency (world-space scale).
+    #[serde(default = "default_cloud_high_freq_noise_scale")]
+    pub high_freq_noise_scale: f32,
+    /// Vertical shear applied to cloud tops as wind moves clouds.
+    #[serde(default = "default_cloud_cloud_top_offset")]
+    pub cloud_top_offset: f32,
+    /// Cloud type selector (0=stratus, 0.5=stratocumulus, 1=cumulus).
+    #[serde(default = "default_cloud_cloud_type")]
+    pub cloud_type: f32,
+    /// Maximum distance at which clouds are still ray-marched.
+    #[serde(default = "default_cloud_max_render_dist")]
+    pub max_render_dist: f32,
 }
 
 impl Default for CloudConfig {
@@ -50,6 +68,12 @@ impl Default for CloudConfig {
             wind_direction: default_cloud_wind_direction(),
             wind_speed: default_cloud_wind_speed(),
             quality: CloudQuality::default(),
+            weather_scale: default_cloud_weather_scale(),
+            base_noise_scale: default_cloud_base_noise_scale(),
+            high_freq_noise_scale: default_cloud_high_freq_noise_scale(),
+            cloud_top_offset: default_cloud_cloud_top_offset(),
+            cloud_type: default_cloud_cloud_type(),
+            max_render_dist: default_cloud_max_render_dist(),
         }
     }
 }
@@ -76,4 +100,28 @@ fn default_cloud_wind_direction() -> [f32; 2] {
 
 fn default_cloud_wind_speed() -> f32 {
     2.0
+}
+
+fn default_cloud_weather_scale() -> f32 {
+    0.00008
+}
+
+fn default_cloud_base_noise_scale() -> f32 {
+    0.0003
+}
+
+fn default_cloud_high_freq_noise_scale() -> f32 {
+    0.003
+}
+
+fn default_cloud_cloud_top_offset() -> f32 {
+    500.0
+}
+
+fn default_cloud_cloud_type() -> f32 {
+    0.75
+}
+
+fn default_cloud_max_render_dist() -> f32 {
+    30000.0
 }

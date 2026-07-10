@@ -39,8 +39,6 @@ pub struct VolumetricCloudPass {
     worley_view: Option<wgpu::TextureView>,
     perlin_worley_texture: Option<wgpu::Texture>,
     perlin_worley_view: Option<wgpu::TextureView>,
-    curl_texture: Option<wgpu::Texture>,
-    curl_view: Option<wgpu::TextureView>,
     weather_texture: Option<wgpu::Texture>,
     weather_view: Option<wgpu::TextureView>,
     multi_noise_sampler: Option<wgpu::Sampler>,
@@ -96,8 +94,6 @@ impl Pass for VolumetricCloudPass {
             let quality = clouds.config.quality;
             self.ensure_noise_textures(frame.queue, quality);
 
-            let quality_params = Self::quality_params(&quality);
-
             let proj = frame.camera.projection_matrix(frame.aspect);
             let view = frame.camera.view_matrix();
             let inv_view_proj = (proj * view).inverse();
@@ -106,6 +102,8 @@ impl Pass for VolumetricCloudPass {
             let sun_toward = -light_dir;
 
             let cfg = &clouds.config;
+            let light = &frame.lighting.light;
+            let light_color = Vec3::from_array(light.color) * light.intensity;
             let uniforms = CloudUniform {
                 inv_view_proj,
                 camera_pos: Vec4::from((frame.camera.position, 0.0)),
@@ -117,10 +115,16 @@ impl Pass for VolumetricCloudPass {
                     cfg.density,
                 ),
                 wind_time: Vec4::new(cfg.wind_direction[0], cfg.wind_direction[1], 0.0, self.time),
-                quality_params,
-                // Fixed defaults until scene config exposes cloud color fields.
-                cloud_color_low: CloudUniform::default().cloud_color_low,
-                cloud_color_high: CloudUniform::default().cloud_color_high,
+                render_params: Vec4::new(
+                    cfg.max_render_dist,
+                    cfg.weather_scale,
+                    cfg.base_noise_scale,
+                    cfg.high_freq_noise_scale,
+                ),
+                detail_params: Vec4::new(2.5, 1.0, cfg.cloud_type, cfg.cloud_top_offset),
+                cloud_color_low: Vec4::new(0.92, 0.92, 0.95, 0.0),
+                cloud_color_high: Vec4::new(0.98, 0.98, 1.0, 0.0),
+                light_color: Vec4::new(light_color.x, light_color.y, light_color.z, 1.0),
             };
 
             frame
@@ -142,18 +146,6 @@ impl Pass for VolumetricCloudPass {
 }
 
 impl VolumetricCloudPass {
-    /// Map a `CloudQuality` preset to the shader `quality_params` uniform.
-    ///
-    /// X = primary ray-march steps, Y = shadow steps, Z = forward Henyey-Greenstein
-    /// g, W = back-scattering g.
-    fn quality_params(quality: &CloudQuality) -> glam::Vec4 {
-        match quality {
-            CloudQuality::Low => glam::Vec4::new(32.0, 4.0, 0.85, 0.3),
-            CloudQuality::Medium => glam::Vec4::new(64.0, 6.0, 0.85, 0.3),
-            CloudQuality::High => glam::Vec4::new(128.0, 8.0, 0.85, 0.3),
-        }
-    }
-
     /// Create a new cloud pass with the requested quality noise textures.
     #[cfg(test)]
     pub fn new_with_quality(
@@ -195,8 +187,6 @@ impl VolumetricCloudPass {
         self.worley_view = Some(resources.worley_view);
         self.perlin_worley_texture = Some(resources.perlin_worley_texture);
         self.perlin_worley_view = Some(resources.perlin_worley_view);
-        self.curl_texture = Some(resources.curl_texture);
-        self.curl_view = Some(resources.curl_view);
         self.weather_texture = Some(resources.weather_texture);
         self.weather_view = Some(resources.weather_view);
         self.multi_noise_sampler = Some(resources.sampler);
@@ -246,63 +236,58 @@ mod tests {
 
         let worley = pass.worley_texture.as_ref().unwrap();
         assert_eq!(worley.width(), 128);
+        assert_eq!(worley.height(), 128);
         assert_eq!(worley.depth_or_array_layers(), 128);
-        assert_eq!(worley.format(), wgpu::TextureFormat::R8Unorm);
+        assert_eq!(worley.format(), wgpu::TextureFormat::Rgba8Unorm);
 
         let perlin_worley = pass.perlin_worley_texture.as_ref().unwrap();
         assert_eq!(perlin_worley.width(), 128);
+        assert_eq!(perlin_worley.height(), 128);
         assert_eq!(perlin_worley.depth_or_array_layers(), 128);
-        assert_eq!(perlin_worley.format(), wgpu::TextureFormat::R8Unorm);
-
-        let curl = pass.curl_texture.as_ref().unwrap();
-        assert_eq!(curl.width(), 16);
-        assert_eq!(curl.depth_or_array_layers(), 16);
-        assert_eq!(curl.format(), wgpu::TextureFormat::Rg8Snorm);
+        assert_eq!(perlin_worley.format(), wgpu::TextureFormat::Rgba8Unorm);
 
         let weather = pass.weather_texture.as_ref().unwrap();
-        assert_eq!(weather.width(), 64);
-        assert_eq!(weather.height(), 64);
-        assert_eq!(weather.format(), wgpu::TextureFormat::R8Unorm);
+        assert_eq!(weather.width(), 2048);
+        assert_eq!(weather.height(), 2048);
+        assert_eq!(weather.format(), wgpu::TextureFormat::Rgba8Unorm);
     }
 
     #[test]
-    fn cloud_noise_texture_dimensions_vary_by_quality() {
-        fn assert_sizes(pass: &VolumetricCloudPass, worley: u32, curl: u32, weather: u32) {
+    fn cloud_noise_texture_dimensions_are_fixed_by_quality() {
+        fn assert_sizes(pass: &VolumetricCloudPass) {
             let w = pass.worley_texture.as_ref().unwrap();
-            assert_eq!(w.width(), worley);
-            assert_eq!(w.height(), worley);
-            assert_eq!(w.depth_or_array_layers(), worley);
+            assert_eq!(w.width(), 128);
+            assert_eq!(w.height(), 128);
+            assert_eq!(w.depth_or_array_layers(), 128);
+            assert_eq!(w.format(), wgpu::TextureFormat::Rgba8Unorm);
 
             let pw = pass.perlin_worley_texture.as_ref().unwrap();
-            assert_eq!(pw.width(), worley);
-            assert_eq!(pw.height(), worley);
-            assert_eq!(pw.depth_or_array_layers(), worley);
-
-            let c = pass.curl_texture.as_ref().unwrap();
-            assert_eq!(c.width(), curl);
-            assert_eq!(c.height(), curl);
-            assert_eq!(c.depth_or_array_layers(), curl);
+            assert_eq!(pw.width(), 128);
+            assert_eq!(pw.height(), 128);
+            assert_eq!(pw.depth_or_array_layers(), 128);
+            assert_eq!(pw.format(), wgpu::TextureFormat::Rgba8Unorm);
 
             let wt = pass.weather_texture.as_ref().unwrap();
-            assert_eq!(wt.width(), weather);
-            assert_eq!(wt.height(), weather);
+            assert_eq!(wt.width(), 2048);
+            assert_eq!(wt.height(), 2048);
+            assert_eq!(wt.format(), wgpu::TextureFormat::Rgba8Unorm);
         }
 
         let (device, queue) = headless_device_queue();
         let low = VolumetricCloudPass::new_with_quality(
             &device, &queue, CloudQuality::Low,
         );
-        assert_sizes(&low, 64, 16, 32);
+        assert_sizes(&low);
 
         let medium = VolumetricCloudPass::new_with_quality(
             &device, &queue, CloudQuality::Medium,
         );
-        assert_sizes(&medium, 128, 16, 64);
+        assert_sizes(&medium);
 
         let high = VolumetricCloudPass::new_with_quality(
             &device, &queue, CloudQuality::High,
         );
-        assert_sizes(&high, 128, 32, 64);
+        assert_sizes(&high);
     }
 
     #[test]
@@ -327,15 +312,6 @@ mod tests {
         let pass = VolumetricCloudPass::new(&device, &queue);
         // Without apply_frame being called, has_clouds remains false.
         assert!(!pass.has_clouds);
-    }
-
-    #[test]
-    fn quality_preset_maps_to_step_counts() {
-        let low = VolumetricCloudPass::quality_params(&CloudQuality::Low);
-        let med = VolumetricCloudPass::quality_params(&CloudQuality::Medium);
-        let high = VolumetricCloudPass::quality_params(&CloudQuality::High);
-        assert!(low.x < med.x);
-        assert!(med.x < high.x);
     }
 
     #[test]
@@ -372,8 +348,7 @@ mod tests {
         pass.apply_frame(&frame);
         assert!(pass.has_clouds);
 
-        // Read back the uniform buffer and verify the high-quality step count
-        // was written.
+        // Read back the uniform buffer and verify the render_params field.
         let uniform_size = std::mem::size_of::<CloudUniform>() as wgpu::BufferAddress;
         let staging = device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("cloud uniform readback"),
@@ -404,6 +379,8 @@ mod tests {
 
         let data = slice.get_mapped_range();
         let uniforms: &[CloudUniform] = bytemuck::cast_slice(&data);
-        assert_eq!(uniforms[0].quality_params.x, 128.0);
+        assert_eq!(uniforms[0].render_params.x, 30000.0);
+        assert_eq!(uniforms[0].detail_params.x, 2.5);
+        assert_eq!(uniforms[0].light_color.w, 1.0);
     }
 }

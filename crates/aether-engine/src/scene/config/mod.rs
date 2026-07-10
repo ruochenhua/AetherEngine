@@ -653,6 +653,7 @@ mod tests {
                 wind_direction: [1.0, 0.5],
                 wind_speed: 3.0,
                 quality: CloudQuality::Medium,
+                ..CloudConfig::default()
             }),
             god_ray: None,
             objects: vec![],
