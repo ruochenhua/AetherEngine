@@ -305,49 +305,75 @@ fn front_to_back_raymarch(start_pos: vec3<f32>, end_pos: vec3<f32>) -> vec4<f32>
 fn intersect_sphere(
     o: vec3<f32>,
     d: vec3<f32>,
-    min_t: ptr<function, vec3<f32>>,
-    max_t: ptr<function, vec3<f32>>,
+    start_pos: ptr<function, vec3<f32>>,
+    end_pos: ptr<function, vec3<f32>>,
 ) -> bool {
     let sphere_to_origin = o - sphere_center();
     let b = dot(d, sphere_to_origin);
     let c = dot(sphere_to_origin, sphere_to_origin);
 
     let inner_r = inner_radius();
-    let sqrt_op_inner = b * b - (c - inner_r * inner_r);
-    if (sqrt_op_inner < 0.0) {
-        return false;
-    }
-
-    let de_inner = sqrt(sqrt_op_inner);
-    let sol_a_inner = -b - de_inner;
-    let sol_b_inner = -b + de_inner;
-    var max_s_inner = max(sol_a_inner, sol_b_inner);
-    if (max_s_inner < 0.0) {
-        return false;
-    }
-
     let outer_r = outer_radius();
-    let sqrt_op_outer = b * b - (c - outer_r * outer_r);
-    if (sqrt_op_outer < 0.0) {
+
+    let inner_disc = b * b - (c - inner_r * inner_r);
+    let outer_disc = b * b - (c - outer_r * outer_r);
+
+    // Ray must at least intersect the outer sphere.
+    if (outer_disc < 0.0) {
         return false;
     }
 
-    let de_outer = sqrt(sqrt_op_outer);
-    let sol_a_outer = -b - de_outer;
-    let sol_b_outer = -b + de_outer;
-    let max_s_outer = max(sol_a_outer, sol_b_outer);
-    if (max_s_outer < 0.0) {
+    let outer_t0 = -b - sqrt(outer_disc);
+    let outer_t1 = -b + sqrt(outer_disc);
+
+    // The whole outer sphere is behind the camera.
+    if (outer_t1 < 0.0) {
         return false;
     }
 
-    let min_sol = min(max_s_inner, max_s_outer);
-    if (min_sol > max_render_dist()) {
+    var t_start: f32;
+    var t_end: f32;
+
+    if (inner_disc < 0.0) {
+        // Ray does not enter the inner sphere hole: the shell is the full
+        // outer-sphere segment.
+        t_start = max(outer_t0, 0.0);
+        t_end = outer_t1;
+    } else {
+        let inner_t0 = -b - sqrt(inner_disc);
+        let inner_t1 = -b + sqrt(inner_disc);
+
+        // The cloud shell is [outer_t0, inner_t0] ∪ [inner_t1, outer_t1].
+        // Pick the first segment with t >= 0 along the ray.
+        if (outer_t0 >= 0.0) {
+            // Camera outside the shell, looking into the cloud layer.
+            t_start = outer_t0;
+            t_end = inner_t0;
+        } else if (inner_t0 >= 0.0) {
+            // Camera inside the cloud layer (between outer and inner spheres).
+            t_start = 0.0;
+            t_end = inner_t0;
+        } else if (inner_t1 >= 0.0) {
+            // Camera inside the inner sphere hole, looking out into clouds.
+            t_start = inner_t1;
+            t_end = outer_t1;
+        } else if (outer_t1 >= 0.0) {
+            // Camera inside the far-side cloud layer.
+            t_start = 0.0;
+            t_end = outer_t1;
+        } else {
+            return false;
+        }
+    }
+
+    if (t_start > max_render_dist()) {
         return false;
     }
 
-    let max_sol = max(max_s_inner, max_s_outer);
-    *min_t = o + d * min_sol;
-    *max_t = o + d * max_sol;
+    t_end = min(t_end, max_render_dist());
+
+    *start_pos = o + d * t_start;
+    *end_pos = o + d * t_end;
     return true;
 }
 
@@ -365,9 +391,6 @@ fn fs_main(@builtin(position) in_frag_coord: vec4<f32>) -> @location(0) vec4<f32
     let coord = vec2<i32>(frag_coord.xy);
 
     let depth = textureLoad(depth_tex, coord, 0);
-    if (depth < 1.0) {
-        return vec4<f32>(0.0);
-    }
 
     let ndc = vec4<f32>(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, depth, 1.0);
     let world_h = clouds.inv_view_proj * ndc;
@@ -382,6 +405,8 @@ fn fs_main(@builtin(position) in_frag_coord: vec4<f32>) -> @location(0) vec4<f32
         return vec4<f32>(0.0);
     }
 
+    // Honour scene geometry: stop marching at the first opaque surface so
+    // clouds appear correctly both when viewed from below and from above.
     let geo_dist = length(world_pos - clouds.camera_pos.xyz);
     let t_start = length(start_pos - clouds.camera_pos.xyz);
     let t_end = min(length(end_pos - clouds.camera_pos.xyz), geo_dist);
