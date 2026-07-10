@@ -372,6 +372,11 @@ fn render_clouds(ui: &mut egui::Ui, clouds: &mut Clouds) {
     ui.label("Clouds");
     let cfg = &mut clouds.config;
     ui.add(
+        egui::DragValue::new(&mut cfg.planet_radius)
+            .speed(10.0)
+            .prefix("Planet Radius: "),
+    );
+    ui.add(
         egui::DragValue::new(&mut cfg.bottom_altitude)
             .speed(1.0)
             .prefix("Bottom Altitude: "),
@@ -382,10 +387,41 @@ fn render_clouds(ui: &mut egui::Ui, clouds: &mut Clouds) {
             .prefix("Top Altitude: "),
     );
     ui.add(egui::Slider::new(&mut cfg.coverage, 0.0..=1.0).text("Coverage"));
+    ui.add(egui::Slider::new(&mut cfg.cloud_type, 0.0..=1.0).text("Cloud Type"));
     ui.add(
-        egui::DragValue::new(&mut cfg.density)
+        egui::DragValue::new(&mut cfg.weather_scale)
+            .speed(0.01)
+            .prefix("Weather Scale: "),
+    );
+    ui.add(
+        egui::DragValue::new(&mut cfg.base_noise_scale)
+            .speed(0.01)
+            .prefix("Base Noise Scale: "),
+    );
+    ui.add(
+        egui::DragValue::new(&mut cfg.high_freq_noise_scale)
+            .speed(0.01)
+            .prefix("High Freq Noise Scale: "),
+    );
+    ui.add(
+        egui::DragValue::new(&mut cfg.high_freq_uv_scale)
+            .speed(1.0)
+            .prefix("High Freq UV Scale: "),
+    );
+    ui.add(
+        egui::DragValue::new(&mut cfg.high_freq_h_scale)
             .speed(0.1)
-            .prefix("Density: "),
+            .prefix("High Freq H Scale: "),
+    );
+    ui.add(
+        egui::DragValue::new(&mut cfg.cloud_top_offset)
+            .speed(1.0)
+            .prefix("Cloud Top Offset: "),
+    );
+    ui.add(
+        egui::DragValue::new(&mut cfg.max_render_dist)
+            .speed(100.0)
+            .prefix("Max Render Dist: "),
     );
     ui.label("Wind Direction");
     ui.horizontal(|ui| {

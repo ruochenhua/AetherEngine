@@ -94,37 +94,66 @@ impl Pass for VolumetricCloudPass {
             let quality = clouds.config.quality;
             self.ensure_noise_textures(frame.queue, quality);
 
+            let cfg = &clouds.config;
+            let cam_pos = frame.camera.position;
+
+            // RenderEngine places the sphere center directly below the camera on
+            // the planet's vertical axis, so the local cloud shell is always
+            // centered above the viewer.
+            let planet_radius = cfg.planet_radius;
+            let sphere_center = glam::Vec3::new(cam_pos.x, -planet_radius, cam_pos.z);
+            let inner_radius = planet_radius + cfg.bottom_altitude;
+            let outer_radius = planet_radius + cfg.top_altitude;
+
+            let light_dir = Vec3::from_array(frame.lighting.light.direction).normalize();
+            let sun_toward = -light_dir;
+            let light_factor = sun_toward.dot(Vec3::Y).clamp(0.0, 1.0);
+
+            let raw_light_color = Vec3::from_array(frame.lighting.light.color) * frame.lighting.light.intensity;
+            let real_light_color = raw_light_color;
+
             let proj = frame.camera.projection_matrix(frame.aspect);
             let view = frame.camera.view_matrix();
             let inv_view_proj = (proj * view).inverse();
 
-            let light_dir = Vec3::from_array(frame.lighting.light.direction).normalize();
-            let sun_toward = -light_dir;
-
-            let cfg = &clouds.config;
-            let light = &frame.lighting.light;
-            let light_color = Vec3::from_array(light.color) * light.intensity;
             let uniforms = CloudUniform {
                 inv_view_proj,
-                camera_pos: Vec4::from((frame.camera.position, 0.0)),
+                camera_pos: Vec4::from((cam_pos, 0.0)),
                 sun_direction: Vec4::from((sun_toward, 0.0)),
-                cloud_bounds: Vec4::new(
-                    cfg.bottom_altitude,
-                    cfg.top_altitude,
-                    cfg.coverage,
-                    cfg.density,
-                ),
-                wind_time: Vec4::new(cfg.wind_direction[0], cfg.wind_direction[1], 0.0, self.time),
-                render_params: Vec4::new(
+                sphere_center_inner: Vec4::from((sphere_center, inner_radius)),
+                sphere_outer_params: Vec4::new(
+                    outer_radius,
                     cfg.max_render_dist,
+                    cfg.cloud_top_offset,
+                    0.0,
+                ),
+                wind_time: Vec4::new(
+                    cfg.wind_direction[0],
+                    0.0,
+                    cfg.wind_direction[1],
+                    self.time,
+                ),
+                noise_scales: Vec4::new(
                     cfg.weather_scale,
                     cfg.base_noise_scale,
                     cfg.high_freq_noise_scale,
+                    cfg.high_freq_uv_scale,
                 ),
-                detail_params: Vec4::new(2.5, 1.0, cfg.cloud_type, cfg.cloud_top_offset),
-                cloud_color_low: Vec4::new(0.92, 0.92, 0.95, 0.0),
-                cloud_color_high: Vec4::new(0.98, 0.98, 1.0, 0.0),
-                light_color: Vec4::new(light_color.x, light_color.y, light_color.z, 1.0),
+                detail_params: Vec4::new(
+                    cfg.high_freq_h_scale,
+                    cfg.cloud_type,
+                    cfg.coverage,
+                    0.0,
+                ),
+                light_color: Vec4::new(
+                    real_light_color.x,
+                    real_light_color.y,
+                    real_light_color.z,
+                    light_factor,
+                ),
+                horizon_color: Vec4::new(0.8, 0.85, 1.0, 0.0),
+                zenit_color: Vec4::new(0.0, 0.5, 1.0, 0.0),
+                cloud_color: Vec4::new(1.0, 1.0, 1.0, 0.0),
             };
 
             frame
@@ -235,9 +264,9 @@ mod tests {
         );
 
         let worley = pass.worley_texture.as_ref().unwrap();
-        assert_eq!(worley.width(), 128);
-        assert_eq!(worley.height(), 128);
-        assert_eq!(worley.depth_or_array_layers(), 128);
+        assert_eq!(worley.width(), 32);
+        assert_eq!(worley.height(), 32);
+        assert_eq!(worley.depth_or_array_layers(), 32);
         assert_eq!(worley.format(), wgpu::TextureFormat::Rgba8Unorm);
 
         let perlin_worley = pass.perlin_worley_texture.as_ref().unwrap();
@@ -256,9 +285,9 @@ mod tests {
     fn cloud_noise_texture_dimensions_are_fixed_by_quality() {
         fn assert_sizes(pass: &VolumetricCloudPass) {
             let w = pass.worley_texture.as_ref().unwrap();
-            assert_eq!(w.width(), 128);
-            assert_eq!(w.height(), 128);
-            assert_eq!(w.depth_or_array_layers(), 128);
+            assert_eq!(w.width(), 32);
+            assert_eq!(w.height(), 32);
+            assert_eq!(w.depth_or_array_layers(), 32);
             assert_eq!(w.format(), wgpu::TextureFormat::Rgba8Unorm);
 
             let pw = pass.perlin_worley_texture.as_ref().unwrap();
@@ -348,7 +377,7 @@ mod tests {
         pass.apply_frame(&frame);
         assert!(pass.has_clouds);
 
-        // Read back the uniform buffer and verify the render_params field.
+        // Read back the uniform buffer and verify the spherical-shell parameters.
         let uniform_size = std::mem::size_of::<CloudUniform>() as wgpu::BufferAddress;
         let staging = device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("cloud uniform readback"),
@@ -379,8 +408,8 @@ mod tests {
 
         let data = slice.get_mapped_range();
         let uniforms: &[CloudUniform] = bytemuck::cast_slice(&data);
-        assert_eq!(uniforms[0].render_params.x, 30000.0);
-        assert_eq!(uniforms[0].detail_params.x, 2.5);
-        assert_eq!(uniforms[0].light_color.w, 1.0);
+        assert_eq!(uniforms[0].sphere_outer_params.x, 6480.0);
+        assert_eq!(uniforms[0].noise_scales.w, 150.0);
+        assert!((uniforms[0].light_color.w - 0.57735).abs() < 0.001);
     }
 }

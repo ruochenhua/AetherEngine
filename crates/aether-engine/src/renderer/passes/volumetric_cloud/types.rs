@@ -1,4 +1,8 @@
 //! Types and constants for the volumetric cloud pass.
+//!
+//! Layout mirrors the uniform block consumed by
+//! `assets/shaders/clouds/volumetric_clouds.wgsl`, which is a direct port of
+//! NadirRoGue/RenderEngine's volumetricclouds.frag.
 
 use bytemuck::{Pod, Zeroable};
 use glam::Mat4;
@@ -13,22 +17,24 @@ pub struct CloudUniform {
     pub camera_pos: glam::Vec4,
     /// Direction toward the sun (xyz, w unused).
     pub sun_direction: glam::Vec4,
-    /// Cloud slab bounds and density: x=min_y, y=max_y, z=coverage, w=density.
-    pub cloud_bounds: glam::Vec4,
-    /// Wind direction (xyz) and current time (w).
+    /// Spherical cloud shell center (xyz) and inner radius (w).
+    pub sphere_center_inner: glam::Vec4,
+    /// x = outer radius, y = max render distance, z = cloud top offset, w = 0.
+    pub sphere_outer_params: glam::Vec4,
+    /// xyz = wind direction, w = time * cloud speed.
     pub wind_time: glam::Vec4,
-    /// Render parameters:
-    /// x = max_render_dist, y = weather_scale, z = base_noise_scale, w = high_freq_noise_scale.
-    pub render_params: glam::Vec4,
-    /// Detail parameters:
-    /// x = high_freq_uv_scale, y = high_freq_h_scale, z = cloud_type, w = cloud_top_offset.
+    /// x = weather scale, y = base noise scale, z = high-freq noise scale, w = high-freq UV scale.
+    pub noise_scales: glam::Vec4,
+    /// x = high-freq H scale, y = cloud type, z = coverage multiplier, w = 0.
     pub detail_params: glam::Vec4,
-    /// Cloud color gradient: xyz = low_altitude_color, w unused.
-    pub cloud_color_low: glam::Vec4,
-    /// Cloud color gradient: xyz = high_altitude_color, w unused.
-    pub cloud_color_high: glam::Vec4,
-    /// Light color (rgb) and intensity factor (a).
+    /// rgb = real light color, a = light factor.
     pub light_color: glam::Vec4,
+    /// rgb = horizon color, a = 0.
+    pub horizon_color: glam::Vec4,
+    /// rgb = zenit color, a = 0.
+    pub zenit_color: glam::Vec4,
+    /// rgb = cloud color tint, a = 0.
+    pub cloud_color: glam::Vec4,
 }
 
 impl Default for CloudUniform {
@@ -37,13 +43,15 @@ impl Default for CloudUniform {
             inv_view_proj: Mat4::IDENTITY,
             camera_pos: glam::Vec4::ZERO,
             sun_direction: glam::Vec4::new(0.0, 0.2, -1.0, 0.0),
-            cloud_bounds: glam::Vec4::new(80.0, 120.0, 0.5, 1.0),
+            sphere_center_inner: glam::Vec4::new(0.0, -6360.0, 0.0, 6440.0),
+            sphere_outer_params: glam::Vec4::new(6480.0, 30000.0, 0.0, 0.0),
             wind_time: glam::Vec4::new(1.0, 0.0, 0.0, 0.0),
-            render_params: glam::Vec4::new(30000.0, 0.00008, 0.0003, 0.003),
-            detail_params: glam::Vec4::new(2.5, 1.0, 0.75, 500.0),
-            cloud_color_low: glam::Vec4::new(0.92, 0.92, 0.95, 0.0),
-            cloud_color_high: glam::Vec4::new(0.98, 0.98, 1.0, 0.0),
+            noise_scales: glam::Vec4::new(1.0, 1.0, 1.0, 150.0),
+            detail_params: glam::Vec4::new(4.0, 0.5, 0.5, 0.0),
             light_color: glam::Vec4::new(1.0, 1.0, 1.0, 1.0),
+            horizon_color: glam::Vec4::new(0.8, 0.85, 1.0, 0.0),
+            zenit_color: glam::Vec4::new(0.0, 0.5, 1.0, 0.0),
+            cloud_color: glam::Vec4::new(1.0, 1.0, 1.0, 0.0),
         }
     }
 }

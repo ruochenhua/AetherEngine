@@ -1,4 +1,9 @@
-//! Cloud configuration.
+//! Volumetric cloud configuration.
+//!
+//! One-to-one port of the parameters exposed by NadirRoGue/RenderEngine's
+//! VolumetricCloudProgram + WorldConfig. The cloud layer is modelled as a
+//! spherical shell around `planet_radius`, with inner/outer radii computed as
+//! `planet_radius + bottom_altitude` and `planet_radius + top_altitude`.
 
 use serde::{Deserialize, Serialize};
 
@@ -17,18 +22,18 @@ pub enum CloudQuality {
 /// Volumetric cloud configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CloudConfig {
-    /// Bottom altitude of the cloud slab (world-space Y).
+    /// Radius of the planet used to compute the spherical cloud shell.
+    #[serde(default = "default_cloud_planet_radius")]
+    pub planet_radius: f32,
+    /// Bottom altitude of the cloud layer above the planet surface.
     #[serde(default = "default_cloud_bottom_altitude")]
     pub bottom_altitude: f32,
-    /// Top altitude of the cloud slab (world-space Y).
+    /// Top altitude of the cloud layer above the planet surface.
     #[serde(default = "default_cloud_top_altitude")]
     pub top_altitude: f32,
-    /// Cloud coverage threshold in [0, 1].
+    /// Coverage multiplier in [0, 1] (RenderEngine's `coverageMultiplier`).
     #[serde(default = "default_cloud_coverage")]
     pub coverage: f32,
-    /// Overall density multiplier.
-    #[serde(default = "default_cloud_density")]
-    pub density: f32,
     /// Wind direction on the XZ plane [x, z].
     #[serde(default = "default_cloud_wind_direction")]
     pub wind_direction: [f32; 2],
@@ -38,15 +43,21 @@ pub struct CloudConfig {
     /// Quality preset controlling noise resolution and step counts.
     #[serde(default)]
     pub quality: CloudQuality,
-    /// Large-scale weather map frequency (world-space scale).
+    /// Weather texture UV scale (RenderEngine's `weatherScale`).
     #[serde(default = "default_cloud_weather_scale")]
     pub weather_scale: f32,
-    /// Base shape noise frequency (world-space scale).
+    /// Base shape noise UV scale (RenderEngine's `baseNoiseScale`).
     #[serde(default = "default_cloud_base_noise_scale")]
     pub base_noise_scale: f32,
-    /// High-frequency erosion noise frequency (world-space scale).
+    /// High-frequency erosion noise scale (RenderEngine's `highFreqNoiseScale`).
     #[serde(default = "default_cloud_high_freq_noise_scale")]
     pub high_freq_noise_scale: f32,
+    /// High-frequency erosion horizontal UV scale (RenderEngine's `highFreqNoiseUVScale`).
+    #[serde(default = "default_cloud_high_freq_uv_scale")]
+    pub high_freq_uv_scale: f32,
+    /// High-frequency erosion vertical scale (RenderEngine's `highFreqNoiseHScale`).
+    #[serde(default = "default_cloud_high_freq_h_scale")]
+    pub high_freq_h_scale: f32,
     /// Vertical shear applied to cloud tops as wind moves clouds.
     #[serde(default = "default_cloud_cloud_top_offset")]
     pub cloud_top_offset: f32,
@@ -61,21 +72,27 @@ pub struct CloudConfig {
 impl Default for CloudConfig {
     fn default() -> Self {
         Self {
+            planet_radius: default_cloud_planet_radius(),
             bottom_altitude: default_cloud_bottom_altitude(),
             top_altitude: default_cloud_top_altitude(),
             coverage: default_cloud_coverage(),
-            density: default_cloud_density(),
             wind_direction: default_cloud_wind_direction(),
             wind_speed: default_cloud_wind_speed(),
             quality: CloudQuality::default(),
             weather_scale: default_cloud_weather_scale(),
             base_noise_scale: default_cloud_base_noise_scale(),
             high_freq_noise_scale: default_cloud_high_freq_noise_scale(),
+            high_freq_uv_scale: default_cloud_high_freq_uv_scale(),
+            high_freq_h_scale: default_cloud_high_freq_h_scale(),
             cloud_top_offset: default_cloud_cloud_top_offset(),
             cloud_type: default_cloud_cloud_type(),
             max_render_dist: default_cloud_max_render_dist(),
         }
     }
+}
+
+fn default_cloud_planet_radius() -> f32 {
+    6360.0
 }
 
 fn default_cloud_bottom_altitude() -> f32 {
@@ -90,36 +107,40 @@ fn default_cloud_coverage() -> f32 {
     0.5
 }
 
-fn default_cloud_density() -> f32 {
-    1.0
-}
-
 fn default_cloud_wind_direction() -> [f32; 2] {
     [1.0, 0.0]
 }
 
 fn default_cloud_wind_speed() -> f32 {
-    2.0
+    0.5
 }
 
 fn default_cloud_weather_scale() -> f32 {
-    0.00008
+    1.0
 }
 
 fn default_cloud_base_noise_scale() -> f32 {
-    0.0003
+    1.0
 }
 
 fn default_cloud_high_freq_noise_scale() -> f32 {
-    0.003
+    1.0
+}
+
+fn default_cloud_high_freq_uv_scale() -> f32 {
+    150.0
+}
+
+fn default_cloud_high_freq_h_scale() -> f32 {
+    4.0
 }
 
 fn default_cloud_cloud_top_offset() -> f32 {
-    500.0
+    0.0
 }
 
 fn default_cloud_cloud_type() -> f32 {
-    0.75
+    0.5
 }
 
 fn default_cloud_max_render_dist() -> f32 {

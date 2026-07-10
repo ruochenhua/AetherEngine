@@ -607,7 +607,6 @@ mod tests {
                     bottom_altitude: 60.0,
                     top_altitude: 100.0,
                     coverage: 0.6,
-                    density: 1.2,
                     wind_direction: (1.0, 0.5),
                     wind_speed: 3.0,
                 )),
@@ -618,7 +617,6 @@ mod tests {
         assert_eq!(clouds.bottom_altitude, 60.0);
         assert_eq!(clouds.top_altitude, 100.0);
         assert_eq!(clouds.coverage, 0.6);
-        assert_eq!(clouds.density, 1.2);
         assert_eq!(clouds.wind_direction, [1.0, 0.5]);
         assert_eq!(clouds.wind_speed, 3.0);
     }
@@ -646,14 +644,21 @@ mod tests {
             atmosphere: None,
             water: None,
             clouds: Some(CloudConfig {
+                planet_radius: 6360.0,
                 bottom_altitude: 60.0,
                 top_altitude: 100.0,
                 coverage: 0.6,
-                density: 1.2,
                 wind_direction: [1.0, 0.5],
                 wind_speed: 3.0,
                 quality: CloudQuality::Medium,
-                ..CloudConfig::default()
+                weather_scale: 1.0,
+                base_noise_scale: 1.0,
+                high_freq_noise_scale: 1.0,
+                high_freq_uv_scale: 150.0,
+                high_freq_h_scale: 4.0,
+                cloud_top_offset: 0.0,
+                cloud_type: 0.5,
+                max_render_dist: 30000.0,
             }),
             god_ray: None,
             objects: vec![],

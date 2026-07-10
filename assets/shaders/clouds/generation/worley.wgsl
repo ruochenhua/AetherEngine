@@ -1,17 +1,14 @@
 //! 3D Worley-octave texture generator.
 //!
-//! Outputs a 128^3 RGBA8 texture with 4 Worley-octave channels:
+//! One-to-one port of NadirRoGue/RenderEngine's shaders/clouds/generation/worley.comp.
+//! Outputs a 32^3 RGBA8 texture with 3 Worley-octave channels:
 //!   R = 1x cell frequency
 //!   G = 2x cell frequency
 //!   B = 4x cell frequency
-//!   A = 8x cell frequency
-//!
-//! Reuses the cells / Worley helpers from perlinworley.wgsl.
+//!   A = 1.0 (unused, preserved for RGBA layout compatibility)
 
 @group(0) @binding(0)
 var output_tex: texture_storage_3d<rgba8unorm, write>;
-
-const FREQUENCE_MUL: array<f32, 6> = array<f32, 6>(2.0, 8.0, 14.0, 20.0, 26.0, 32.0);
 
 fn hash(n: f32) -> f32 {
     return fract(sin(n + 1.951) * 43758.5453123);
@@ -58,17 +55,22 @@ fn worley_noise_3d(p: vec3<f32>, cell_count: f32) -> f32 {
 }
 
 fn sample_worley_octaves(coord: vec3<f32>) -> vec4<f32> {
-    let cell_count = 4.0;
+    let cell_count = 2.0;
     let w0 = 1.0 - worley_noise_3d(coord, cell_count * 1.0);
     let w1 = 1.0 - worley_noise_3d(coord, cell_count * 2.0);
     let w2 = 1.0 - worley_noise_3d(coord, cell_count * 4.0);
     let w3 = 1.0 - worley_noise_3d(coord, cell_count * 8.0);
-    return vec4<f32>(w0, w1, w2, w3);
+
+    let worley_fbm0 = w0 * 0.625 + w1 * 0.25 + w2 * 0.125;
+    let worley_fbm1 = w1 * 0.625 + w2 * 0.25 + w3 * 0.125;
+    let worley_fbm2 = w2 * 0.75 + w3 * 0.25;
+
+    return vec4<f32>(worley_fbm0, worley_fbm1, worley_fbm2, 1.0);
 }
 
 @compute @workgroup_size(4, 4, 4)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let pixel = vec3<i32>(global_id);
-    let coord = vec3<f32>(pixel) / 128.0;
+    let coord = vec3<f32>(pixel) / 32.0;
     textureStore(output_tex, pixel, sample_worley_octaves(coord));
 }

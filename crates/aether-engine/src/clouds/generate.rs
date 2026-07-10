@@ -1,9 +1,9 @@
 //! GPU procedural noise generation for volumetric clouds.
 //!
-//! Runs three compute passes to build the noise textures consumed by the
-//! volumetric cloud pass:
+//! Runs three compute passes to build the noise textures consumed by
+//! NadirRoGue/RenderEngine's volumetric cloud pass:
 //!   - Perlin-Worley 3D (128^3, RGBA8)
-//!   - Worley 3D        (128^3, RGBA8)
+//!   - Worley 3D        (32^3, RGBA8)
 //!   - Weather 2D       (2048^2, RGBA8)
 
 const PERLIN_WORLEY_SHADER: &str = include_str!(
@@ -29,11 +29,11 @@ const WEATHER_SHADER: &str = include_str!(
 
 /// GPU textures, sampler, and pre-built bind group for the cloud pass.
 pub struct CloudNoiseTextures {
-    /// RGBA8 3D Perlin-Worley base-shape noise.
+    /// RGBA8 3D Perlin-Worley base-shape noise (128^3).
     pub perlinworley_texture: wgpu::Texture,
     /// View of `perlinworley_texture`.
     pub perlinworley_view: wgpu::TextureView,
-    /// RGBA8 3D Worley detail noise.
+    /// RGBA8 3D Worley detail noise (32^3).
     pub worley_texture: wgpu::Texture,
     /// View of `worley_texture`.
     pub worley_view: wgpu::TextureView,
@@ -49,20 +49,21 @@ pub struct CloudNoiseTextures {
 
 /// Generate all procedural cloud noise textures on the GPU.
 ///
-/// The `quality` parameter is accepted for API compatibility but the Phase 3
-/// reconstruction uses fixed-resolution RGBA8 textures (128^3 for 3D noise,
-/// 2048^2 for weather) independent of quality.
+/// The `quality` parameter is accepted for API compatibility but the
+/// RenderEngine port uses fixed-resolution RGBA8 textures (128^3 for
+/// Perlin-Worley, 32^3 for Worley, 2048^2 for weather) independent of quality.
 pub fn generate_cloud_noise_textures(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     layout: &wgpu::BindGroupLayout,
     _quality: crate::scene::config::CloudQuality,
 ) -> CloudNoiseTextures {
-    let noise_size = 128u32;
+    let perlin_size = 128u32;
+    let worley_size = 32u32;
     let weather_size = 2048u32;
 
-    let perlinworley = create_storage_texture_3d(device, noise_size, "Cloud Perlin-Worley");
-    let worley = create_storage_texture_3d(device, noise_size, "Cloud Worley");
+    let perlinworley = create_storage_texture_3d(device, perlin_size, "Cloud Perlin-Worley");
+    let worley = create_storage_texture_3d(device, worley_size, "Cloud Worley");
     let weather = create_storage_texture_2d(device, weather_size, "Cloud Weather");
 
     let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -80,9 +81,9 @@ pub fn generate_cloud_noise_textures(
         queue,
         PERLIN_WORLEY_SHADER,
         &perlinworley.0,
-        noise_size / 4,
-        noise_size / 4,
-        noise_size / 4,
+        perlin_size / 4,
+        perlin_size / 4,
+        perlin_size / 4,
         "Perlin-Worley",
     );
     run_compute_pass(
@@ -90,9 +91,9 @@ pub fn generate_cloud_noise_textures(
         queue,
         WORLEY_SHADER,
         &worley.0,
-        noise_size / 4,
-        noise_size / 4,
-        noise_size / 4,
+        worley_size / 4,
+        worley_size / 4,
+        worley_size / 4,
         "Worley",
     );
     run_compute_pass(
