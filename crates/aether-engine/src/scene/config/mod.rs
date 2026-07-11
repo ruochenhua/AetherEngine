@@ -449,6 +449,7 @@ mod tests {
                 mie_scale_height: 1.2,
                 mie_asymmetry: 0.76,
                 sun_intensity: 20.0,
+                ..Default::default()
             }),
             water: None,
             clouds: None,

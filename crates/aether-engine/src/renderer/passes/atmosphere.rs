@@ -48,6 +48,26 @@ pub struct AtmosphereUniform {
     pub _pad4: f32,
     /// Padding to 16-byte alignment.
     pub _pad5: f32,
+    /// Ozone absorption coefficients (RGB).
+    pub ozone_absorption: [f32; 3],
+    /// Padding to 16-byte alignment.
+    pub _pad6: f32,
+    /// Ozone layer scale height (tent half-width).
+    pub ozone_scale_height: f32,
+    /// Padding to 16-byte alignment.
+    pub _pad7: f32,
+    /// Padding to 16-byte alignment.
+    pub _pad8: f32,
+    /// Padding to 16-byte alignment.
+    pub _pad9: f32,
+    /// Approximate multiple-scattering strength.
+    pub multi_scattering_factor: f32,
+    /// Padding to 16-byte alignment.
+    pub _pad10: f32,
+    /// Padding to 16-byte alignment.
+    pub _pad11: f32,
+    /// Padding to 16-byte alignment.
+    pub _pad12: f32,
     /// Inverse view-projection matrix for view-ray reconstruction.
     pub inv_view_proj: [[f32; 4]; 4],
 }
@@ -65,12 +85,22 @@ impl Default for AtmosphereUniform {
             mie_scale_height: 1.2,
             rayleigh_scattering: [0.005802, 0.013558, 0.033100],
             _pad2: 0.0,
-            mie_scattering: [0.004000, 0.004000, 0.004000],
+            mie_scattering: [0.001, 0.001, 0.001],
             _pad3: 0.0,
-            sun_intensity: 20.0,
-            mie_asymmetry: 0.758,
+            sun_intensity: 10.0,
+            mie_asymmetry: 0.82,
             _pad4: 0.0,
             _pad5: 0.0,
+            ozone_absorption: [0.0005, 0.001, 0.0001],
+            _pad6: 0.0,
+            ozone_scale_height: 15.0,
+            _pad7: 0.0,
+            _pad8: 0.0,
+            _pad9: 0.0,
+            multi_scattering_factor: 0.1,
+            _pad10: 0.0,
+            _pad11: 0.0,
+            _pad12: 0.0,
             inv_view_proj: [[0.0; 4]; 4],
         }
     }
@@ -142,9 +172,15 @@ impl Pass for AtmospherePass {
     fn apply_frame(&mut self, frame: &RenderFrame) {
         if let Some(atmos) = frame.optional.atmosphere.clone() {
             self.has_atmosphere = true;
-            let sun_dir = Vec3::from_array(frame.lighting.light.direction).normalize();
-            // `light.direction` points FROM the light; the sun is in the opposite direction.
-            let sun_toward = -sun_dir;
+            // Prefer the atmosphere configuration's sun direction. The light
+            // direction is only used as a fallback when no explicit sun
+            // direction is configured (the config always carries a default).
+            let config_dir = Vec3::from_array(atmos.config.sun_direction);
+            let sun_toward = if config_dir.length_squared() > 0.0 {
+                config_dir.normalize()
+            } else {
+                -Vec3::from_array(frame.lighting.light.direction).normalize()
+            };
 
             let proj = frame.camera.projection_matrix(frame.aspect);
             let view = frame.camera.view_matrix();
@@ -161,6 +197,9 @@ impl Pass for AtmospherePass {
                 mie_scattering: atmos.config.mie_scattering,
                 sun_intensity: atmos.config.sun_intensity,
                 mie_asymmetry: atmos.config.mie_asymmetry,
+                ozone_absorption: atmos.config.ozone_absorption,
+                ozone_scale_height: atmos.config.ozone_scale_height,
+                multi_scattering_factor: atmos.config.multi_scattering_factor,
                 inv_view_proj: inv_view_proj.to_cols_array_2d(),
                 ..Default::default()
             };
@@ -248,6 +287,16 @@ struct AtmosphereUniform {
     mie_asymmetry: f32,
     _pad4: f32,
     _pad5: f32,
+    ozone_absorption: vec3<f32>,
+    _pad6: f32,
+    ozone_scale_height: f32,
+    _pad7: f32,
+    _pad8: f32,
+    _pad9: f32,
+    multi_scattering_factor: f32,
+    _pad10: f32,
+    _pad11: f32,
+    _pad12: f32,
     inv_view_proj: mat4x4<f32>,
 };
 
@@ -279,9 +328,33 @@ fn mie_phase(cos_theta: f32, g: f32) -> f32 {
     return num / denom;
 }
 
+fn sun_transmittance(origin: vec3<f32>, sun_dir: vec3<f32>, planet_center: vec3<f32>, atmo_radius: f32, ozone_center: f32) -> vec3<f32> {
+    let sun_atmo = ray_sphere_intersect(origin, sun_dir, planet_center, atmo_radius);
+    let sun_step = sun_atmo.y;
+    let sun_samples = 16.0;
+    let sun_step_size = sun_step / sun_samples;
+    var sun_sample = origin + sun_dir * (sun_step_size * 0.5);
+    var sun_od_r: f32 = 0.0;
+    var sun_od_m: f32 = 0.0;
+    var sun_od_o: f32 = 0.0;
+    for (var j: f32 = 0.0; j < sun_samples; j = j + 1.0) {
+        let sun_h = length(sun_sample - planet_center) - atmos.planet_radius;
+        sun_od_r += exp(-sun_h / atmos.rayleigh_scale_height) * sun_step_size;
+        sun_od_m += exp(-sun_h / atmos.mie_scale_height) * sun_step_size;
+        sun_od_o += max(0.0, 1.0 - abs(sun_h - ozone_center) / atmos.ozone_scale_height) * sun_step_size;
+        sun_sample += sun_dir * sun_step_size;
+    }
+    return exp(-(
+        atmos.rayleigh_scattering * sun_od_r +
+        atmos.mie_scattering * sun_od_m +
+        atmos.ozone_absorption * sun_od_o
+    ));
+}
+
 fn atmosphere_color(ray_origin: vec3<f32>, ray_dir: vec3<f32>, sun_dir: vec3<f32>) -> vec3<f32> {
     let planet_center = vec3<f32>(0.0, -atmos.planet_radius, 0.0);
     let atmo_radius = atmos.planet_radius + atmos.atmosphere_height;
+    let ozone_center = 25.0;
 
     let atmo_hit = ray_sphere_intersect(ray_origin, ray_dir, planet_center, atmo_radius);
     var t0 = max(atmo_hit.x, 0.0);
@@ -300,12 +373,13 @@ fn atmosphere_color(ray_origin: vec3<f32>, ray_dir: vec3<f32>, sun_dir: vec3<f32
         return vec3<f32>(0.0);
     }
 
-    let sample_count = 16.0;
+    let sample_count = 32.0;
     let step_size = ray_length / sample_count;
     var sample_point = ray_origin + ray_dir * (t0 + step_size * 0.5);
 
     var optical_depth_r: f32 = 0.0;
     var optical_depth_m: f32 = 0.0;
+    var optical_depth_o: f32 = 0.0;
     var total_r: vec3<f32> = vec3<f32>(0.0);
     var total_m: vec3<f32> = vec3<f32>(0.0);
 
@@ -313,28 +387,21 @@ fn atmosphere_color(ray_origin: vec3<f32>, ray_dir: vec3<f32>, sun_dir: vec3<f32
         let h = length(sample_point - planet_center) - atmos.planet_radius;
         let density_r = exp(-h / atmos.rayleigh_scale_height) * step_size;
         let density_m = exp(-h / atmos.mie_scale_height) * step_size;
+        // Ozone tent distribution centered at 25 km (Hillaire 2020).
+        let density_o = max(0.0, 1.0 - abs(h - ozone_center) / atmos.ozone_scale_height) * step_size;
 
         optical_depth_r += density_r;
         optical_depth_m += density_m;
+        optical_depth_o += density_o;
 
         // Sun ray optical depth from sample point to top of atmosphere.
-        let sun_atmo = ray_sphere_intersect(sample_point, sun_dir, planet_center, atmo_radius);
-        let sun_step = sun_atmo.y;
-        let sun_step_size = sun_step / 8.0;
-        var sun_sample = sample_point + sun_dir * (sun_step_size * 0.5);
-        var sun_od_r: f32 = 0.0;
-        var sun_od_m: f32 = 0.0;
-        for (var j: f32 = 0.0; j < 8.0; j = j + 1.0) {
-            let sun_h = length(sun_sample - planet_center) - atmos.planet_radius;
-            sun_od_r += exp(-sun_h / atmos.rayleigh_scale_height) * sun_step_size;
-            sun_od_m += exp(-sun_h / atmos.mie_scale_height) * sun_step_size;
-            sun_sample += sun_dir * sun_step_size;
-        }
+        let sun_trans = sun_transmittance(sample_point, sun_dir, planet_center, atmo_radius, ozone_center);
 
         let extinction = exp(-(
-            atmos.rayleigh_scattering * (optical_depth_r + sun_od_r) +
-            atmos.mie_scattering * (optical_depth_m + sun_od_m)
-        ));
+            atmos.rayleigh_scattering * optical_depth_r +
+            atmos.mie_scattering * optical_depth_m +
+            atmos.ozone_absorption * optical_depth_o
+        )) * sun_trans;
 
         total_r += density_r * extinction;
         total_m += density_m * extinction;
@@ -346,10 +413,21 @@ fn atmosphere_color(ray_origin: vec3<f32>, ray_dir: vec3<f32>, sun_dir: vec3<f32
     let phase_r = rayleigh_phase(mu);
     let phase_m = mie_phase(mu, atmos.mie_asymmetry);
 
-    return atmos.sun_intensity * (
+    let single = atmos.sun_intensity * (
         atmos.rayleigh_scattering * total_r * phase_r +
         atmos.mie_scattering * total_m * phase_m
     );
+
+    // Approximate multiple scattering as an isotropic contribution scaled by
+    // the configured factor. This lifts the dark-back-sky artifact of pure
+    // single scattering without the cost of a full multi-scattering LUT.
+    let ms_phase = 1.0 / (4.0 * PI);
+    let multi = atmos.multi_scattering_factor * (
+        atmos.rayleigh_scattering * total_r +
+        atmos.mie_scattering * total_m
+    ) * ms_phase;
+
+    return single + atmos.sun_intensity * multi;
 }
 
 @fragment
@@ -371,11 +449,23 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     var color = atmosphere_color(atmos.camera_pos, ray_dir, sun_dir);
 
-    // Bright sun disc.
+    // Soft sun disc with atmospheric extinction. The extinction makes the
+    // sun fade and redden as it approaches the horizon.
     let cos_sun = dot(ray_dir, sun_dir);
-    if (cos_sun > 0.9998) {
-        color += vec3<f32>(atmos.sun_intensity * 5.0);
-    }
+    let planet_center = vec3<f32>(0.0, -atmos.planet_radius, 0.0);
+    let atmo_radius = atmos.planet_radius + atmos.atmosphere_height;
+    let ozone_center = 25.0;
+    let sun_trans = sun_transmittance(atmos.camera_pos, sun_dir, planet_center, atmo_radius, ozone_center);
+
+    // Real solar disc angular radius is ~0.27 deg. We use a slightly larger
+    // soft disc so it remains visible while keeping a soft limb.
+    let cos_outer = 0.9995;  // ~1.8 deg
+    let cos_inner = 0.99995; // ~0.57 deg
+    let sun_disc = smoothstep(cos_outer, cos_inner, cos_sun);
+    // Keep the sun disc visible but avoid a multiplier that pushes it far
+    // above the scattered sky radiance; the disc should fade with the same
+    // extinction as the surrounding sky.
+    color += sun_disc * sun_trans * atmos.sun_intensity;
 
     return vec4<f32>(color, 1.0);
 }
@@ -470,7 +560,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Atmosphere Uniform Buffer"),
             size: std::mem::size_of::<AtmosphereUniform>() as wgpu::BufferAddress,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            usage: wgpu::BufferUsages::UNIFORM
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
 
@@ -517,12 +609,37 @@ mod tests {
     use super::*;
     use crate::ecs::components::Atmosphere;
     use crate::ecs::World;
+    use crate::math::Vec3;
     use crate::renderer::camera::FlyCamera;
     use crate::renderer::extract::extract_optional_pass_data;
     use crate::renderer::frame::FrameConfig;
     use crate::renderer::light::LightingUniforms;
     use crate::renderer::resource::ResourceTag;
     use crate::scene::AtmosphereConfig;
+
+    async fn read_uniform_buffer(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        buffer: &wgpu::Buffer,
+    ) -> Vec<u8> {
+        let size = std::mem::size_of::<AtmosphereUniform>() as u64;
+        let staging = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Atmosphere Uniform Readback"),
+            size,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Atmosphere Uniform Copy"),
+        });
+        encoder.copy_buffer_to_buffer(buffer, 0, &staging, 0, size);
+        queue.submit(std::iter::once(encoder.finish()));
+
+        let slice = staging.slice(..);
+        slice.map_async(wgpu::MapMode::Read, |_| {});
+        device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+        slice.get_mapped_range().to_vec()
+    }
 
     fn headless_device() -> (wgpu::Device, wgpu::Queue) {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
@@ -613,5 +730,142 @@ mod tests {
         };
         pass.apply_frame(&frame);
         assert!(pass.should_run(&frame));
+    }
+
+    #[test]
+    fn atmosphere_pass_uses_configured_sun_direction() {
+        let (device, queue) = headless_device();
+        let ctx = init_ctx(&device, &queue);
+        let mut pass = AtmospherePass::init(&ctx);
+        let mut world = World::new();
+
+        let configured_direction = [0.5f32, 0.3, -0.8];
+        world.spawn((Atmosphere {
+            config: AtmosphereConfig {
+                sun_direction: configured_direction,
+                ..Default::default()
+            },
+        },));
+
+        let optional = extract_optional_pass_data(&world);
+        let camera = FlyCamera::default();
+        let mut lighting = LightingUniforms::default();
+        // Deliberately different from the configured sun direction; the
+        // configured value should win.
+        lighting.light.direction = [-0.2, -0.9, -0.3];
+        let assets = crate::asset::AssetManager::new();
+        let frame = RenderFrame {
+            batches: std::sync::Arc::from([]),
+            camera: &camera,
+            lighting: &lighting,
+            queue: &queue,
+            aspect: 1.0,
+            delta_time: 0.016,
+            config: &FrameConfig::default(),
+            optional: &optional,
+            texture_cache: ctx.texture_cache,
+            asset_manager: &assets,
+        };
+        pass.apply_frame(&frame);
+
+        let bytes = pollster::block_on(read_uniform_buffer(&device, &queue, &pass.uniform_buffer));
+        let uniform: AtmosphereUniform = *bytemuck::from_bytes(&bytes);
+        let expected = Vec3::from_array(configured_direction).normalize();
+        let actual = Vec3::from_array(uniform.sun_direction);
+        assert!(
+            actual.abs_diff_eq(expected, 1e-4),
+            "expected sun_direction {expected:?}, got {actual:?}"
+        );
+    }
+
+    #[test]
+    fn atmosphere_pass_uses_configured_ozone_parameters() {
+        let (device, queue) = headless_device();
+        let ctx = init_ctx(&device, &queue);
+        let mut pass = AtmospherePass::init(&ctx);
+        let mut world = World::new();
+
+        let absorption = [0.0006f32, 0.0012, 0.00015];
+        let scale_height = 18.0;
+        world.spawn((Atmosphere {
+            config: AtmosphereConfig {
+                ozone_absorption: absorption,
+                ozone_scale_height: scale_height,
+                ..Default::default()
+            },
+        },));
+
+        let optional = extract_optional_pass_data(&world);
+        let camera = FlyCamera::default();
+        let lighting = LightingUniforms::default();
+        let assets = crate::asset::AssetManager::new();
+        let frame = RenderFrame {
+            batches: std::sync::Arc::from([]),
+            camera: &camera,
+            lighting: &lighting,
+            queue: &queue,
+            aspect: 1.0,
+            delta_time: 0.016,
+            config: &FrameConfig::default(),
+            optional: &optional,
+            texture_cache: ctx.texture_cache,
+            asset_manager: &assets,
+        };
+        pass.apply_frame(&frame);
+
+        let bytes = pollster::block_on(read_uniform_buffer(&device, &queue, &pass.uniform_buffer));
+        let uniform: AtmosphereUniform = *bytemuck::from_bytes(&bytes);
+        assert_eq!(
+            uniform.ozone_absorption, absorption,
+            "expected ozone_absorption {absorption:?}, got {:?}",
+            uniform.ozone_absorption
+        );
+        assert!(
+            (uniform.ozone_scale_height - scale_height).abs() < 1e-4,
+            "expected ozone_scale_height {scale_height}, got {}",
+            uniform.ozone_scale_height
+        );
+    }
+
+    #[test]
+    fn atmosphere_pass_uses_configured_multi_scattering_factor() {
+        let (device, queue) = headless_device();
+        let ctx = init_ctx(&device, &queue);
+        let mut pass = AtmospherePass::init(&ctx);
+        let mut world = World::new();
+
+        let factor = 0.35;
+        world.spawn((Atmosphere {
+            config: AtmosphereConfig {
+                multi_scattering_factor: factor,
+                ..Default::default()
+            },
+        },));
+
+        let optional = extract_optional_pass_data(&world);
+        let camera = FlyCamera::default();
+        let lighting = LightingUniforms::default();
+        let assets = crate::asset::AssetManager::new();
+        let frame = RenderFrame {
+            batches: std::sync::Arc::from([]),
+            camera: &camera,
+            lighting: &lighting,
+            queue: &queue,
+            aspect: 1.0,
+            delta_time: 0.016,
+            config: &FrameConfig::default(),
+            optional: &optional,
+            texture_cache: ctx.texture_cache,
+            asset_manager: &assets,
+        };
+        pass.apply_frame(&frame);
+
+        let bytes = pollster::block_on(read_uniform_buffer(&device, &queue, &pass.uniform_buffer));
+        let uniform: AtmosphereUniform = *bytemuck::from_bytes(&bytes);
+        assert!(
+            (uniform.multi_scattering_factor - factor).abs() < 1e-4,
+            "expected multi_scattering_factor {factor}, got {}",
+            uniform.multi_scattering_factor
+        );
     }
 }

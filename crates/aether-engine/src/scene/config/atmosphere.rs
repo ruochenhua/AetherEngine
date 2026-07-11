@@ -32,6 +32,16 @@ pub struct AtmosphereConfig {
     /// Sun intensity multiplier.
     #[serde(default = "default_sun_intensity")]
     pub sun_intensity: f32,
+    /// Ozone absorption coefficients (RGB), responsible for purple/blue
+    /// twilight hues via the Chappuis band.
+    #[serde(default = "default_ozone_absorption")]
+    pub ozone_absorption: [f32; 3],
+    /// Ozone layer scale height (tent half-width) in world units.
+    #[serde(default = "default_ozone_scale_height")]
+    pub ozone_scale_height: f32,
+    /// Strength of the approximate multiple-scattering contribution.
+    #[serde(default = "default_multi_scattering_factor")]
+    pub multi_scattering_factor: f32,
 }
 
 impl Default for AtmosphereConfig {
@@ -46,6 +56,9 @@ impl Default for AtmosphereConfig {
             mie_scale_height: default_mie_scale_height(),
             mie_asymmetry: default_mie_asymmetry(),
             sun_intensity: default_sun_intensity(),
+            ozone_absorption: default_ozone_absorption(),
+            ozone_scale_height: default_ozone_scale_height(),
+            multi_scattering_factor: default_multi_scattering_factor(),
         }
     }
 }
@@ -71,7 +84,7 @@ fn default_rayleigh_scale_height() -> f32 {
 }
 
 fn default_mie_scattering() -> [f32; 3] {
-    [0.004000, 0.004000, 0.004000]
+    [0.001, 0.001, 0.001]
 }
 
 fn default_mie_scale_height() -> f32 {
@@ -79,9 +92,21 @@ fn default_mie_scale_height() -> f32 {
 }
 
 fn default_mie_asymmetry() -> f32 {
-    0.758
+    0.82
 }
 
 fn default_sun_intensity() -> f32 {
-    20.0
+    10.0
+}
+
+fn default_ozone_absorption() -> [f32; 3] {
+    [0.0005, 0.001, 0.0001]
+}
+
+fn default_ozone_scale_height() -> f32 {
+    15.0
+}
+
+fn default_multi_scattering_factor() -> f32 {
+    0.1
 }

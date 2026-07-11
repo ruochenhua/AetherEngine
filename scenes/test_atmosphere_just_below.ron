@@ -1,0 +1,43 @@
+SceneDescription(
+    name: "Atmosphere Just Below Horizon",
+    camera: (
+        position: (0.0, 2.0, 5.0),
+        yaw: -1.57,
+        pitch: -0.02,
+        fov: 60.0,
+    ),
+    ambient: 0.05,
+    lights: [(
+        light_type: Directional,
+        direction: (0.0, 0.05, -1.0),
+        color: (1.0, 0.95, 0.9),
+        intensity: 2.0,
+    )],
+    atmosphere: Some((
+        sun_direction: (0.0, -0.05, -1.0),
+        planet_radius: 6360.0,
+        atmosphere_height: 100.0,
+        rayleigh_scattering: (0.005802, 0.013558, 0.033100),
+        mie_scattering: (0.001, 0.001, 0.001),
+        mie_asymmetry: 0.82,
+        sun_intensity: 10.0,
+        ozone_absorption: (0.0005, 0.001, 0.0001),
+        ozone_scale_height: 15.0,
+        multi_scattering_factor: 0.1,
+    )),
+    objects: [
+        (
+            name: "GroundPlane",
+            mesh: Builtin("cube"),
+            transform: (
+                translation: (0.0, -0.55, 0.0),
+                scale: (10.0, 0.1, 10.0),
+            ),
+            material: (
+                albedo: (0.2, 0.25, 0.15, 1.0),
+                roughness: 0.9,
+                metallic: 0.0,
+            ),
+        ),
+    ],
+)
