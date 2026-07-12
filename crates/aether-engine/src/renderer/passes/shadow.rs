@@ -19,8 +19,9 @@ use crate::renderer::frame::RenderFrame;
 use crate::renderer::pass::{InitContext, Pass, PassSignature, ResHandle};
 use crate::renderer::resource::*;
 use crate::renderer::resource_table::ResourceTable;
+use crate::terrain::{ChunkInstanceData, TerrainGeometry};
 use glam::{Mat4, Vec4Swizzles};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 /// Number of cascades.
 pub const CASCADE_COUNT: usize = 4;
@@ -57,6 +58,7 @@ pub struct ShadowPass {
     cascade_views: Vec<wgpu::TextureView>,
     batches: Arc<[RenderBatch]>,
     cascades: [Cascade; CASCADE_COUNT],
+    terrain_geometry: Option<Arc<RwLock<TerrainGeometry>>>,
 }
 
 impl Pass for ShadowPass {
@@ -98,6 +100,7 @@ impl Pass for ShadowPass {
 
     fn apply_frame(&mut self, frame: &RenderFrame) {
         self.batches = frame.batches.clone();
+        self.terrain_geometry = frame.terrain_geometry.clone();
         let light_dir = glam::Vec3::from_array(frame.lighting.light.direction).normalize();
 
         self.cascades = compute_cascades(frame, &light_dir);
@@ -192,6 +195,32 @@ impl Pass for ShadowPass {
                     pass.draw(0..batch.mesh.vertex_count, 0..instance_count);
                 }
                 instance_offset += batch.instances.len();
+            }
+
+            // Render terrain chunks into the shadow map so terrain casts shadows.
+            if let Some(terrain_geometry) = &self.terrain_geometry {
+                let terrain = terrain_geometry.read().unwrap();
+                let chunks = terrain.chunks();
+                let chunk_meshes = terrain.chunk_meshes();
+                let instance_buffer = terrain.instance_buffer();
+                pass.set_vertex_buffer(1, instance_buffer.slice(..));
+                for (chunk_index, chunk) in chunks.iter().enumerate() {
+                    let lod_mesh = &chunk_meshes[chunk_index][chunk.lod as usize];
+                    let instance_start =
+                        (chunk_index * std::mem::size_of::<ChunkInstanceData>())
+                            as wgpu::BufferAddress;
+                    let instance_end =
+                        instance_start + std::mem::size_of::<ChunkInstanceData>()
+                            as wgpu::BufferAddress;
+                    pass.set_vertex_buffer(0, lod_mesh.vertex_buffer.slice(..));
+                    pass.set_vertex_buffer(1, instance_buffer.slice(instance_start..instance_end));
+                    if let Some(ref ib) = lod_mesh.index_buffer {
+                        pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
+                        pass.draw_indexed(0..lod_mesh.index_count, 0, 0..1);
+                    } else {
+                        pass.draw(0..lod_mesh.vertex_count, 0..1);
+                    }
+                }
             }
         }
     }
@@ -325,6 +354,7 @@ fn vs_main(in: VertexInput, instance: InstanceInput) -> VertexOutput {
                 view_proj: Mat4::IDENTITY,
                 split_depth: 0.0,
             }; CASCADE_COUNT],
+            terrain_geometry: None,
         }
     }
 
@@ -518,6 +548,7 @@ mod tests {
             delta_time: 0.0,
             config,
             optional,
+            terrain_geometry: None,
             texture_cache,
             asset_manager,
         }
@@ -607,6 +638,50 @@ mod tests {
                 ndc
             );
         }
+        drop(device);
+    }
+
+    #[test]
+    fn shadow_pass_stores_terrain_geometry() {
+        let camera = FlyCamera::default();
+        let lighting = LightingUniforms::default();
+        let (device, queue) = headless_queue();
+        let texture_cache = crate::asset::texture_cache::GpuTextureCache::new(&device, &queue);
+        let asset_manager = crate::asset::AssetManager::new();
+        let optional = crate::renderer::extract::OptionalPassData::default();
+        let config = FrameConfig::default();
+        let mut terrain_geom = crate::terrain::TerrainGeometry::new(&device);
+        let terrain = crate::ecs::components::Terrain {
+            source: crate::scene::TerrainSource::Procedural {
+                seed: 0,
+                frequency: 0.05,
+                amplitude: 32.0,
+            },
+            geometry: crate::scene::TerrainGeometry::default(),
+            material: crate::asset::terrain_material::TerrainMaterial::default(),
+            splatmap_path: None,
+            layer_configs: Vec::new(),
+        };
+        terrain_geom.update(&device, &queue, &camera, 16.0 / 9.0, &terrain);
+
+        let frame = RenderFrame {
+            camera: &camera,
+            aspect: 16.0 / 9.0,
+            batches: std::sync::Arc::from([]),
+            lighting: &lighting,
+            queue: &queue,
+            delta_time: 0.0,
+            config: &config,
+            optional: &optional,
+            terrain_geometry: Some(std::sync::Arc::new(std::sync::RwLock::new(terrain_geom))),
+            texture_cache: &texture_cache,
+            asset_manager: &asset_manager,
+        };
+
+        let mut pass = ShadowPass::new(&device);
+        pass.apply_frame(&frame);
+        assert!(pass.terrain_geometry.is_some());
+        assert!(!pass.terrain_geometry.unwrap().read().unwrap().chunks().is_empty());
         drop(device);
     }
 }

@@ -35,7 +35,6 @@ SceneDescription(
         bottom_altitude: 20.0,
         top_altitude: 40.0,
         coverage: 0.4,
-        density: 1.5,
         wind_direction: (1.0, 0.3),
         wind_speed: 1.0,
     )),

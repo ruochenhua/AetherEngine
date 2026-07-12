@@ -16,6 +16,7 @@ mod types;
 pub use types::CloudUniform;
 
 use crate::renderer::frame::RenderFrame;
+use crate::renderer::light::sun_direction_from_lighting;
 use crate::renderer::pass::{InitContext, Pass, PassSignature, ResHandle};
 use crate::renderer::resource::{CloudColor, GDepth};
 use crate::renderer::resource_table::ResourceTable;
@@ -105,8 +106,8 @@ impl Pass for VolumetricCloudPass {
             let inner_radius = planet_radius + cfg.bottom_altitude;
             let outer_radius = planet_radius + cfg.top_altitude;
 
-            let light_dir = Vec3::from_array(frame.lighting.light.direction).normalize();
-            let sun_toward = -light_dir;
+            let light_dir = sun_direction_from_lighting(frame.lighting);
+            let sun_toward = light_dir;
             let light_factor = sun_toward.dot(Vec3::Y).clamp(0.0, 1.0);
 
             let raw_light_color = Vec3::from_array(frame.lighting.light.color) * frame.lighting.light.intensity;
@@ -232,8 +233,9 @@ mod tests {
     use crate::renderer::camera::FlyCamera;
     use crate::renderer::extract::extract_optional_pass_data;
     use crate::renderer::frame::{FrameConfig, RenderFrame};
-    use crate::renderer::light::LightingUniforms;
+    use crate::renderer::light::{sun_direction_from_lighting, LightingUniforms};
     use crate::scene::config::CloudConfig;
+    use glam::Vec3;
     use std::sync::Arc;
 
     fn headless_device_queue() -> (wgpu::Device, wgpu::Queue) {
@@ -370,6 +372,7 @@ mod tests {
             delta_time: 0.016,
             config: &FrameConfig::default(),
             optional: &optional,
+            terrain_geometry: None,
             texture_cache: &texture_cache,
             asset_manager: &assets,
         };
@@ -411,5 +414,17 @@ mod tests {
         assert_eq!(uniforms[0].sphere_outer_params.x, 6480.0);
         assert_eq!(uniforms[0].noise_scales.w, 150.0);
         assert!((uniforms[0].light_color.w - 0.57735).abs() < 0.001);
+
+        // The sun direction written to the shader must match the shared helper.
+        let expected_sun = sun_direction_from_lighting(&lighting);
+        let actual_sun = Vec3::new(
+            uniforms[0].sun_direction.x,
+            uniforms[0].sun_direction.y,
+            uniforms[0].sun_direction.z,
+        );
+        assert!(
+            actual_sun.abs_diff_eq(expected_sun, 1e-4),
+            "expected sun_direction {expected_sun:?}, got {actual_sun:?}"
+        );
     }
 }

@@ -3,23 +3,27 @@
 //! The pass is conditionally registered only when the loaded scene contains a
 //! `Terrain` configuration. It writes the same GBuffer resources as
 //! `GBufferPass` so that deferred lighting and post-processing apply unchanged.
+//!
+//! The actual chunk geometry is owned by the shared [`TerrainGeometry`] cache and
+//! injected through [`RenderFrame::terrain_geometry`]; this pass only maintains
+//! the terrain-specific material bindings.
 
-use crate::asset::mesh::{GpuMesh, Vertex};
 use crate::asset::texture::GpuTexture;
+use crate::asset::texture_cache::GpuTextureCache;
+use crate::asset::AssetManager;
 use crate::ecs::components::Terrain;
 use crate::renderer::frame::RenderFrame;
 use crate::renderer::pass::{InitContext, Pass, PassSignature, ResHandle};
 use crate::renderer::renderable::ViewProjUniform;
 use crate::renderer::resource::*;
 use crate::renderer::resource_table::ResourceTable;
-use crate::terrain::Chunk;
-use std::sync::Arc;
+use crate::terrain::{
+    create_terrain_material_bind_group, create_terrain_material_bind_group_layout,
+    write_terrain_uniforms, ChunkInstanceData, TerrainGeometry, TerrainUniform,
+};
+use std::sync::{Arc, RwLock};
 
 mod shaders;
-mod update;
-
-/// Maximum number of terrain chunks that can be drawn in one frame.
-const MAX_TERRAIN_CHUNKS: usize = 1024;
 
 /// Terrain render pass.
 pub struct TerrainPass {
@@ -37,13 +41,7 @@ pub struct TerrainPass {
     material_handle: Option<ResHandle<GMaterial>>,
     depth_handle: Option<ResHandle<GDepth>>,
 
-    chunks: Vec<Chunk>,
-    chunk_meshes: Vec<Vec<Arc<GpuMesh>>>,
-    visible_chunk_indices: Vec<usize>,
-    chunk_instance_data: Vec<ChunkInstanceData>,
-    instance_buffer: wgpu::Buffer,
-
-    last_terrain: Option<Terrain>,
+    terrain_geometry: Option<Arc<RwLock<TerrainGeometry>>>,
     has_terrain: bool,
 
     /// Cached terrain material bind group state.
@@ -52,30 +50,6 @@ pub struct TerrainPass {
     last_layer1: Option<Arc<GpuTexture>>,
     last_layer2: Option<Arc<GpuTexture>>,
     last_layer3: Option<Arc<GpuTexture>>,
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-struct TerrainUniform {
-    layer_color_0: [f32; 4],
-    layer_color_1: [f32; 4],
-    layer_color_2: [f32; 4],
-    layer_color_3: [f32; 4],
-    layer_roughness: [f32; 4],
-    layer_metallic: [f32; 4],
-    has_splat_map: u32,
-    _pad0: u32,
-    splat_uv_scale: f32,
-    albedo_uv_scale: f32,
-    layer_uv_scale: [f32; 4],
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-struct ChunkInstanceData {
-    model_matrix: [[f32; 4]; 4],
-    lod: u32,
-    _pad: [u32; 3],
 }
 
 impl Pass for TerrainPass {
@@ -116,8 +90,9 @@ impl Pass for TerrainPass {
         );
         if let Some(terrain) = frame.optional.terrain.clone() {
             self.has_terrain = true;
-            self.update_terrain(
-                terrain,
+            self.terrain_geometry = frame.terrain_geometry.clone();
+            self.update_material(
+                &terrain,
                 &frame.camera.view_matrix(),
                 &frame.camera.projection_matrix(frame.aspect),
                 frame.queue,
@@ -126,6 +101,7 @@ impl Pass for TerrainPass {
             );
         } else {
             self.has_terrain = false;
+            self.terrain_geometry = None;
         }
     }
 
@@ -135,13 +111,19 @@ impl Pass for TerrainPass {
         resources: &ResourceTable,
         _surface_view: &wgpu::TextureView,
     ) {
+        let terrain_geometry_guard = match &self.terrain_geometry {
+            Some(g) => g.read().unwrap(),
+            None => return,
+        };
+        let terrain_geometry = &*terrain_geometry_guard;
+        let visible = terrain_geometry.visible_chunk_indices();
         tracing::debug!(
             target: "aether_engine::renderer::passes::terrain",
             "TerrainPass::execute called, has_terrain={}, visible_chunks={}",
             self.has_terrain,
-            self.visible_chunk_indices.len()
+            visible.len()
         );
-        if !self.has_terrain || self.visible_chunk_indices.is_empty() {
+        if !self.has_terrain || visible.is_empty() {
             return;
         }
 
@@ -201,17 +183,17 @@ impl Pass for TerrainPass {
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &self.view_proj_bind_group, &[]);
         pass.set_bind_group(1, &self.terrain_bind_group, &[]);
-        pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
+        pass.set_vertex_buffer(1, terrain_geometry.instance_buffer().slice(..));
 
-        for (i, chunk_index) in self.visible_chunk_indices.iter().enumerate() {
-            let chunk = &self.chunks[*chunk_index];
-            let lod_mesh = &self.chunk_meshes[*chunk_index][chunk.lod as usize];
+        for chunk_index in visible.iter() {
+            let chunk = &terrain_geometry.chunks()[*chunk_index];
+            let lod_mesh = &terrain_geometry.chunk_meshes()[*chunk_index][chunk.lod as usize];
             let instance_start =
-                (i * std::mem::size_of::<ChunkInstanceData>()) as wgpu::BufferAddress;
+                (*chunk_index * std::mem::size_of::<ChunkInstanceData>()) as wgpu::BufferAddress;
             let instance_end =
                 instance_start + std::mem::size_of::<ChunkInstanceData>() as wgpu::BufferAddress;
             pass.set_vertex_buffer(0, lod_mesh.vertex_buffer.slice(..));
-            pass.set_vertex_buffer(1, self.instance_buffer.slice(instance_start..instance_end));
+            pass.set_vertex_buffer(1, terrain_geometry.instance_buffer().slice(instance_start..instance_end));
             if let Some(ref ib) = lod_mesh.index_buffer {
                 pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
                 pass.draw_indexed(0..lod_mesh.index_count, 0, 0..1);
@@ -227,7 +209,9 @@ impl TerrainPass {
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Terrain Shader"),
-            source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(shaders::TERRAIN)),
+            source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(
+                crate::renderer::passes::terrain::shaders::TERRAIN,
+            )),
         });
 
         let vp_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -244,77 +228,7 @@ impl TerrainPass {
             }],
         });
 
-        let terrain_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Terrain Material BGL"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 3,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 4,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 5,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 6,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-            ],
-        });
+        let terrain_bgl = create_terrain_material_bind_group_layout(device);
 
         let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Terrain PL"),
@@ -329,7 +243,10 @@ impl TerrainPass {
                 module: &shader,
                 entry_point: Some("vs_main"),
                 compilation_options: Default::default(),
-                buffers: &[Vertex::desc(), ChunkInstanceData::desc()],
+                buffers: &[
+                    crate::asset::mesh::Vertex::desc(),
+                    ChunkInstanceData::desc(),
+                ],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
@@ -408,47 +325,16 @@ impl TerrainPass {
             &crate::asset::texture::CpuTexture::from_color(255, 255, 255, 255),
             Some("terrain_fallback_white"),
         ));
-        let terrain_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Terrain Material BG"),
-            layout: &terrain_bgl,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: terrain_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&fallback.view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::Sampler(&fallback.sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: wgpu::BindingResource::TextureView(&fallback.view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 4,
-                    resource: wgpu::BindingResource::TextureView(&fallback.view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 5,
-                    resource: wgpu::BindingResource::TextureView(&fallback.view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 6,
-                    resource: wgpu::BindingResource::TextureView(&fallback.view),
-                },
-            ],
-        });
-
-        let instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Terrain Instance Buf"),
-            size: (MAX_TERRAIN_CHUNKS * std::mem::size_of::<ChunkInstanceData>()) as u64,
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+        let terrain_bind_group = create_terrain_material_bind_group(
+            device,
+            &terrain_bgl,
+            &terrain_buffer,
+            &fallback,
+            &fallback,
+            &fallback,
+            &fallback,
+            &fallback,
+        );
 
         Self {
             device: device.clone(),
@@ -463,12 +349,7 @@ impl TerrainPass {
             albedo_handle: None,
             material_handle: None,
             depth_handle: None,
-            chunks: Vec::new(),
-            chunk_meshes: Vec::new(),
-            visible_chunk_indices: Vec::new(),
-            chunk_instance_data: Vec::new(),
-            instance_buffer,
-            last_terrain: None,
+            terrain_geometry: None,
             has_terrain: false,
             last_splat: None,
             last_layer0: None,
@@ -477,40 +358,87 @@ impl TerrainPass {
             last_layer3: None,
         }
     }
-}
 
-impl ChunkInstanceData {
-    fn desc() -> wgpu::VertexBufferLayout<'static> {
-        wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<ChunkInstanceData>() as wgpu::BufferAddress,
-            step_mode: wgpu::VertexStepMode::Instance,
-            attributes: &[
-                wgpu::VertexAttribute {
-                    offset: 0,
-                    shader_location: 4,
-                    format: wgpu::VertexFormat::Float32x4,
-                },
-                wgpu::VertexAttribute {
-                    offset: 16,
-                    shader_location: 5,
-                    format: wgpu::VertexFormat::Float32x4,
-                },
-                wgpu::VertexAttribute {
-                    offset: 32,
-                    shader_location: 6,
-                    format: wgpu::VertexFormat::Float32x4,
-                },
-                wgpu::VertexAttribute {
-                    offset: 48,
-                    shader_location: 7,
-                    format: wgpu::VertexFormat::Float32x4,
-                },
-                wgpu::VertexAttribute {
-                    offset: 64,
-                    shader_location: 8,
-                    format: wgpu::VertexFormat::Uint32,
-                },
-            ],
+    fn update_material(
+        &mut self,
+        terrain: &Terrain,
+        view: &glam::Mat4,
+        proj: &glam::Mat4,
+        queue: &wgpu::Queue,
+        texture_cache: &GpuTextureCache,
+        asset_manager: &AssetManager,
+    ) {
+        use crate::renderer::renderable::ViewProjUniform;
+
+        let vp = ViewProjUniform {
+            view: view.to_cols_array_2d(),
+            proj: proj.to_cols_array_2d(),
+        };
+        queue.write_buffer(&self.view_proj_buffer, 0, bytemuck::cast_slice(&[vp]));
+
+        write_terrain_uniforms(
+            &self.terrain_buffer,
+            &terrain.material,
+            terrain.splatmap_path.is_some(),
+            terrain.geometry.extent,
+            terrain.geometry.albedo_tiling,
+            queue,
+        );
+
+        let splat = texture_cache.get_or_upload_optional(
+            terrain.material.splat_map.clone(),
+            asset_manager,
+        );
+        let layer0 = texture_cache.get_or_upload_optional(
+            terrain.material.layers[0].albedo_texture.clone(),
+            asset_manager,
+        );
+        let layer1 = texture_cache.get_or_upload_optional(
+            terrain.material.layers[1].albedo_texture.clone(),
+            asset_manager,
+        );
+        let layer2 = texture_cache.get_or_upload_optional(
+            terrain.material.layers[2].albedo_texture.clone(),
+            asset_manager,
+        );
+        let layer3 = texture_cache.get_or_upload_optional(
+            terrain.material.layers[3].albedo_texture.clone(),
+            asset_manager,
+        );
+
+        let needs_rebuild = match (
+            &self.last_splat,
+            &self.last_layer0,
+            &self.last_layer1,
+            &self.last_layer2,
+            &self.last_layer3,
+        ) {
+            (Some(last_splat), Some(last_l0), Some(last_l1), Some(last_l2), Some(last_l3)) => {
+                !Arc::ptr_eq(last_splat, &splat)
+                    || !Arc::ptr_eq(last_l0, &layer0)
+                    || !Arc::ptr_eq(last_l1, &layer1)
+                    || !Arc::ptr_eq(last_l2, &layer2)
+                    || !Arc::ptr_eq(last_l3, &layer3)
+            }
+            _ => true,
+        };
+
+        if needs_rebuild {
+            self.terrain_bind_group = create_terrain_material_bind_group(
+                &self.device,
+                &self.terrain_bind_group_layout,
+                &self.terrain_buffer,
+                &splat,
+                &layer0,
+                &layer1,
+                &layer2,
+                &layer3,
+            );
+            self.last_splat = Some(splat);
+            self.last_layer0 = Some(layer0);
+            self.last_layer1 = Some(layer1);
+            self.last_layer2 = Some(layer2);
+            self.last_layer3 = Some(layer3);
         }
     }
 }

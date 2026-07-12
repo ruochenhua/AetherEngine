@@ -5,8 +5,8 @@
 //! pixels (identified by G-Buffer position alpha > 0) are preserved from the
 //! input `SceneColor`.
 
-use crate::math::Vec3;
 use crate::renderer::frame::RenderFrame;
+use crate::renderer::light::sun_direction_from_lighting;
 use crate::renderer::pass::{InitContext, Pass, PassSignature, ResHandle};
 use crate::renderer::resource::{GDepth, SceneColor};
 use crate::renderer::resource_table::ResourceTable;
@@ -172,15 +172,7 @@ impl Pass for AtmospherePass {
     fn apply_frame(&mut self, frame: &RenderFrame) {
         if let Some(atmos) = frame.optional.atmosphere.clone() {
             self.has_atmosphere = true;
-            // Prefer the atmosphere configuration's sun direction. The light
-            // direction is only used as a fallback when no explicit sun
-            // direction is configured (the config always carries a default).
-            let config_dir = Vec3::from_array(atmos.config.sun_direction);
-            let sun_toward = if config_dir.length_squared() > 0.0 {
-                config_dir.normalize()
-            } else {
-                -Vec3::from_array(frame.lighting.light.direction).normalize()
-            };
+            let sun_toward = sun_direction_from_lighting(frame.lighting);
 
             let proj = frame.camera.projection_matrix(frame.aspect);
             let view = frame.camera.view_matrix();
@@ -609,13 +601,13 @@ mod tests {
     use super::*;
     use crate::ecs::components::Atmosphere;
     use crate::ecs::World;
-    use crate::math::Vec3;
     use crate::renderer::camera::FlyCamera;
     use crate::renderer::extract::extract_optional_pass_data;
     use crate::renderer::frame::FrameConfig;
     use crate::renderer::light::LightingUniforms;
     use crate::renderer::resource::ResourceTag;
     use crate::scene::AtmosphereConfig;
+    use glam::Vec3;
 
     async fn read_uniform_buffer(
         device: &wgpu::Device,
@@ -697,6 +689,7 @@ mod tests {
             delta_time: 0.016,
             config: &FrameConfig::default(),
             optional: &optional,
+            terrain_geometry: None,
             texture_cache: ctx.texture_cache,
             asset_manager: &assets,
         };
@@ -725,6 +718,7 @@ mod tests {
             delta_time: 0.016,
             config: &FrameConfig::default(),
             optional: &optional,
+            terrain_geometry: None,
             texture_cache: ctx.texture_cache,
             asset_manager: &assets,
         };
@@ -733,16 +727,17 @@ mod tests {
     }
 
     #[test]
-    fn atmosphere_pass_uses_configured_sun_direction() {
+    fn atmosphere_pass_uses_light_direction_for_sun() {
         let (device, queue) = headless_device();
         let ctx = init_ctx(&device, &queue);
         let mut pass = AtmospherePass::init(&ctx);
         let mut world = World::new();
 
-        let configured_direction = [0.5f32, 0.3, -0.8];
+        // Any configured sun_direction in AtmosphereConfig is ignored; the pass
+        // must derive the sun direction from the scene's directional light.
         world.spawn((Atmosphere {
             config: AtmosphereConfig {
-                sun_direction: configured_direction,
+                sun_direction: [0.5, 0.3, -0.8],
                 ..Default::default()
             },
         },));
@@ -750,8 +745,6 @@ mod tests {
         let optional = extract_optional_pass_data(&world);
         let camera = FlyCamera::default();
         let mut lighting = LightingUniforms::default();
-        // Deliberately different from the configured sun direction; the
-        // configured value should win.
         lighting.light.direction = [-0.2, -0.9, -0.3];
         let assets = crate::asset::AssetManager::new();
         let frame = RenderFrame {
@@ -763,6 +756,7 @@ mod tests {
             delta_time: 0.016,
             config: &FrameConfig::default(),
             optional: &optional,
+            terrain_geometry: None,
             texture_cache: ctx.texture_cache,
             asset_manager: &assets,
         };
@@ -770,7 +764,7 @@ mod tests {
 
         let bytes = pollster::block_on(read_uniform_buffer(&device, &queue, &pass.uniform_buffer));
         let uniform: AtmosphereUniform = *bytemuck::from_bytes(&bytes);
-        let expected = Vec3::from_array(configured_direction).normalize();
+        let expected = -Vec3::from_array(lighting.light.direction).normalize();
         let actual = Vec3::from_array(uniform.sun_direction);
         assert!(
             actual.abs_diff_eq(expected, 1e-4),
@@ -808,6 +802,7 @@ mod tests {
             delta_time: 0.016,
             config: &FrameConfig::default(),
             optional: &optional,
+            terrain_geometry: None,
             texture_cache: ctx.texture_cache,
             asset_manager: &assets,
         };
@@ -855,6 +850,7 @@ mod tests {
             delta_time: 0.016,
             config: &FrameConfig::default(),
             optional: &optional,
+            terrain_geometry: None,
             texture_cache: ctx.texture_cache,
             asset_manager: &assets,
         };

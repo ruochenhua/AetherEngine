@@ -4,8 +4,8 @@ use crate::ecs::World;
 use crate::math::{Frustum, Mat4, Vec3};
 use crate::renderer::extract::extract_optional_pass_data;
 use crate::renderer::frame::{FrameConfig, RenderFrame};
-use crate::scene::{TerrainGeometry, TerrainSource};
-use crate::terrain::Chunk;
+use crate::scene::{TerrainGeometry as TerrainGeometryConfig, TerrainSource};
+use crate::terrain::{Chunk, TerrainGeometry};
 
 fn headless_device() -> (wgpu::Device, wgpu::Queue) {
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
@@ -30,6 +30,36 @@ fn init_ctx<'a>(device: &'a wgpu::Device, queue: &'a wgpu::Queue) -> InitContext
         ibl_resources: None,
         texture_cache,
     }
+}
+
+fn default_terrain() -> Terrain {
+    Terrain {
+        source: TerrainSource::Procedural {
+            seed: 1,
+            frequency: 0.05,
+            amplitude: 32.0,
+        },
+        geometry: TerrainGeometryConfig {
+            extent: 128.0,
+            chunk_size: 64,
+            max_lod: 2,
+            albedo_tiling: 64.0,
+        },
+        material: crate::asset::terrain_material::TerrainMaterial::default(),
+        splatmap_path: None,
+        layer_configs: vec![],
+    }
+}
+
+fn build_terrain_geometry(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    terrain: &Terrain,
+) -> TerrainGeometry {
+    let mut geom = TerrainGeometry::new(device);
+    let camera = crate::renderer::camera::FlyCamera::default();
+    geom.update(device, queue, &camera, 1.0, terrain);
+    geom
 }
 
 #[test]
@@ -60,6 +90,7 @@ fn terrain_pass_skipped_when_no_terrain_component() {
         delta_time: 0.016,
         config: &FrameConfig::default(),
         optional: &optional,
+        terrain_geometry: None,
         texture_cache: ctx.texture_cache,
         asset_manager: &assets,
     };
@@ -72,26 +103,13 @@ fn terrain_pass_runs_when_terrain_component_present() {
     let ctx = init_ctx(&device, &queue);
     let mut pass = TerrainPass::init(&ctx);
     let mut world = World::new();
-    world.spawn((Terrain {
-        source: TerrainSource::Procedural {
-            seed: 1,
-            frequency: 0.05,
-            amplitude: 32.0,
-        },
-        geometry: TerrainGeometry {
-            extent: 128.0,
-            chunk_size: 64,
-            max_lod: 2,
-            albedo_tiling: 64.0,
-        },
-        material: crate::asset::terrain_material::TerrainMaterial::default(),
-        splatmap_path: None,
-        layer_configs: vec![],
-    },));
+    let terrain = default_terrain();
+    world.spawn((terrain.clone(),));
     let optional = extract_optional_pass_data(&world);
     let camera = crate::renderer::camera::FlyCamera::default();
     let lighting = crate::renderer::light::LightingUniforms::default();
     let assets = crate::asset::AssetManager::new();
+    let geom = build_terrain_geometry(&device, &queue, &terrain);
     let frame = RenderFrame {
         batches: std::sync::Arc::from([]),
         camera: &camera,
@@ -101,95 +119,12 @@ fn terrain_pass_runs_when_terrain_component_present() {
         delta_time: 0.016,
         config: &FrameConfig::default(),
         optional: &optional,
+        terrain_geometry: Some(std::sync::Arc::new(std::sync::RwLock::new(geom))),
         texture_cache: ctx.texture_cache,
         asset_manager: &assets,
     };
     pass.apply_frame(&frame);
     assert!(pass.should_run(&frame));
-}
-
-#[test]
-fn terrain_pass_rebuilds_chunks_when_config_changes() {
-    let (device, queue) = headless_device();
-    let ctx = init_ctx(&device, &queue);
-    let mut pass = TerrainPass::init(&ctx);
-    let mut world = World::new();
-    let entity = world.spawn((Terrain {
-        source: TerrainSource::Procedural {
-            seed: 1,
-            frequency: 0.05,
-            amplitude: 32.0,
-        },
-        geometry: TerrainGeometry {
-            extent: 128.0,
-            chunk_size: 64,
-            max_lod: 2,
-            albedo_tiling: 64.0,
-        },
-        material: crate::asset::terrain_material::TerrainMaterial::default(),
-        splatmap_path: None,
-        layer_configs: vec![],
-    },));
-    let camera = crate::renderer::camera::FlyCamera::default();
-    let lighting = crate::renderer::light::LightingUniforms::default();
-    let optional = extract_optional_pass_data(&world);
-    let assets = crate::asset::AssetManager::new();
-    let first_chunk_count = {
-        let frame = RenderFrame {
-            batches: std::sync::Arc::from([]),
-            camera: &camera,
-            lighting: &lighting,
-            queue: &queue,
-            aspect: 1.0,
-            delta_time: 0.016,
-            config: &FrameConfig::default(),
-            optional: &optional,
-            texture_cache: ctx.texture_cache,
-            asset_manager: &assets,
-        };
-        pass.apply_frame(&frame);
-        pass.chunks.len()
-    };
-    assert!(first_chunk_count > 0);
-
-    // Change extent: geometry config changes.
-    let _ = world.despawn(entity);
-    world.spawn((Terrain {
-        source: TerrainSource::Procedural {
-            seed: 1,
-            frequency: 0.05,
-            amplitude: 32.0,
-        },
-        geometry: TerrainGeometry {
-            extent: 256.0,
-            chunk_size: 64,
-            max_lod: 2,
-            albedo_tiling: 64.0,
-        },
-        material: crate::asset::terrain_material::TerrainMaterial::default(),
-        splatmap_path: None,
-        layer_configs: vec![],
-    },));
-    let optional = extract_optional_pass_data(&world);
-    let frame = RenderFrame {
-        batches: std::sync::Arc::from([]),
-        camera: &camera,
-        lighting: &lighting,
-        queue: &queue,
-        aspect: 1.0,
-        delta_time: 0.016,
-        config: &FrameConfig::default(),
-        optional: &optional,
-        texture_cache: ctx.texture_cache,
-        asset_manager: &assets,
-    };
-    pass.apply_frame(&frame);
-    assert!(
-        pass.chunks.len() > first_chunk_count,
-        "expected more chunks after doubling extent, got {} vs {}",
-        pass.chunks.len(),
-        first_chunk_count
-    );
 }
 
 #[test]

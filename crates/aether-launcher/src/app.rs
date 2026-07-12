@@ -23,6 +23,7 @@ use aether_engine::{
         scheduler::Scheduler,
     },
     scene::loader::SceneLoader,
+    terrain::TerrainGeometry,
 };
 use cli::CliArgs;
 use std::path::PathBuf;
@@ -67,6 +68,7 @@ pub(crate) struct App {
     pub(crate) texture_cache: Option<GpuTextureCache>,
     pub(crate) scheduler: Option<Scheduler>,
     pub(crate) has_terrain_pipeline: bool,
+    pub(crate) terrain_geometry: Option<Arc<std::sync::RwLock<TerrainGeometry>>>,
     pub(crate) gpu_timer: Option<aether_engine::renderer::gpu_timer::GpuTimer>,
     pub(crate) ibl_resources: Option<IblResources>,
     pub(crate) scene_entries: Vec<SceneEntry>,
@@ -164,6 +166,7 @@ impl App {
             texture_cache: None,
             scheduler: None,
             has_terrain_pipeline: false,
+            terrain_geometry: None,
             gpu_timer: None,
             ibl_resources: None,
             scene_entries: scene::discover_scenes(),

@@ -97,6 +97,24 @@ impl Default for LightingUniforms {
     }
 }
 
+/// Compute the world-space direction *toward* the sun from the lighting uniforms.
+///
+/// The directional light's `direction` points **from** the light toward the scene,
+/// so the direction *toward* the sun is its negation. This value is shared by
+/// Atmosphere, VolumetricCloud, GodRay, and Water passes so that the visual sun
+/// stays in a single coherent direction.
+///
+/// Falls back to a default low-sun direction if the configured light direction
+/// is a zero vector.
+pub fn sun_direction_from_lighting(lighting: &LightingUniforms) -> glam::Vec3 {
+    let d = glam::Vec3::from_array(lighting.light.direction);
+    if d.length_squared() > 0.0 {
+        -d.normalize()
+    } else {
+        glam::Vec3::new(0.0, 0.2, -1.0).normalize()
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Light types
 // ---------------------------------------------------------------------------
@@ -110,4 +128,42 @@ pub enum LightType {
     Point,
     /// Spot light (cone).
     Spot,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sun_direction_from_lighting_points_toward_sun() {
+        let mut lighting = LightingUniforms::default();
+        // Light shines from the upper-right-front toward the scene.
+        lighting.light.direction = [1.0, -1.0, 1.0];
+
+        let sun = sun_direction_from_lighting(&lighting);
+        let expected = -glam::Vec3::from_array(lighting.light.direction).normalize();
+        assert!(sun.abs_diff_eq(expected, 1e-6), "expected {expected:?}, got {sun:?}");
+    }
+
+    #[test]
+    fn sun_direction_from_lighting_returns_default_for_zero_direction() {
+        let mut lighting = LightingUniforms::default();
+        lighting.light.direction = [0.0, 0.0, 0.0];
+
+        let sun = sun_direction_from_lighting(&lighting);
+        let expected = glam::Vec3::new(0.0, 0.2, -1.0).normalize();
+        assert!(sun.abs_diff_eq(expected, 1e-6), "expected {expected:?}, got {sun:?}");
+    }
+
+    #[test]
+    fn sun_direction_from_lighting_matches_scene_example() {
+        // Corresponds to scenes/14_god_rays.ron: light direction (0.2, -0.6, -0.8)
+        // should produce a sun toward (-0.2, 0.6, 0.8).
+        let mut lighting = LightingUniforms::default();
+        lighting.light.direction = [0.2, -0.6, -0.8];
+
+        let sun = sun_direction_from_lighting(&lighting);
+        let expected = glam::Vec3::new(-0.2, 0.6, 0.8).normalize();
+        assert!(sun.abs_diff_eq(expected, 1e-6), "expected {expected:?}, got {sun:?}");
+    }
 }

@@ -300,10 +300,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             cache: None,
         });
 
+        let usage = wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST;
+        #[cfg(test)]
+        let usage = usage | wgpu::BufferUsages::COPY_SRC;
+
         let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Water Uniform Buffer"),
             size: size_of::<WaterUniform>() as wgpu::BufferAddress,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            usage,
             mapped_at_creation: false,
         });
 
@@ -364,7 +368,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             ],
         });
 
-        let mesh = Arc::new(GpuMesh::from_cpu(device, &create_water_plane(128, 256.0)));
+        let mesh = Arc::new(GpuMesh::from_cpu(device, &create_water_plane(128, 1024.0)));
 
         Self {
             device: device.clone(),

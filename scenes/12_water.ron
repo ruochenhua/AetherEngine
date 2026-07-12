@@ -9,7 +9,7 @@ SceneDescription(
     ambient: 0.05,
     lights: [(
         light_type: Directional,
-        direction: (0.3, -1.0, 0.2),
+        direction: (0.3, -0.2, 1.0),
         color: (1.0, 0.95, 0.9),
         intensity: 2.0,
     )],

@@ -15,7 +15,8 @@ use crate::renderer::{
     light::LightingUniforms,
     passes::{debug::DebugVertex, fxaa::FxaaQuality, tone_mapping::ToneMappingMode},
 };
-use std::sync::Arc;
+use crate::terrain::TerrainGeometry;
+use std::sync::{Arc, RwLock};
 
 /// UI-controllable per-frame parameters.
 ///
@@ -119,6 +120,8 @@ pub struct RenderFrame<'a> {
     /// Optional scene components extracted from the ECS World for conditional passes
     /// (terrain, water, atmosphere, clouds, god rays).
     pub optional: &'a OptionalPassData,
+    /// Shared terrain geometry cache; populated when the scene contains a terrain entity.
+    pub terrain_geometry: Option<Arc<RwLock<TerrainGeometry>>>,
     /// Per-frame configuration channel.
     pub config: &'a FrameConfig,
     /// GPU texture cache shared by all passes.

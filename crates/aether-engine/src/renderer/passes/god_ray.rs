@@ -7,6 +7,7 @@
 //! lit scene.
 
 use crate::renderer::frame::RenderFrame;
+use crate::renderer::light::sun_direction_from_lighting;
 use crate::renderer::pass::{InitContext, Pass, PassSignature, ResHandle};
 use crate::renderer::resource::{GDepth, GodRayColor};
 use crate::renderer::resource_table::ResourceTable;
@@ -104,8 +105,7 @@ impl Pass for GodRayPass {
             let view_proj = proj * view;
             let inv_view_proj = view_proj.inverse();
 
-            let light_dir = glam::Vec3::from_array(frame.lighting.light.direction).normalize();
-            let sun_toward = -light_dir;
+            let sun_toward = sun_direction_from_lighting(frame.lighting);
 
             let cfg = &god_ray.config;
             let uniforms = GodRayUniform {
@@ -245,7 +245,12 @@ fn fs_main(@builtin(position) frag_coord: vec4<f32>) -> @location(0) vec4<f32> {
         let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("God Ray Uniform Buffer"),
             size: std::mem::size_of::<GodRayUniform>() as wgpu::BufferAddress,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            usage: {
+                let usage = wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST;
+                #[cfg(test)]
+                let usage = usage | wgpu::BufferUsages::COPY_SRC;
+                usage
+            },
             mapped_at_creation: false,
         });
 
@@ -375,6 +380,8 @@ mod tests {
     use crate::ecs::World;
     use crate::renderer::extract::extract_optional_pass_data;
     use crate::renderer::frame::FrameConfig;
+    use crate::renderer::light::{sun_direction_from_lighting, LightingUniforms};
+    use glam::Vec3;
 
     fn headless_device() -> wgpu::Device {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
@@ -406,6 +413,92 @@ mod tests {
     fn god_ray_uniform_default_is_aligned() {
         let _ = GodRayUniform::default();
         assert_eq!(std::mem::size_of::<GodRayUniform>() % 16, 0);
+    }
+
+    /// Verifies that the sun direction written to the GodRay uniform buffer
+    /// matches the shared `sun_direction_from_lighting` helper.
+    #[test]
+    fn god_ray_pass_uses_light_direction_for_sun() {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        let adapter =
+            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+                .expect("need adapter");
+        let (device, queue) =
+            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
+                .expect("need device");
+
+        let mut pass = GodRayPass::new(&device);
+        let mut world = World::new();
+        world.spawn((GodRay {
+            config: crate::scene::GodRayConfig {
+                samples: 16,
+                density: 0.6,
+                decay: 0.9,
+                weight: 0.3,
+                exposure: 0.2,
+            },
+        },));
+        let optional = extract_optional_pass_data(&world);
+
+        let camera = crate::renderer::camera::FlyCamera::default();
+        let lighting = LightingUniforms::default();
+        let assets = crate::asset::AssetManager::new();
+        let texture_cache = crate::asset::texture_cache::GpuTextureCache::new(&device, &queue,
+        );
+        let frame = crate::renderer::frame::RenderFrame {
+            batches: std::sync::Arc::from([]),
+            camera: &camera,
+            lighting: &lighting,
+            queue: &queue,
+            aspect: 1.0,
+            delta_time: 0.016,
+            config: &FrameConfig::default(),
+            optional: &optional,
+            terrain_geometry: None,
+            texture_cache: &texture_cache,
+            asset_manager: &assets,
+        };
+
+        pass.apply_frame(&frame);
+        assert!(pass.has_god_ray);
+
+        let uniform_size = std::mem::size_of::<GodRayUniform>() as u64;
+        let staging = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("GodRay Sun Direction Readback"),
+            size: uniform_size,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("GodRay Sun Direction Copy"),
+        });
+        encoder.copy_buffer_to_buffer(
+            &pass.uniform_buffer,
+            0,
+            &staging,
+            0,
+            uniform_size,
+        );
+        queue.submit(std::iter::once(encoder.finish()));
+
+        let slice = staging.slice(..);
+        slice.map_async(wgpu::MapMode::Read, |result| {
+            result.expect("failed to map uniform readback buffer");
+        });
+        device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+
+        let data = slice.get_mapped_range();
+        let uniforms: &[GodRayUniform] = bytemuck::cast_slice(&data);
+        let expected_sun = sun_direction_from_lighting(&lighting);
+        let actual_sun = Vec3::new(
+            uniforms[0].sun_direction.x,
+            uniforms[0].sun_direction.y,
+            uniforms[0].sun_direction.z,
+        );
+        assert!(
+            actual_sun.abs_diff_eq(expected_sun, 1e-4),
+            "expected sun_direction {expected_sun:?}, got {actual_sun:?}"
+        );
     }
 
     /// Headless render-to-texture test that verifies the god ray pass produces
@@ -644,6 +737,7 @@ fn vs_main(@location(0) pos: vec2<f32>) -> @builtin(position) vec4<f32> {
             delta_time: 0.016,
             config: &FrameConfig::default(),
             optional: &optional,
+            terrain_geometry: None,
             texture_cache: &texture_cache,
             asset_manager: &asset_manager,
         };

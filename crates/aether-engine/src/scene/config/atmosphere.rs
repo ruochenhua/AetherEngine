@@ -5,7 +5,12 @@ use serde::{Deserialize, Serialize};
 /// Physical atmosphere configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AtmosphereConfig {
-    /// Direction toward the sun [x, y, z]. Defaults to a low sun angle.
+    /// Direction toward the sun [x, y, z].
+    ///
+    /// **Deprecated**: the visual sun direction is now derived from the scene's
+    /// first DirectionalLight (`-normalize(light.direction)`). This field is kept
+    /// for backward compatibility in scene serialization but no longer affects
+    /// rendering. Defaults to a low sun angle.
     #[serde(default = "default_sun_direction")]
     pub sun_direction: [f32; 3],
     /// Planet radius in world units. The camera is assumed to sit on the surface.

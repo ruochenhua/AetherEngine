@@ -9,6 +9,7 @@
 use crate::asset::mesh::GpuMesh;
 use crate::asset::texture::GpuTexture;
 use crate::renderer::frame::RenderFrame;
+use crate::renderer::light::sun_direction_from_lighting;
 use crate::renderer::pass::{InitContext, Pass, PassSignature, ResHandle};
 use crate::renderer::resource::{
     GDepth, ReflectionTexture, SceneColor, WaterColor, WaterReflectionColor,
@@ -163,8 +164,8 @@ impl Pass for WaterPass {
                 _pad2: 0.0,
                 _pad3: 0.0,
                 sun_direction: {
-                    let d = frame.lighting.light.direction;
-                    glam::Vec4::new(-d[0], -d[1], -d[2], 0.0)
+                    let sun = sun_direction_from_lighting(frame.lighting);
+                    glam::Vec4::new(sun.x, sun.y, sun.z, 0.0)
                 },
                 sun_color: {
                     let c = frame.lighting.light.color;
@@ -255,9 +256,10 @@ mod tests {
     use crate::renderer::camera::FlyCamera;
     use crate::renderer::extract::extract_optional_pass_data;
     use crate::renderer::frame::FrameConfig;
-    use crate::renderer::light::LightingUniforms;
+    use crate::renderer::light::{sun_direction_from_lighting, LightingUniforms};
     use crate::renderer::resource::ResourceTag;
     use crate::scene::WaterConfig;
+    use glam::Vec3;
 
     fn headless_device() -> (wgpu::Device, wgpu::Queue) {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
@@ -321,6 +323,7 @@ mod tests {
             delta_time: 0.016,
             config: &FrameConfig::default(),
             optional: &optional,
+            terrain_geometry: None,
             texture_cache: ctx.texture_cache,
             asset_manager: &assets,
         };
@@ -351,10 +354,84 @@ mod tests {
             delta_time: 0.016,
             config: &FrameConfig::default(),
             optional: &optional,
+            terrain_geometry: None,
             texture_cache: ctx.texture_cache,
             asset_manager: &assets,
         };
         pass.apply_frame(&frame);
         assert!(pass.should_run(&frame));
+    }
+
+    #[test]
+    fn water_pass_uses_light_direction_for_sun() {
+        let (device, queue) = headless_device();
+        let ctx = init_ctx(&device, &queue);
+        let mut pass = WaterPass::init(&ctx);
+        let mut world = World::new();
+        world.spawn((Water {
+            config: WaterConfig::default(),
+            dudv_texture: None,
+            normal_texture: None,
+        },));
+        let optional = extract_optional_pass_data(&world);
+        let camera = FlyCamera::default();
+        let lighting = LightingUniforms::default();
+        let assets = crate::asset::AssetManager::new();
+        let frame = RenderFrame {
+            batches: std::sync::Arc::from([]),
+            camera: &camera,
+            lighting: &lighting,
+            queue: &queue,
+            aspect: 1.0,
+            delta_time: 0.016,
+            config: &FrameConfig::default(),
+            optional: &optional,
+            terrain_geometry: None,
+            texture_cache: ctx.texture_cache,
+            asset_manager: &assets,
+        };
+
+        pass.apply_frame(&frame);
+        assert!(pass.should_run(&frame));
+
+        let uniform_size = std::mem::size_of::<WaterUniform>() as u64;
+        let staging = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Water Sun Direction Readback"),
+            size: uniform_size,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        let mut encoder = device.create_command_encoder(
+            &wgpu::CommandEncoderDescriptor {
+                label: Some("Water Sun Direction Copy"),
+            },
+        );
+        encoder.copy_buffer_to_buffer(
+            &pass.uniform_buffer,
+            0,
+            &staging,
+            0,
+            uniform_size,
+        );
+        queue.submit(std::iter::once(encoder.finish()));
+
+        let slice = staging.slice(..);
+        slice.map_async(wgpu::MapMode::Read, |result| {
+            result.expect("failed to map uniform readback buffer");
+        });
+        device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+
+        let data = slice.get_mapped_range();
+        let uniforms: &[WaterUniform] = bytemuck::cast_slice(&data);
+        let expected_sun = sun_direction_from_lighting(&lighting);
+        let actual_sun = Vec3::new(
+            uniforms[0].sun_direction.x,
+            uniforms[0].sun_direction.y,
+            uniforms[0].sun_direction.z,
+        );
+        assert!(
+            actual_sun.abs_diff_eq(expected_sun, 1e-4),
+            "expected sun_direction {expected_sun:?}, got {actual_sun:?}"
+        );
     }
 }

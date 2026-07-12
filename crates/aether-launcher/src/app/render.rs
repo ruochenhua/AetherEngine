@@ -173,6 +173,20 @@ pub(crate) fn frame(
             let optional = extract_optional_pass_data(world);
             extract_ms = t_extract_0.elapsed().as_secs_f64() * 1000.0;
 
+            // Update shared terrain geometry cache when the scene contains terrain.
+            if let Some(terrain) = optional.terrain.as_ref() {
+                if app.terrain_geometry.is_none() {
+                    app.terrain_geometry = Some(Arc::new(std::sync::RwLock::new(
+                        aether_engine::terrain::TerrainGeometry::new(&ctx.device),
+                    )));
+                }
+                if let Ok(mut geom) = app.terrain_geometry.as_ref().unwrap().write() {
+                    geom.update(&ctx.device, &ctx.queue, &app.camera, aspect, terrain);
+                }
+            } else {
+                app.terrain_geometry = None;
+            }
+
             // Transform gizmo: build dynamic debug lines for selected entity
             let gizmo_lines = if let Some((_, transform)) = selected_entity_transform(world) {
                 build_transform_gizmo(&transform)
@@ -216,6 +230,7 @@ pub(crate) fn frame(
                 aspect,
                 delta_time: dt,
                 optional: &optional,
+                terrain_geometry: app.terrain_geometry.clone(),
                 config: &frame_config,
                 texture_cache: app.texture_cache.as_ref().unwrap(),
                 asset_manager: &app.asset_manager,
