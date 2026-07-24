@@ -8,8 +8,6 @@
 
 /// Camera types and controllers.
 pub mod camera;
-/// Volumetric cloud utilities.
-pub mod clouds;
 /// wgpu context and device management.
 pub mod context;
 /// Extract phase (ECS → render batches).
@@ -40,3 +38,6 @@ pub mod resource;
 pub mod resource_table;
 /// Pass scheduler and execution.
 pub mod scheduler;
+/// CPU-only naga validation of every engine WGSL shader (test-only).
+#[cfg(test)]
+mod shader_validation;

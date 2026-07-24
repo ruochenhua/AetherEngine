@@ -23,7 +23,7 @@ use crate::renderer::resource_table::ResourceTable;
 
 mod execute;
 mod pipelines;
-mod shaders;
+pub(crate) mod shaders;
 mod textures;
 
 /// Bloom parameters (matches WGSL std140 layout).
@@ -108,6 +108,14 @@ impl Pass for BloomPass {
 
     fn init(ctx: &InitContext) -> Self {
         Self::new(ctx.device, ctx.width, ctx.height)
+    }
+
+    /// Update screen dimensions. Called by the scheduler on every resize
+    /// (before signatures are read and `resolve()` recreates the intermediate
+    /// textures) so the bloom mip chain is rebuilt at the current resolution.
+    fn set_screen_size(&mut self, width: u32, height: u32) {
+        self.screen_width = width;
+        self.screen_height = height;
     }
 
     fn resolve(&mut self, device: &wgpu::Device, resources: &ResourceTable) {
@@ -318,12 +326,6 @@ impl BloomPass {
         pass
     }
 
-    /// Set screen dimensions (call before rebuild on resize).
-    pub fn set_screen_size(&mut self, width: u32, height: u32) {
-        self.screen_width = width;
-        self.screen_height = height;
-    }
-
     /// Enable/disable bloom.
     pub fn set_enabled(&mut self, enabled: bool) {
         self.enabled = enabled;
@@ -359,21 +361,14 @@ impl BloomPass {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn headless_device() -> wgpu::Device {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter =
-            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
-                .expect("need adapter");
-        let (device, _) =
-            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-                .expect("need device");
-        device
-    }
+    use crate::test_utils::headless_device_queue;
 
     #[test]
     fn signature_declares_resources() {
-        let device = headless_device();
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let pass = BloomPass::new(&device, 64, 64);
         let sig = pass.signature();
         assert_eq!(sig.name, "Bloom");
@@ -383,12 +378,19 @@ mod tests {
 
     #[test]
     fn init_creates_resources() {
-        let _pass = BloomPass::new(&headless_device(), 64, 64);
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
+        let _pass = BloomPass::new(&device, 64, 64);
     }
 
     #[test]
     fn default_params() {
-        let device = headless_device();
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let pass = BloomPass::new(&device, 64, 64);
         assert!(pass.enabled);
         assert_eq!(pass.threshold, 1.0);
@@ -398,7 +400,10 @@ mod tests {
 
     #[test]
     fn params_can_be_changed() {
-        let device = headless_device();
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let mut pass = BloomPass::new(&device, 64, 64);
         pass.set_enabled(false);
         pass.set_threshold(2.0);
@@ -408,5 +413,29 @@ mod tests {
         assert_eq!(pass.threshold, 2.0);
         assert_eq!(pass.intensity, 3.0);
         assert_eq!(pass.bloom_intensity, 0.8);
+    }
+
+    #[test]
+    fn intermediate_textures_follow_screen_size() {
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
+        let mut pass = BloomPass::new(&device, 64, 64);
+        // Mip0 is half of the 64x64 startup resolution.
+        assert_eq!(pass.mip0.as_ref().unwrap().0.size().width, 32);
+        assert_eq!(pass.mip0.as_ref().unwrap().0.size().height, 32);
+
+        // Simulate a resize: the scheduler calls set_screen_size, then
+        // resolve() recreates the intermediate textures at the new size.
+        pass.set_screen_size(128, 256);
+        textures::create_intermediate_textures(&mut pass, &device);
+
+        assert_eq!(pass.bright_texture.as_ref().unwrap().0.size().width, 128);
+        assert_eq!(pass.bright_texture.as_ref().unwrap().0.size().height, 256);
+        assert_eq!(pass.mip0.as_ref().unwrap().0.size().width, 64);
+        assert_eq!(pass.mip0.as_ref().unwrap().0.size().height, 128);
+        assert_eq!(pass.mip2.as_ref().unwrap().0.size().width, 16);
+        assert_eq!(pass.mip2.as_ref().unwrap().0.size().height, 32);
     }
 }

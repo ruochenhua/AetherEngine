@@ -20,6 +20,7 @@ use aether_engine::{
         ibl::IblResources,
         light::LightingUniforms,
         passes::{fxaa::FxaaQuality, tone_mapping::ToneMappingMode},
+        picking::Selection,
         scheduler::Scheduler,
     },
     scene::loader::SceneLoader,
@@ -76,7 +77,14 @@ pub(crate) struct App {
     pub(crate) pending_load: Option<usize>,
     pub(crate) show_overlay: bool,
     pub(crate) fullscreen_3d: bool,
-    pub(crate) pending_select_entity: Option<Entity>,
+    /// Pending hierarchy-panel click: `(entity, additive)` where `additive`
+    /// means Shift/Ctrl was held (toggle instead of single-select).
+    pub(crate) pending_select_entity: Option<(Entity, bool)>,
+    /// Ordered multi-selection tracked on top of the ECS `Selected` markers;
+    /// the anchor (last selected) drives the gizmo and inspector.
+    pub(crate) selection: Selection,
+    /// Delete key pressed: remove all currently selected entities.
+    pub(crate) pending_delete_selection: bool,
     pub(crate) debug_mode: i32,
     pub(crate) ssao_enabled: bool,
     pub(crate) shadow_enabled: bool,
@@ -175,6 +183,8 @@ impl App {
             show_overlay: false,
             fullscreen_3d: false,
             pending_select_entity: None,
+            selection: Selection::new(),
+            pending_delete_selection: false,
             debug_mode,
             ssao_enabled: false,
             shadow_enabled: true,
@@ -232,6 +242,10 @@ impl App {
         if let LauncherState::Running { ref mut world, .. } = self.state {
             let redo = crate::inspector::apply_undo(world, &cmd);
             self.redo_stack.push(redo);
+            // A restored/deleted entity may add or remove terrain, which
+            // changes the required pass set. The rebuild early-outs when the
+            // terrain presence is unchanged, so this is cheap insurance.
+            self.pending_terrain_pipeline_rebuild = true;
         }
     }
 
@@ -243,6 +257,8 @@ impl App {
         if let LauncherState::Running { ref mut world, .. } = self.state {
             let undo = crate::inspector::apply_undo(world, &cmd);
             self.undo_stack.push(undo);
+            // See `apply_undo` for why the terrain pipeline may need a rebuild.
+            self.pending_terrain_pipeline_rebuild = true;
         }
     }
 

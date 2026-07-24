@@ -12,7 +12,7 @@ use crate::renderer::resource::*;
 use crate::renderer::resource_table::ResourceTable;
 
 mod execute;
-mod pipeline;
+pub(crate) mod pipeline;
 mod types;
 
 /// SSR pass state.
@@ -67,6 +67,15 @@ impl Pass for SSRPass {
 
     fn init(ctx: &InitContext) -> Self {
         Self::new(ctx.device)
+    }
+
+    /// Update screen dimensions. Called by the launcher on init and by the
+    /// scheduler on every resize (before signatures are read) so the trace
+    /// target is allocated at the current half resolution.
+    fn set_screen_size(&mut self, width: u32, height: u32) {
+        self.screen_size = [width as f32, height as f32];
+        self.trace_width = width / 2;
+        self.trace_height = height / 2;
     }
 
     fn resolve(&mut self, device: &wgpu::Device, resources: &ResourceTable) {
@@ -250,34 +259,20 @@ impl SSRPass {
     pub fn set_enabled(&mut self, enabled: bool) {
         self.ssr_enabled = if enabled { 1 } else { 0 };
     }
-
-    /// Update screen dimensions.
-    pub fn set_screen_size(&mut self, width: u32, height: u32) {
-        self.screen_size = [width as f32, height as f32];
-        self.trace_width = width / 2;
-        self.trace_height = height / 2;
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::headless_device_queue;
     use std::any::TypeId;
-
-    fn headless_device() -> wgpu::Device {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter =
-            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
-                .expect("need adapter");
-        let (device, _) =
-            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-                .expect("need device");
-        device
-    }
 
     #[test]
     fn signature_declares_correct_resources() {
-        let device = headless_device();
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let sig = SSRPass::new(&device).signature();
         assert_eq!(sig.name, "SSR");
         assert_eq!(sig.reads.len(), 5);
@@ -290,6 +285,34 @@ mod tests {
 
     #[test]
     fn init_creates_resources() {
-        let _pass = SSRPass::new(&headless_device());
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
+        let _pass = SSRPass::new(&device);
+    }
+
+    #[test]
+    fn set_screen_size_updates_trace_write_size() {
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
+        let mut pass = SSRPass::new(&device);
+
+        // Before any resize notification the trace target uses the hardcoded
+        // 640x360 default.
+        let sig0 = pass.signature();
+        assert_eq!(sig0.writes[0].name, "ssr_trace");
+        assert_eq!(sig0.writes[0].width, Some(640));
+        assert_eq!(sig0.writes[0].height, Some(360));
+
+        // After set_screen_size the signature immediately reflects the new
+        // half-resolution trace size.
+        pass.set_screen_size(1920, 1080);
+        let sig = pass.signature();
+        assert_eq!(sig.writes[0].name, "ssr_trace");
+        assert_eq!(sig.writes[0].width, Some(960));
+        assert_eq!(sig.writes[0].height, Some(540));
     }
 }

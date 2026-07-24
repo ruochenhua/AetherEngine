@@ -2,7 +2,7 @@
 
 use super::{App, LauncherState, SceneEntry};
 use aether_engine::{
-    asset::mesh::GpuMesh,
+    asset::{mesh::GpuMesh, texture_cache::GpuTextureCache},
     ecs::components::{
         Camera, MeshHandle, MeshSource, Name, Selected, Terrain, Transform, Visibility, Water,
     },
@@ -13,6 +13,20 @@ use aether_engine::{
 use std::path::PathBuf;
 use std::sync::Arc;
 use tracing::{error, info};
+
+/// Release GPU-resident textures from the previous scene.
+///
+/// Called whenever the world is replaced (open / new scene) so the old
+/// scene's textures do not stay GPU-resident across scene switches. The
+/// CPU-side `AssetManager` is kept: it dedups by path and lets the cache
+/// re-upload only what the new scene actually references. Import is
+/// deliberately *not* cleared — it appends to the current world, so the
+/// surviving entities' textures must stay cached.
+fn clear_scene_gpu_textures(texture_cache: &Option<GpuTextureCache>) {
+    if let Some(cache) = texture_cache {
+        cache.clear();
+    }
+}
 
 /// Discover all `.ron` scene files in the `scenes` directory.
 pub(crate) fn discover_scenes() -> Vec<SceneEntry> {
@@ -127,6 +141,7 @@ pub(crate) fn open_cli_scene(app: &mut App, ctx: &RenderContext) {
                         app.camera.far = far;
                         app.camera.active = false;
                     }
+                    clear_scene_gpu_textures(&app.texture_cache);
                     // Queue a pipeline rebuild so the first frame after
                     // `resumed()` uses a scheduler that includes TerrainPass.
                     app.pending_terrain_pipeline_rebuild = true;
@@ -173,6 +188,7 @@ pub(crate) fn process_pending_load(app: &mut App) {
                         app.camera.active = false;
                     }
                     app.show_overlay = false;
+                    clear_scene_gpu_textures(&app.texture_cache);
                     app.pending_terrain_pipeline_rebuild = true;
                 }
                 Err(e) => {
@@ -195,6 +211,7 @@ pub(crate) fn process_post_ui_ops(app: &mut App) {
         {
             let ctx = app.ctx.as_ref().unwrap();
             world.clear();
+            clear_scene_gpu_textures(&app.texture_cache);
             *lighting = SceneLoader::new_empty(world);
             // Spawn a default cube so there's something to pick right away
             if let Some(cpu_mesh) = app.mesh_registry.get("cube") {
@@ -256,6 +273,7 @@ pub(crate) fn process_post_ui_ops(app: &mut App) {
                             app.camera.active = false;
                         }
                         info!("Opened scene from {:?}", path);
+                        clear_scene_gpu_textures(&app.texture_cache);
                         app.pending_terrain_pipeline_rebuild = true;
                     }
                     Err(e) => {
@@ -474,28 +492,60 @@ pub(crate) fn process_post_ui_ops(app: &mut App) {
         }
     }
 
-    // Handle hierarchy panel selection
-    if let Some(entity) = app.pending_select_entity.take() {
+    // Handle hierarchy panel selection: `(entity, additive)` where additive
+    // (Shift/Ctrl held) toggles the entity in the multi-selection.
+    if let Some((entity, additive)) = app.pending_select_entity.take() {
         if let LauncherState::Running { ref mut world, .. } = app.state {
-            // Deselect all
-            let to_deselect: Vec<_> = world
+            aether_engine::renderer::picking::select_entity(world, entity, additive);
+        }
+    }
+
+    // Delete key: despawn all selected entities, recording one undo command
+    // that restores the whole batch.
+    if app.pending_delete_selection {
+        app.pending_delete_selection = false;
+        if let LauncherState::Running { ref mut world, .. } = app.state {
+            let entities: Vec<Entity> = world
                 .query::<(Entity, &Selected)>()
                 .iter()
                 .map(|(e, _)| e)
                 .collect();
-            for e in to_deselect {
-                let _ = world.remove::<(Selected,)>(e);
+            let snapshots: Vec<crate::inspector::DeletedEntity> = entities
+                .iter()
+                .map(|&e| crate::inspector::snapshot_entity(world, e))
+                .collect();
+            if !snapshots.is_empty() {
+                for e in entities {
+                    let _ = world.despawn(e);
+                }
+                app.undo_stack
+                    .push(crate::inspector::EditorCommand::Delete {
+                        entities: snapshots,
+                    });
+                app.redo_stack.clear();
+                app.pending_terrain_pipeline_rebuild = true;
             }
-            // Select chosen entity
-            let _ = world.insert(entity, (Selected,));
         }
     }
 
-    // Handle despawn (delete entity)
+    // Handle despawn (delete entity from the hierarchy 🗑 button)
     if let Some(entity) = app.pending_despawn_entity.take() {
         if let LauncherState::Running { ref mut world, .. } = app.state {
-            let _ = world.despawn(entity);
+            if world.contains(entity) {
+                let snapshot = crate::inspector::snapshot_entity(world, entity);
+                let _ = world.despawn(entity);
+                app.undo_stack
+                    .push(crate::inspector::EditorCommand::Delete {
+                        entities: vec![snapshot],
+                    });
+                app.redo_stack.clear();
+            }
         }
         app.pending_terrain_pipeline_rebuild = true;
+    }
+
+    // Keep the ordered selection in sync after marker/entity mutations above.
+    if let LauncherState::Running { ref world, .. } = app.state {
+        app.selection.sync(world);
     }
 }

@@ -147,18 +147,8 @@ impl ResourceEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::headless_device_queue;
     use crate::renderer::resource::*;
-
-    fn headless_device() -> wgpu::Device {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter =
-            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
-                .expect("need adapter");
-        let (device, _queue) =
-            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-                .expect("need device");
-        device
-    }
 
     fn create_texture_view(
         device: &wgpu::Device,
@@ -183,7 +173,10 @@ mod tests {
 
     #[test]
     fn alloc_and_retrieve_by_handle() {
-        let device = headless_device();
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let mut table = ResourceTable::new();
 
         let view = create_texture_view(&device, wgpu::TextureFormat::Rgba16Float);
@@ -198,7 +191,10 @@ mod tests {
 
     #[test]
     fn handle_type_safety() {
-        let device = headless_device();
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let mut table = ResourceTable::new();
 
         let pos_view = create_texture_view(&device, wgpu::TextureFormat::Rgba16Float);
@@ -217,7 +213,10 @@ mod tests {
     #[test]
     #[should_panic(expected = "not found in ResourceTable")]
     fn missing_handle_panics() {
-        let _device = headless_device();
+        let Some((_device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let table = ResourceTable::new();
 
         // No resources allocated — handle lookup fails
@@ -226,7 +225,10 @@ mod tests {
 
     #[test]
     fn multiple_resources() {
-        let device = headless_device();
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let mut table = ResourceTable::new();
 
         let v1 = create_texture_view(&device, wgpu::TextureFormat::Rgba16Float);

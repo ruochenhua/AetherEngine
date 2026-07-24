@@ -67,7 +67,11 @@ pub fn build_transform_gizmo(transform: &Transform) -> Vec<DebugVertex> {
             Vec3::Z
         };
         let perp2 = dir.cross(perp1).normalize();
-        let perp1 = perp1.cross(*dir).normalize();
+        // Same fix as the rotation rings below: derive the in-plane basis
+        // from perp2, not perp1 — crossing the original arbitrary vector
+        // with `dir` again would yield a vector anti-parallel to perp2,
+        // collapsing the four head corners into two.
+        let perp1 = perp2.cross(*dir).normalize();
         let tip = end;
         let base1 = tip - *dir * head_size * 2.0 + perp1 * head_size;
         let base2 = tip - *dir * head_size * 2.0 - perp1 * head_size;
@@ -131,7 +135,11 @@ pub fn build_transform_gizmo(transform: &Transform) -> Vec<DebugVertex> {
             Vec3::Z
         };
         let perp2 = dir.cross(perp).normalize();
-        let perp = perp.cross(*dir).normalize();
+        // Same fix as the rotation rings below: derive the in-plane basis
+        // from perp2, not perp — crossing the original arbitrary vector
+        // with `dir` again would yield a vector anti-parallel to perp2,
+        // collapsing the box into a flat rectangle.
+        let perp = perp2.cross(*dir).normalize();
         let c = end;
         let corners: [Vec3; 8] = [
             c + perp * box_s + perp2 * box_s + *dir * box_s,
@@ -182,7 +190,10 @@ pub fn build_transform_gizmo(transform: &Transform) -> Vec<DebugVertex> {
             Vec3::Z
         };
         let perp2 = axis.cross(perp1).normalize();
-        let perp1 = perp1.cross(*axis).normalize();
+        // Build the in-plane basis vector from perp2 (not perp1): crossing the
+        // original arbitrary vector with `axis` again would yield a vector
+        // anti-parallel to perp2, collapsing the ring into a straight line.
+        let perp1 = perp2.cross(*axis).normalize();
         let mut prev = origin + perp1 * ROT_RADIUS;
         for i in 1..=ROT_SEGMENTS {
             let angle = (i as f32 / ROT_SEGMENTS as f32) * std::f32::consts::TAU;
@@ -293,7 +304,9 @@ pub fn detect_hover(
             Vec3::Z
         };
         let perp2 = axis_dir.cross(perp1).normalize();
-        let perp1 = perp1.cross(*axis_dir).normalize();
+        // See build_transform_gizmo: derive the in-plane basis from perp2, not
+        // from the original arbitrary vector, or the ring degenerates to a line.
+        let perp1 = perp2.cross(*axis_dir).normalize();
         let mut ring_screen = Vec::with_capacity(ROT_SEGMENTS + 1);
         for i in 0..=ROT_SEGMENTS {
             let angle = (i as f32 / ROT_SEGMENTS as f32) * std::f32::consts::TAU;
@@ -516,4 +529,507 @@ pub fn selected_entity_transform(world: &World) -> Option<(hecs::Entity, Transfo
         .iter()
         .next()
         .map(|(entity, transform, _)| (entity, transform.clone()))
+}
+
+/// Fetch a specific entity's transform, if the entity exists and has one.
+///
+/// Used by the editor to anchor the gizmo to the last selected entity of a
+/// multi-selection instead of an arbitrary `Selected` match.
+pub fn entity_transform(world: &World, entity: hecs::Entity) -> Option<Transform> {
+    world
+        .query_one::<&Transform>(entity)
+        .get()
+        .ok()
+        .map(|transform| transform.clone())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const W: f32 = 800.0;
+    const H: f32 = 600.0;
+
+    /// Build a right-handed camera looking at the origin (where the test gizmo sits).
+    fn camera(eye: Vec3, up: Vec3) -> (glam::Mat4, glam::Mat4, Vec3) {
+        let view = glam::Mat4::look_at_rh(eye, Vec3::ZERO, up);
+        let proj = glam::Mat4::perspective_rh(45.0f32.to_radians(), W / H, 0.1, 100.0);
+        (view, proj, eye)
+    }
+
+    /// Isometric-ish 3/4 view: all three axes and all three rings are separated
+    /// on screen, so no ring projects edge-on onto an axis line.
+    fn iso() -> (glam::Mat4, glam::Mat4, Vec3) {
+        camera(Vec3::new(4.0, 3.0, 4.0), Vec3::Y)
+    }
+
+    fn ctx(view: glam::Mat4, proj: glam::Mat4, eye: Vec3) -> GizmoCameraCtx {
+        GizmoCameraCtx {
+            view,
+            proj,
+            width: W,
+            height: H,
+            camera_pos: eye,
+        }
+    }
+
+    /// Project a world point to screen pixels using the same helper as the code
+    /// under test, so hover points land exactly on the intended gizmo feature.
+    fn scr(p: Vec3, view: glam::Mat4, proj: glam::Mat4) -> Vec2 {
+        project_screen(p, view, proj, W, H)
+    }
+
+    /// On-screen unit direction of a gizmo axis emanating from the origin.
+    fn axis_screen_dir(axis: Vec3, len: f32, view: glam::Mat4, proj: glam::Mat4) -> Vec2 {
+        (scr(axis * len, view, proj) - scr(Vec3::ZERO, view, proj)).normalize()
+    }
+
+    // ── detect_hover: translate shafts ──────────────────────────────
+
+    #[test]
+    fn hover_translate_x_axis() {
+        let (view, proj, _) = iso();
+        let t = Transform::default();
+        // 1.35 is on the translate shaft (0..1.5) but past the scale box (0..1.2).
+        let m = scr(Vec3::X * 1.35, view, proj);
+        let got = detect_hover(&t, view, proj, m.x, m.y, W, H);
+        assert_eq!(
+            got,
+            Some(GizmoHandle::Translate(GizmoAxis::X)),
+            "hovering the +X arrow shaft should select Translate(X), got {got:?}"
+        );
+    }
+
+    #[test]
+    fn hover_translate_y_axis() {
+        let (view, proj, _) = iso();
+        let t = Transform::default();
+        let m = scr(Vec3::Y * 1.35, view, proj);
+        let got = detect_hover(&t, view, proj, m.x, m.y, W, H);
+        assert_eq!(
+            got,
+            Some(GizmoHandle::Translate(GizmoAxis::Y)),
+            "hovering the +Y arrow shaft should select Translate(Y), got {got:?}"
+        );
+    }
+
+    #[test]
+    fn hover_translate_z_axis() {
+        let (view, proj, _) = iso();
+        let t = Transform::default();
+        let m = scr(Vec3::Z * 1.35, view, proj);
+        let got = detect_hover(&t, view, proj, m.x, m.y, W, H);
+        assert_eq!(
+            got,
+            Some(GizmoHandle::Translate(GizmoAxis::Z)),
+            "hovering the +Z arrow shaft should select Translate(Z), got {got:?}"
+        );
+    }
+
+    // ── detect_hover: scale boxes (priority over translate) ─────────
+
+    #[test]
+    fn hover_scale_x_axis_prefers_scale_over_translate() {
+        let (view, proj, _) = iso();
+        let t = Transform::default();
+        // 0.6 lies on BOTH the scale segment (0..1.2) and the translate shaft
+        // (0..1.5); the documented priority must pick the smaller Scale handle.
+        let m = scr(Vec3::X * 0.6, view, proj);
+        let got = detect_hover(&t, view, proj, m.x, m.y, W, H);
+        assert_eq!(
+            got,
+            Some(GizmoHandle::Scale(GizmoAxis::X)),
+            "overlapping scale/translate on +X should prefer Scale(X), got {got:?}"
+        );
+    }
+
+    #[test]
+    fn hover_scale_y_axis_prefers_scale_over_translate() {
+        let (view, proj, _) = iso();
+        let t = Transform::default();
+        let m = scr(Vec3::Y * 0.6, view, proj);
+        let got = detect_hover(&t, view, proj, m.x, m.y, W, H);
+        assert_eq!(
+            got,
+            Some(GizmoHandle::Scale(GizmoAxis::Y)),
+            "overlapping scale/translate on +Y should prefer Scale(Y), got {got:?}"
+        );
+    }
+
+    #[test]
+    fn hover_scale_z_axis_prefers_scale_over_translate() {
+        let (view, proj, _) = iso();
+        let t = Transform::default();
+        let m = scr(Vec3::Z * 0.6, view, proj);
+        let got = detect_hover(&t, view, proj, m.x, m.y, W, H);
+        assert_eq!(
+            got,
+            Some(GizmoHandle::Scale(GizmoAxis::Z)),
+            "overlapping scale/translate on +Z should prefer Scale(Z), got {got:?}"
+        );
+    }
+
+    // ── detect_hover: rotation rings (viewed face-on) ───────────────
+
+    #[test]
+    fn hover_rotate_x_axis() {
+        // Camera on +X so the X rotation ring (YZ plane) is seen face-on.
+        let (view, proj, _) = camera(Vec3::new(5.0, 0.0, 0.0), Vec3::Y);
+        let t = Transform::default();
+        // 45 degrees around the ring, clear of the Y and Z axes.
+        let c = ROT_RADIUS * std::f32::consts::FRAC_1_SQRT_2;
+        let m = scr(Vec3::new(0.0, c, c), view, proj);
+        let got = detect_hover(&t, view, proj, m.x, m.y, W, H);
+        assert_eq!(
+            got,
+            Some(GizmoHandle::Rotate(GizmoAxis::X)),
+            "hovering the X ring should select Rotate(X), got {got:?}"
+        );
+    }
+
+    #[test]
+    fn hover_rotate_y_axis() {
+        // Camera on +Y so the Y rotation ring (XZ plane) is seen face-on.
+        // Up must not be parallel to the view direction, so use +Z.
+        let (view, proj, _) = camera(Vec3::new(0.0, 5.0, 0.0), Vec3::Z);
+        let t = Transform::default();
+        let c = ROT_RADIUS * std::f32::consts::FRAC_1_SQRT_2;
+        let m = scr(Vec3::new(c, 0.0, c), view, proj);
+        let got = detect_hover(&t, view, proj, m.x, m.y, W, H);
+        assert_eq!(
+            got,
+            Some(GizmoHandle::Rotate(GizmoAxis::Y)),
+            "hovering the Y ring should select Rotate(Y), got {got:?}"
+        );
+    }
+
+    #[test]
+    fn hover_rotate_z_axis() {
+        // Camera on +Z so the Z rotation ring (XY plane) is seen face-on.
+        let (view, proj, _) = camera(Vec3::new(0.0, 0.0, 5.0), Vec3::Y);
+        let t = Transform::default();
+        let c = ROT_RADIUS * std::f32::consts::FRAC_1_SQRT_2;
+        let m = scr(Vec3::new(c, c, 0.0), view, proj);
+        let got = detect_hover(&t, view, proj, m.x, m.y, W, H);
+        assert_eq!(
+            got,
+            Some(GizmoHandle::Rotate(GizmoAxis::Z)),
+            "hovering the Z ring should select Rotate(Z), got {got:?}"
+        );
+    }
+
+    #[test]
+    fn hover_far_from_gizmo_returns_none() {
+        let (view, proj, _) = iso();
+        let t = Transform::default();
+        // Top-left corner pixel, hundreds of px from any gizmo feature.
+        let got = detect_hover(&t, view, proj, 5.0, 5.0, W, H);
+        assert_eq!(
+            got, None,
+            "a pixel far from the gizmo should hover nothing, got {got:?}"
+        );
+    }
+
+    // ── build_transform_gizmo: rotation rings ──────────────────────
+
+    #[test]
+    fn rotation_rings_are_circular_not_degenerate() {
+        // Regression: a wrong perpendicular basis collapsed every ring onto a
+        // single axis, producing a straight line whose points sit at varying
+        // distances from the origin. A correct ring keeps every vertex exactly
+        // at ROT_RADIUS. The rings are appended last, in X/Y/Z order.
+        let lines = build_transform_gizmo(&Transform::default());
+        let ring_vert_count = 3 * ROT_SEGMENTS * 2;
+        let ring_verts = &lines[lines.len() - ring_vert_count..];
+        assert_eq!(ring_verts.len(), ring_vert_count);
+        for v in ring_verts {
+            let r = Vec3::from_array(v.position).length();
+            assert!(
+                (r - ROT_RADIUS).abs() < 1e-3,
+                "every ring vertex should lie at radius {ROT_RADIUS}, got {r} \
+                 (the ring collapsed into a line)"
+            );
+        }
+    }
+
+    // ── build_transform_gizmo: arrow heads ─────────────────────────
+
+    #[test]
+    fn arrow_heads_have_four_distinct_base_corners_around_axis() {
+        // Regression: the arrow head used the same wrong perpendicular basis
+        // as the rotation rings (perp1 anti-parallel to perp2), collapsing the
+        // four base corners into two. The head must be a cross of four
+        // distinct corners, each at distance `head_size` from the axis and
+        // mirrored about it. Per axis the builder emits 2 line verts plus
+        // 8 head verts (tip, base) × 4; axes run in X/Y/Z order.
+        const HEAD_SIZE: f32 = 0.08;
+        let lines = build_transform_gizmo(&Transform::default());
+        let dirs = [Vec3::X, Vec3::Y, Vec3::Z];
+        for (axis, dir) in dirs.iter().enumerate() {
+            let section = &lines[axis * 10..axis * 10 + 10];
+            let tip = Vec3::from_array(section[2].position);
+            assert!(
+                (tip - *dir * TRANS_LEN).length() < 1e-4,
+                "arrow tip should sit at the axis end"
+            );
+            let bases: [Vec3; 4] = [
+                Vec3::from_array(section[3].position),
+                Vec3::from_array(section[5].position),
+                Vec3::from_array(section[7].position),
+                Vec3::from_array(section[9].position),
+            ];
+            // Four distinct corners.
+            for (i, b) in bases.iter().enumerate() {
+                for (j, other) in bases.iter().enumerate() {
+                    if i != j {
+                        assert!(
+                            (*b - *other).length() > 1e-4,
+                            "axis {axis}: base corners {i} and {j} coincide at {b:?} \
+                             (the head collapsed into a single line)"
+                        );
+                    }
+                }
+                // Every corner at distance HEAD_SIZE from the axis line.
+                let rel = *b - tip;
+                let off_axis = rel - *dir * rel.dot(*dir);
+                assert!(
+                    (off_axis.length() - HEAD_SIZE).abs() < 1e-4,
+                    "axis {axis}: base corner {i} should be {HEAD_SIZE} off the axis, \
+                     got {}",
+                    off_axis.length()
+                );
+            }
+            // Mirrored about the axis: opposite corners sum to a point on it,
+            // and the two cross arms are orthogonal.
+            let arm1 = bases[0] - bases[1];
+            let arm2 = bases[2] - bases[3];
+            assert!(
+                arm1.dot(*dir).abs() < 1e-4 && arm2.dot(*dir).abs() < 1e-4,
+                "axis {axis}: cross arms must be perpendicular to the axis"
+            );
+            assert!(
+                arm1.dot(arm2).abs() < 1e-4,
+                "axis {axis}: cross arms must be orthogonal to each other, dot = {}",
+                arm1.dot(arm2)
+            );
+        }
+    }
+
+    // ── build_transform_gizmo: scale boxes ─────────────────────────
+
+    #[test]
+    fn scale_boxes_have_eight_center_symmetric_corners() {
+        // Regression: the scale box used the same wrong perpendicular basis
+        // as the rotation rings, collapsing the 8 cube corners into 6 (a flat
+        // rectangle). A correct box has 8 distinct corners, all at distance
+        // box_s·√3 from the box center and centrally symmetric about it.
+        // The scale sections follow the translate sections: per axis 2 line
+        // verts plus 12 edges × 2 verts, axes in X/Y/Z order.
+        const BOX_S: f32 = 0.06;
+        let lines = build_transform_gizmo(&Transform::default());
+        let dirs = [Vec3::X, Vec3::Y, Vec3::Z];
+        for (axis, dir) in dirs.iter().enumerate() {
+            let start = 30 + axis * 26;
+            let section = &lines[start..start + 26];
+            let center = *dir * SCALE_LEN;
+            // Collect the unique corners from the 12 edge vertex pairs.
+            let mut corners: Vec<Vec3> = Vec::new();
+            for v in &section[2..] {
+                let p = Vec3::from_array(v.position);
+                if corners.iter().all(|c| (*c - p).length() > 1e-4) {
+                    corners.push(p);
+                }
+            }
+            assert_eq!(
+                corners.len(),
+                8,
+                "axis {axis}: box should have 8 distinct corners, got {} \
+                 (the box collapsed into a flat rectangle)",
+                corners.len()
+            );
+            let expected_r = BOX_S * 3.0f32.sqrt();
+            for (i, c) in corners.iter().enumerate() {
+                let r = (*c - center).length();
+                assert!(
+                    (r - expected_r).abs() < 1e-4,
+                    "axis {axis}: corner {i} should be {expected_r} from the box \
+                     center, got {r}"
+                );
+                // Central symmetry: the antipodal point must also be a corner.
+                let antipodal = 2.0 * center - *c;
+                assert!(
+                    corners.iter().any(|q| (*q - antipodal).length() < 1e-4),
+                    "axis {axis}: corner {i} has no antipodal corner (not symmetric \
+                     about the box center)"
+                );
+            }
+        }
+    }
+
+    // ── apply_drag: translate ───────────────────────────────────────
+
+    #[test]
+    fn drag_translate_x_moves_only_x() {
+        let (view, proj, eye) = iso();
+        let cam = ctx(view, proj, eye);
+        let mut t = Transform::default();
+        let dir = axis_screen_dir(Vec3::X, TRANS_LEN, view, proj);
+        apply_drag(&mut t, GizmoHandle::Translate(GizmoAxis::X), dir * 100.0, &cam);
+
+        let expected = 100.0 * eye.length() * 0.002;
+        assert!(
+            (t.translation.x - expected).abs() < 1e-3,
+            "dragging +X by 100px should move x by ~{expected}, got {}",
+            t.translation.x
+        );
+        assert_eq!(t.translation.y, 0.0, "y must be untouched");
+        assert_eq!(t.translation.z, 0.0, "z must be untouched");
+    }
+
+    #[test]
+    fn drag_translate_y_moves_only_y() {
+        let (view, proj, eye) = iso();
+        let cam = ctx(view, proj, eye);
+        let mut t = Transform::default();
+        let dir = axis_screen_dir(Vec3::Y, TRANS_LEN, view, proj);
+        apply_drag(&mut t, GizmoHandle::Translate(GizmoAxis::Y), dir * 100.0, &cam);
+
+        let expected = 100.0 * eye.length() * 0.002;
+        assert!(
+            (t.translation.y - expected).abs() < 1e-3,
+            "dragging +Y by 100px should move y by ~{expected}, got {}",
+            t.translation.y
+        );
+        assert_eq!(t.translation.x, 0.0, "x must be untouched");
+        assert_eq!(t.translation.z, 0.0, "z must be untouched");
+    }
+
+    #[test]
+    fn drag_translate_z_moves_only_z() {
+        let (view, proj, eye) = iso();
+        let cam = ctx(view, proj, eye);
+        let mut t = Transform::default();
+        let dir = axis_screen_dir(Vec3::Z, TRANS_LEN, view, proj);
+        apply_drag(&mut t, GizmoHandle::Translate(GizmoAxis::Z), dir * 100.0, &cam);
+
+        let expected = 100.0 * eye.length() * 0.002;
+        assert!(
+            (t.translation.z - expected).abs() < 1e-3,
+            "dragging +Z by 100px should move z by ~{expected}, got {}",
+            t.translation.z
+        );
+        assert_eq!(t.translation.x, 0.0, "x must be untouched");
+        assert_eq!(t.translation.y, 0.0, "y must be untouched");
+    }
+
+    // ── apply_drag: rotate ──────────────────────────────────────────
+
+    #[test]
+    fn drag_rotate_x_changes_rotation_not_position() {
+        let (view, proj, eye) = camera(Vec3::new(0.0, 0.0, 5.0), Vec3::Y);
+        let cam = ctx(view, proj, eye);
+        let mut t = Transform::default();
+        apply_drag(&mut t, GizmoHandle::Rotate(GizmoAxis::X), Vec2::new(50.0, 0.0), &cam);
+
+        assert_ne!(
+            t.rotation,
+            Quat::IDENTITY,
+            "a rotate drag should change the rotation"
+        );
+        assert!(
+            t.rotation.x.abs() > 1e-4,
+            "Rotate(X) should produce a rotation about X, got {:?}",
+            t.rotation
+        );
+        assert!(
+            t.rotation.y.abs() < 1e-6 && t.rotation.z.abs() < 1e-6,
+            "Rotate(X) must not twist about Y or Z, got {:?}",
+            t.rotation
+        );
+        assert_eq!(t.translation, Vec3::ZERO, "position must not move");
+        assert_eq!(t.scale, Vec3::ONE, "scale must not change");
+    }
+
+    #[test]
+    fn drag_rotate_y_changes_rotation_not_position() {
+        let (view, proj, eye) = camera(Vec3::new(0.0, 0.0, 5.0), Vec3::Y);
+        let cam = ctx(view, proj, eye);
+        let mut t = Transform::default();
+        apply_drag(&mut t, GizmoHandle::Rotate(GizmoAxis::Y), Vec2::new(50.0, 0.0), &cam);
+
+        assert_ne!(t.rotation, Quat::IDENTITY, "a rotate drag should change the rotation");
+        assert!(
+            t.rotation.y.abs() > 1e-4,
+            "Rotate(Y) should produce a rotation about Y, got {:?}",
+            t.rotation
+        );
+        assert!(
+            t.rotation.x.abs() < 1e-6 && t.rotation.z.abs() < 1e-6,
+            "Rotate(Y) must not twist about X or Z, got {:?}",
+            t.rotation
+        );
+        assert_eq!(t.translation, Vec3::ZERO, "position must not move");
+        assert_eq!(t.scale, Vec3::ONE, "scale must not change");
+    }
+
+    #[test]
+    fn drag_rotate_z_changes_rotation_not_position() {
+        let (view, proj, eye) = camera(Vec3::new(0.0, 0.0, 5.0), Vec3::Y);
+        let cam = ctx(view, proj, eye);
+        let mut t = Transform::default();
+        apply_drag(&mut t, GizmoHandle::Rotate(GizmoAxis::Z), Vec2::new(50.0, 0.0), &cam);
+
+        assert_ne!(t.rotation, Quat::IDENTITY, "a rotate drag should change the rotation");
+        assert!(
+            t.rotation.z.abs() > 1e-4,
+            "Rotate(Z) should produce a rotation about Z, got {:?}",
+            t.rotation
+        );
+        assert!(
+            t.rotation.x.abs() < 1e-6 && t.rotation.y.abs() < 1e-6,
+            "Rotate(Z) must not twist about X or Y, got {:?}",
+            t.rotation
+        );
+        assert_eq!(t.translation, Vec3::ZERO, "position must not move");
+        assert_eq!(t.scale, Vec3::ONE, "scale must not change");
+    }
+
+    // ── apply_drag: scale ───────────────────────────────────────────
+
+    #[test]
+    fn drag_scale_x_scales_only_x() {
+        let (view, proj, eye) = iso();
+        let cam = ctx(view, proj, eye);
+        let mut t = Transform::default();
+        let dir = axis_screen_dir(Vec3::X, SCALE_LEN, view, proj);
+        apply_drag(&mut t, GizmoHandle::Scale(GizmoAxis::X), dir * 100.0, &cam);
+
+        assert!(
+            t.scale.x > 1.0,
+            "dragging +X scale should grow x above 1.0, got {}",
+            t.scale.x
+        );
+        assert_eq!(t.scale.y, 1.0, "y scale must be untouched");
+        assert_eq!(t.scale.z, 1.0, "z scale must be untouched");
+        assert_eq!(t.translation, Vec3::ZERO, "position must not move");
+        assert_eq!(t.rotation, Quat::IDENTITY, "rotation must not change");
+    }
+
+    #[test]
+    fn drag_scale_clamps_to_minimum() {
+        let (view, proj, eye) = iso();
+        let cam = ctx(view, proj, eye);
+        let mut t = Transform::default();
+        let dir = axis_screen_dir(Vec3::X, SCALE_LEN, view, proj);
+        // Drag hard against the axis: without the clamp the scale would go negative.
+        apply_drag(&mut t, GizmoHandle::Scale(GizmoAxis::X), dir * -100000.0, &cam);
+
+        assert_eq!(
+            t.scale.x, 0.01,
+            "scale must be clamped to the 0.01 minimum, got {}",
+            t.scale.x
+        );
+        assert_eq!(t.scale.y, 1.0, "y scale must be untouched");
+        assert_eq!(t.scale.z, 1.0, "z scale must be untouched");
+    }
 }

@@ -20,3 +20,6 @@ pub mod physics;
 pub mod renderer;
 pub mod scene;
 pub mod terrain;
+
+#[cfg(test)]
+mod test_utils;

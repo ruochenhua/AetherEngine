@@ -104,6 +104,17 @@ pub trait Pass {
     /// per-frame data don't need to override this.
     fn apply_frame(&mut self, _frame: &RenderFrame) {}
 
+    /// Update the pass's screen dimensions.
+    ///
+    /// Called by the Scheduler on resize *before* it reads pass signatures, so
+    /// resolution-dependent write sizes (e.g. half-resolution SSR/SSAO targets)
+    /// and internal intermediate textures (e.g. bloom mips) are allocated at the
+    /// new size within the same rebuild instead of lagging one resize behind.
+    ///
+    /// Default is a no-op for passes whose only resolution-dependent resources
+    /// are the full-screen transient textures the scheduler allocates for them.
+    fn set_screen_size(&mut self, _width: u32, _height: u32) {}
+
     /// Decide whether this pass should run this frame.
     ///
     /// Default is `true`. Passes can override this to skip execution when

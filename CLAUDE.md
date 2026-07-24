@@ -45,8 +45,8 @@ See `docs/agents/visual-test-workflow.md` for the full verification protocol and
 
 ### Module Size
 
-- Each module < 500 LOC. AI reads the whole module in one context window.
-- If a file exceeds 500 LOC, extract a sub-module.
+- One file, one responsibility. ~600 LOC of pure logic is healthy (inline shaders don't count).
+- Split only when a file grows past ~800 LOC of pure logic *and* a second independent responsibility can be identified — responsibility, not line count, drives the split.
 
 ### Shaders
 

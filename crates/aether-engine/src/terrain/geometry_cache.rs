@@ -248,18 +248,10 @@ impl TerrainGeometry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::headless_device_queue;
     use crate::asset::terrain_material::TerrainMaterial;
     use crate::ecs::components::Terrain;
     use crate::scene::{TerrainGeometry as TerrainGeometryConfig, TerrainSource};
-
-    fn headless_device() -> (wgpu::Device, wgpu::Queue) {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter =
-            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
-                .expect("need adapter");
-        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-            .expect("need device")
-    }
 
     fn default_terrain() -> Terrain {
         Terrain {
@@ -277,7 +269,10 @@ mod tests {
 
     #[test]
     fn update_generates_chunks() {
-        let (device, queue) = headless_device();
+        let Some((device, queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let mut geom = TerrainGeometry::new(&device);
         let terrain = default_terrain();
         let camera = FlyCamera::default();
@@ -292,7 +287,10 @@ mod tests {
 
     #[test]
     fn terrain_change_rebuilds_geometry() {
-        let (device, queue) = headless_device();
+        let Some((device, queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let mut geom = TerrainGeometry::new(&device);
         let terrain_a = default_terrain();
         let camera = FlyCamera::default();

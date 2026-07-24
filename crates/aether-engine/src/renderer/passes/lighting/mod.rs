@@ -11,7 +11,7 @@ use crate::renderer::pass::{InitContext, Pass, PassSignature, ResHandle};
 use crate::renderer::resource::*;
 use crate::renderer::resource_table::ResourceTable;
 
-mod pipeline;
+pub(crate) mod pipeline;
 
 /// Lighting Pass implementation.
 pub struct LightingPass {
@@ -328,5 +328,70 @@ impl LightingPass {
         } else {
             self.current_key &= !0b100;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::headless_device_queue;
+    use std::any::TypeId;
+
+    #[test]
+    fn signature_declares_gbuffer_shadow_ao_reads_and_scene_color_write() {
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
+        let sig = LightingPass::new(&device, wgpu::TextureFormat::Bgra8UnormSrgb).signature();
+        assert_eq!(sig.name, "Lighting");
+
+        // 4 G-Buffer attachments + shadow depth + blurred AO.
+        let expected_reads: [(TypeId, &'static str); 6] = [
+            (TypeId::of::<GPosition>(), GPosition::NAME),
+            (TypeId::of::<GNormal>(), GNormal::NAME),
+            (TypeId::of::<GAlbedo>(), GAlbedo::NAME),
+            (TypeId::of::<GMaterial>(), GMaterial::NAME),
+            (TypeId::of::<ShadowDepth>(), ShadowDepth::NAME),
+            (TypeId::of::<AOTextureBlurred>(), AOTextureBlurred::NAME),
+        ];
+        assert_eq!(
+            sig.reads.len(),
+            expected_reads.len(),
+            "Lighting must read exactly the 4 G-Buffer textures + shadow map + blurred AO"
+        );
+        for (type_id, name) in expected_reads {
+            assert!(
+                sig.reads
+                    .iter()
+                    .any(|s| s.type_id == type_id && s.name == name),
+                "missing read slot for {name}"
+            );
+        }
+
+        assert_eq!(sig.writes.len(), 1, "Lighting writes exactly one target");
+        assert_eq!(sig.writes[0].type_id, TypeId::of::<SceneColor>());
+        assert_eq!(sig.writes[0].name, SceneColor::NAME);
+        assert_eq!(
+            sig.writes[0].format,
+            Some(wgpu::TextureFormat::Rgba16Float),
+            "SceneColor must stay linear HDR for the post-process chain"
+        );
+    }
+
+    #[test]
+    fn init_builds_all_eight_pipeline_variants() {
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
+        // Compiles the inline WGSL and builds one pipeline per
+        // ssao/shadow/ibl bitmask combination — must not panic.
+        let pass = LightingPass::new(&device, wgpu::TextureFormat::Bgra8UnormSrgb);
+        assert_eq!(
+            pass.pipelines.len(),
+            8,
+            "expected 8 pipeline variants (ssao × shadow × ibl bitmask)"
+        );
     }
 }

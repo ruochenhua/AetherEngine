@@ -8,13 +8,38 @@ mod apply;
 mod helpers;
 mod render;
 
-pub(crate) use apply::{apply, apply_undo};
+pub(crate) use apply::{apply, apply_undo, snapshot_entity};
 
 use aether_engine::ecs::components::{
     Atmosphere, Camera, Clouds, GodRay, Light, Terrain, Transform, Water,
 };
 use aether_engine::ecs::{Entity, World};
 use aether_engine::renderer::renderable::MaterialUniform;
+
+/// Snapshot of a despawned entity's components, used to undo deletions.
+///
+/// Every field mirrors one component type the editor can spawn; `None` means
+/// the entity did not have that component. Restoring re-spawns a fresh entity
+/// (hecs does not reuse despawned ids) and re-inserts the captured components.
+#[derive(Clone)]
+pub(crate) struct DeletedEntity {
+    /// Entity id at snapshot time. Stale after a restore — always re-captured.
+    pub(crate) entity: Entity,
+    pub(crate) transform: Option<Transform>,
+    pub(crate) mesh: Option<aether_engine::ecs::components::MeshHandle>,
+    pub(crate) material: Option<MaterialUniform>,
+    pub(crate) visibility: Option<aether_engine::ecs::components::Visibility>,
+    pub(crate) name: Option<aether_engine::ecs::components::Name>,
+    pub(crate) light: Option<Light>,
+    pub(crate) camera: Option<Camera>,
+    pub(crate) terrain: Option<Terrain>,
+    pub(crate) water: Option<Water>,
+    pub(crate) atmosphere: Option<Atmosphere>,
+    pub(crate) clouds: Option<Clouds>,
+    pub(crate) god_ray: Option<GodRay>,
+    /// Whether the entity had the `Selected` marker when deleted.
+    pub(crate) selected: bool,
+}
 
 /// A reversible editor action.
 #[allow(clippy::large_enum_variant)]
@@ -54,6 +79,12 @@ pub(crate) enum EditorCommand {
     GodRay { entity: Entity, old_god_ray: GodRay },
     /// Restore a Camera to a previous value.
     Camera { entity: Entity, old_camera: Camera },
+    /// Entities deleted by the user. Applying the undo re-spawns them from
+    /// the snapshots; the returned inverse command is `Restore`.
+    Delete { entities: Vec<DeletedEntity> },
+    /// Inverse of `Delete`: entities that were just restored by an undo.
+    /// Applying it re-deletes them and returns a fresh `Delete` snapshot.
+    Restore { entities: Vec<DeletedEntity> },
 }
 
 /// Editable snapshot of the currently selected entity.
@@ -96,6 +127,7 @@ pub(crate) enum InspectorTarget {
 }
 
 impl InspectorTarget {
+    #[allow(dead_code)] // used by unit tests
     pub(crate) fn entity(&self) -> Entity {
         match *self {
             InspectorTarget::Mesh { entity, .. } => entity,
@@ -110,13 +142,21 @@ impl InspectorTarget {
     }
 }
 
-/// Extract an inspector target from the single `Selected` entity, if any.
+/// Extract an inspector target from the first `Selected` entity, if any.
+#[allow(dead_code)] // used by unit tests; the UI anchors via `extract_entity`
 pub(crate) fn extract(world: &World) -> Option<InspectorTarget> {
     let (entity, _) = world
         .query::<(Entity, &aether_engine::ecs::components::Selected)>()
         .iter()
         .next()?;
+    extract_entity(world, entity)
+}
 
+/// Extract an inspector target for a specific entity.
+///
+/// Used with multi-selection: the inspector shows the selection's anchor
+/// (most recently selected entity) regardless of query iteration order.
+pub(crate) fn extract_entity(world: &World, entity: Entity) -> Option<InspectorTarget> {
     // Mesh object: Transform + MeshHandle + MaterialUniform.
     let mut q = world.query_one::<(
         &Transform,
@@ -419,19 +459,24 @@ mod tests {
         }
     }
 
-    fn headless_device() -> wgpu::Device {
+    fn headless_device() -> Option<wgpu::Device> {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
         let adapter =
             pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
-                .expect("need adapter");
-        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-            .expect("need device")
-            .0
+                .ok()?;
+        Some(
+            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
+                .expect("need device")
+                .0,
+        )
     }
 
     #[test]
     fn extract_prefers_mesh_over_light() {
-        let device = headless_device();
+        let Some(device) = headless_device() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let mut world = World::new();
         let cpu_mesh = aether_engine::asset::mesh::CpuMesh::cube();
         let gpu_mesh = std::sync::Arc::new(aether_engine::asset::mesh::GpuMesh::from_cpu(
@@ -458,6 +503,219 @@ mod tests {
         match target {
             InspectorTarget::Mesh { .. } => {}
             _ => panic!("expected Mesh target"),
+        }
+    }
+
+    #[test]
+    fn extract_entity_uses_given_anchor_among_multiple_selected() {
+        use aether_engine::ecs::components::Name;
+        let mut world = World::new();
+        let first = world.spawn((
+            Transform::default(),
+            Light {
+                light_type: LightType::Directional,
+                color: [1.0, 1.0, 1.0],
+                intensity: 1.0,
+                cast_shadow: true,
+            },
+            Name("First".into()),
+            Selected,
+        ));
+        let second = world.spawn((
+            Transform::default(),
+            Light {
+                light_type: LightType::Point,
+                color: [1.0, 0.0, 0.0],
+                intensity: 3.0,
+                cast_shadow: false,
+            },
+            Name("Second".into()),
+            Selected,
+        ));
+
+        // The inspector follows the explicit anchor, not query order.
+        let target = extract_entity(&world, second).expect("should extract");
+        assert_eq!(target.entity(), second);
+        match target {
+            InspectorTarget::Light { light, .. } => {
+                assert_eq!(light.light_type, LightType::Point);
+            }
+            _ => panic!("expected Light target"),
+        }
+        let target = extract_entity(&world, first).expect("should extract");
+        assert_eq!(target.entity(), first);
+    }
+
+    #[test]
+    fn delete_undo_restores_multiple_entities_and_redo_deletes_again() {
+        use aether_engine::ecs::components::Name;
+        let mut world = World::new();
+        let a = world.spawn((Transform::default(), Name("A".into()), Selected));
+        let b = world.spawn((
+            Transform {
+                translation: Vec3::new(1.0, 2.0, 3.0),
+                ..Default::default()
+            },
+            Name("B".into()),
+            Selected,
+        ));
+
+        // Simulate the Delete key: snapshot every selected entity, despawn all.
+        let cmd = EditorCommand::Delete {
+            entities: vec![snapshot_entity(&world, a), snapshot_entity(&world, b)],
+        };
+        world.despawn(a).unwrap();
+        world.despawn(b).unwrap();
+        assert_eq!(world.len(), 0);
+
+        // Undo: both come back with fresh ids, components and Selected intact.
+        let redo_cmd = apply_undo(&mut world, &cmd);
+        assert_eq!(world.len(), 2);
+        let names: Vec<String> = world
+            .query::<(&Name, &Selected)>()
+            .iter()
+            .map(|(name, _)| name.0.clone())
+            .collect();
+        assert!(names.contains(&"A".to_string()) && names.contains(&"B".to_string()));
+        let restored_b_transform = world
+            .query::<(&Name, &Transform)>()
+            .iter()
+            .find(|(name, _)| name.0 == "B")
+            .map(|(_, t)| t.clone())
+            .expect("B should be restored");
+        assert_eq!(restored_b_transform.translation, Vec3::new(1.0, 2.0, 3.0));
+
+        // Redo: deletes the restored entities again.
+        let undo_cmd2 = apply_undo(&mut world, &redo_cmd);
+        assert_eq!(world.len(), 0);
+
+        // Undo again: restores once more (fresh snapshots were captured).
+        let _ = apply_undo(&mut world, &undo_cmd2);
+        assert_eq!(world.len(), 2);
+    }
+
+    #[test]
+    fn undo_component_edit_with_stale_id_after_delete_restore_is_noop() {
+        use aether_engine::ecs::components::Name;
+        let mut world = World::new();
+        let entity = world.spawn((Transform::default(), Name("A".into()), Selected));
+
+        // Component-level edit: move the entity, recording the pre-edit
+        // value in an old-style undo command referencing the original id.
+        let moved = Transform {
+            translation: Vec3::new(5.0, 0.0, 0.0),
+            ..Default::default()
+        };
+        *world.query_one_mut::<&mut Transform>(entity).unwrap() = moved;
+        let component_cmd = EditorCommand::Transform {
+            entity,
+            old_transform: Transform::default(),
+        };
+
+        // Delete the entity, then undo the deletion: it comes back with a
+        // fresh id, so `component_cmd` now references a dead id.
+        let delete_cmd = EditorCommand::Delete {
+            entities: vec![snapshot_entity(&world, entity)],
+        };
+        world.despawn(entity).unwrap();
+        let _restore_cmd = apply_undo(&mut world, &delete_cmd);
+        assert_eq!(world.len(), 1);
+        assert!(!world.contains(entity));
+
+        // Undoing the older component edit must be a no-op, not a panic.
+        let redo_cmd = apply_undo(&mut world, &component_cmd);
+
+        // The restored entity keeps the transform from the delete snapshot.
+        let restored = world
+            .query::<&Transform>()
+            .iter()
+            .next()
+            .expect("restored entity should exist")
+            .clone();
+        assert_eq!(restored.translation, Vec3::new(5.0, 0.0, 0.0));
+        // The inverse command is the stale command returned unchanged.
+        match redo_cmd {
+            EditorCommand::Transform {
+                entity: cmd_entity,
+                old_transform,
+            } => {
+                assert_eq!(cmd_entity, entity);
+                assert_eq!(old_transform, Transform::default());
+            }
+            _ => panic!("expected Transform command"),
+        }
+    }
+
+    #[test]
+    fn undo_component_edit_for_despawned_entity_is_noop() {
+        let mut world = World::new();
+        let entity = world.spawn((Transform::default(), Selected));
+
+        let component_cmd = EditorCommand::Transform {
+            entity,
+            old_transform: Transform {
+                translation: Vec3::new(1.0, 2.0, 3.0),
+                ..Default::default()
+            },
+        };
+        world.despawn(entity).unwrap();
+
+        // The entity was never restored; undoing the edit must be a no-op,
+        // not a panic.
+        let redo_cmd = apply_undo(&mut world, &component_cmd);
+        assert_eq!(world.len(), 0);
+        match redo_cmd {
+            EditorCommand::Transform {
+                entity: cmd_entity,
+                old_transform,
+            } => {
+                assert_eq!(cmd_entity, entity);
+                assert_eq!(old_transform.translation, Vec3::new(1.0, 2.0, 3.0));
+            }
+            _ => panic!("expected Transform command"),
+        }
+    }
+
+    #[test]
+    fn undo_light_edit_still_swaps_light_and_transform() {
+        let (mut world, entity) = world_with_light();
+
+        // Current state: intensity 9.0 and a rotated transform. The undo
+        // command restores intensity 1.0 and the default transform.
+        let rotated = Transform {
+            rotation: light_direction_to_rotation(Vec3::new(0.0, 0.0, -1.0)),
+            ..Default::default()
+        };
+        *world.query_one_mut::<&mut Transform>(entity).unwrap() = rotated.clone();
+        world.query_one_mut::<&mut Light>(entity).unwrap().intensity = 9.0;
+
+        let cmd = EditorCommand::Light {
+            entity,
+            old_light: Light {
+                light_type: LightType::Directional,
+                color: [1.0, 1.0, 1.0],
+                intensity: 1.0,
+                cast_shadow: true,
+            },
+            old_transform: Transform::default(),
+        };
+        let redo_cmd = apply_undo(&mut world, &cmd);
+
+        assert_eq!(world.query_one_mut::<&Light>(entity).unwrap().intensity, 1.0);
+        assert_eq!(
+            *world.query_one_mut::<&Transform>(entity).unwrap(),
+            Transform::default()
+        );
+        match redo_cmd {
+            EditorCommand::Light {
+                old_light,
+                old_transform,
+                ..
+            } => {
+                assert_eq!(old_light.intensity, 9.0);
+                assert_eq!(old_transform, rotated);
+            }
+            _ => panic!("expected Light command"),
         }
     }
 }

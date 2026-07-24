@@ -188,21 +188,17 @@ impl GpuTimer {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn headless_device() -> (wgpu::Device, wgpu::Queue) {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter =
-            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
-                .expect("need adapter");
-        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-            .expect("need device")
-    }
+    use crate::test_utils::headless_device_queue;
 
     #[test]
     fn timer_capacity_matches_pass_count() {
-        let (device, _queue) = headless_device();
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let Some(timer) = GpuTimer::new(&device, &["A".into(), "B".into()]) else {
             // Timestamp queries not supported on this adapter — skip.
+            eprintln!("SKIP: timestamp queries not supported on this adapter");
             return;
         };
         assert_eq!(timer.capacity, 2 + 2 * 2);
@@ -214,8 +210,12 @@ mod tests {
 
     #[test]
     fn timer_query_indices_are_monotonic() {
-        let (device, _queue) = headless_device();
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let Some(timer) = GpuTimer::new(&device, &["P0".into(), "P1".into(), "P2".into()]) else {
+            eprintln!("SKIP: timestamp queries not supported on this adapter");
             return;
         };
         let mut indices = vec![timer.frame_start_index(), timer.frame_end_index()];

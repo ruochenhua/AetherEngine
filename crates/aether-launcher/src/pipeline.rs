@@ -56,6 +56,10 @@ pub fn build_pipeline(
     ssao.set_screen_size(width, height);
     let mut ao_blur = AOBlurPass::init(&ctx);
     ao_blur.set_screen_size(width, height);
+    // SSR traces at half resolution derived from its screen size; without this
+    // it would allocate its trace target at the hardcoded 640x360 default.
+    let mut ssr = SSRPass::init(&ctx);
+    ssr.set_screen_size(width, height);
 
     let mut builder = PipelineBuilder::new()
         .add_pass(ShadowPass::init(&ctx))
@@ -69,7 +73,7 @@ pub fn build_pipeline(
         .add_pass(LightingPass::init(&ctx))
         .add_pass(AtmospherePass::init(&ctx))
         .add_pass(VolumetricCloudPass::init(&ctx))
-        .add_pass(SSRPass::init(&ctx))
+        .add_pass(ssr)
         .add_pass(GodRayPass::init(&ctx))
         .add_pass(WaterReflectionPass::init(&ctx))
         .add_pass(WaterPass::init(&ctx))

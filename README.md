@@ -13,10 +13,10 @@ A modern rendering engine built with **Rust** and **wgpu**, designed for learnin
 - **Deferred Shading**: G-Buffer-based Cook-Torrance PBR (GGX NDF + Smith G + Schlick Fresnel)
 - **Image-Based Lighting**: Diffuse irradiance + specular prefiltered cubemap + BRDF LUT
 - **Skybox**: High-resolution environment cubemap rendering
-- **UE-style Fly Camera**: Left-click drag to look, WASD + QE movement, scroll speed
+- **UE-style Fly Camera**: Alt + left-drag to look, WASD + QE movement, scroll speed
 - **Debug Tools**: World grid, RGB axis gizmo, per-component lighting + IBL debug
 - **Scene Editor**: Pick objects by click, transform gizmo (translate / rotate / scale), hierarchy panel, inspector (position / rotation / scale / material), undo/redo, delete, open/import/save scenes (RON), fullscreen viewport toggle
-- **AI-First**: Every module fits a single AI context window; adding a pass = one file + one registration line
+- **AI-First**: Single-responsibility modules (~600 LOC of pure logic is healthy, inline shaders excluded); adding a pass = one file + one registration line
 - **Test-Driven**: Red-green-refactor on every change; build-time catch for resource wiring errors
 
 ## 🚀 Quick Start
@@ -37,17 +37,20 @@ cargo run -p aether-launcher
 
 | Input | Action |
 |-------|--------|
-| `Left Mouse + Drag` | Look around |
+| `Alt + Left Mouse + Drag` | Look around (yaw / pitch) |
+| `Left Click` | Pick object in viewport (`Shift`/`Ctrl` + Click adds to the selection) |
+| `Left Drag` on a gizmo handle | Translate / rotate / scale the selected entity |
+| `Delete` | Delete selected entities |
 | `W A S D` | Move forward / left / back / right |
 | `Q` / `E` | Move down / up (world space) |
 | `Scroll` | Adjust movement speed |
-| `0` – `9` | Lighting debug: Full / Ambient / Diffuse / Specular / Normals / NdotL / Shadow / Direct / IBL / Alpha |
-| `F1` – `F4` | IBL/Skybox debug: NormalAlpha / NDC / EnvFix / VDir |
-| `Alt + Left Drag` | Orbit camera (editor mode) |
-| `Left Click` | Pick object in viewport |
+| `0` – `9` | Lighting debug: Full / Ambient / Diffuse / Specular / Normals / NdotL / Shadow / Direct / IBL / Alpha(P) |
+| `F1` – `F5` | Extra debug views: Alpha(N) / NDC / EnvFix / VDir / SSAO |
+| `F6` | Cycle SSR debug mode |
+| `F7` | CSM shadow debug view |
 | `⛶ Full Screen` | Toggle fullscreen viewport (hides side panels) |
 
-> **Note:** Debug hotkeys (`0`–`9`, `F1`–`F4`) are automatically blocked when an egui input field has keyboard focus, preventing accidental mode switches while editing values.
+> **Note:** Debug hotkeys (`0`–`9`, `F1`–`F7`) are automatically blocked when an egui input field has keyboard focus, preventing accidental mode switches while editing values.
 
 ## 🤖 AI-First Design
 
@@ -57,7 +60,7 @@ Aether Engine is not just built *with* AI — it is built **for** AI. Every desi
 
 | Principle | What it means |
 |-----------|---------------|
-| **Single-file modules** | Each module < 500 LOC. An AI can read, understand, and regenerate a module in one context window. |
+| **Single-responsibility modules** | One file, one responsibility. ~600 LOC of pure logic is healthy (inline shaders don't count); split past ~800 LOC only when a second independent responsibility emerges. |
 | **Declarative over imperative** | Pipeline structure is declared via `PipelineBuilder::add(pass)`, not hidden in a 600-line render loop. |
 | **Type-safe wiring** | `ResHandle<GPosition>` vs `ResHandle<GNormal>` — the compiler catches resource mix-ups before render time. |
 | **Build-time failure** | Missing resource producer → panic at `build()`. TDD first cycle catches it. No runtime black-screen debugging. |
@@ -68,23 +71,18 @@ Aether Engine is not just built *with* AI — it is built **for** AI. Every desi
 ### Module Dependency Graph
 
 ```
-main.rs (thin orchestration, ~80 lines)
+main.rs (~7 lines) ──→ app.rs (launcher orchestration: event loop + editor UI)
   │
-  ├── PipelineBuilder ──→ Scheduler ──→ [Passes in topological order]
-  │     ↑                                    │
-  │     └── ShadowPass.init()               │
-  │     └── GBufferPass.init()              │
-  │     └── LightingPass.init()             │
-  │     └── DebugLinePass.init()            │
-  │                                          │
-  ├── SceneLoader ──→ SceneResources { renderables, lighting }
+  ├── pipeline::build_pipeline() ──→ PipelineBuilder ──→ Scheduler ──→ [passes in topological order]
+  ├── SceneLoader ──→ RON scene → ECS World entities + LightingUniforms
+  ├── Extract ──→ per-frame RenderBatch from the ECS World
   ├── FlyCamera ──→ view/proj matrices
   ├── InputManager ──→ keyboard/mouse state
-  └── egui ──→ debug overlay
+  └── egui ──→ editor UI + debug overlay
 ```
 
 **Dependency rules:**
-- `main.rs` depends on all public APIs — but only through thin orchestration
+- The launcher (`main.rs` + `app.rs`) depends on all public APIs — but only through thin orchestration
 - Pass modules only depend on `Pass` trait + `wgpu` + their own shaders
 - Adding a pass: create `passes/new_pass.rs` → add one line in `build_pipeline()` → add one setter call in main loop
 - Scheduler, PipelineBuilder, ResourceTable are **write-once** infrastructure
@@ -120,24 +118,48 @@ main.rs (thin orchestration, ~80 lines)
 │   │   └── src/
 │   │       ├── lib.rs
 │   │       ├── ecs/              # ECS (hecs wrapper)
-│   │       ├── scene/            # Scene loading + RON deserialization
+│   │       ├── scene/            # Scene loading + RON (de)serialization
 │   │       ├── asset/            # Asset management + mesh registry
+│   │       ├── terrain/          # Chunked-LOD terrain geometry + material
+│   │       ├── clouds/           # Procedural noise textures for volumetric clouds
 │   │       ├── renderer/         # Rendering core
-│   │       │   ├── pass.rs       # Pass trait (signature / init / resolve / execute)
-│   │       │   ├── scheduler.rs  # Scheduler + PipelineBuilder
-│   │       │   ├── resource.rs   # ResHandle<T> + ResourceTable
-│   │       │   ├── ibl.rs        # IBL precomputation + skybox
-│   │       │   ├── camera.rs     # FlyCamera
-│   │       │   └── passes/
-│   │       │       ├── template.rs  # AI copy-paste template
-│   │       │       ├── gbuffer.rs   # G-Buffer (MRT)
-│   │       │       ├── lighting.rs  # Deferred lighting
-│   │       │       └── debug.rs     # Line rendering (grid, gizmo)
+│   │       │   ├── pass.rs            # Pass trait (signature / init / resolve / execute)
+│   │       │   ├── pipeline_builder.rs# PipelineBuilder + topological sort
+│   │       │   ├── scheduler.rs       # Scheduler (execution + resize rebuild)
+│   │       │   ├── resource.rs        # ResHandle<T> + resource tags
+│   │       │   ├── resource_table.rs  # ResourceTable (transient textures)
+│   │       │   ├── frame.rs           # RenderFrame per-frame data
+│   │       │   ├── extract.rs         # ECS → RenderBatch extraction
+│   │       │   ├── context.rs         # wgpu context + RenderContext
+│   │       │   ├── camera.rs          # FlyCamera
+│   │       │   ├── ibl/               # IBL precomputation + skybox
+│   │       │   └── passes/            # All render passes (see Render Pipeline below)
+│   │       │       ├── template.rs          # AI copy-paste template
+│   │       │       ├── shadow.rs            # Cascaded shadow maps
+│   │       │       ├── gbuffer.rs           # G-Buffer (MRT)
+│   │       │       ├── terrain/             # Terrain into G-Buffer (optional)
+│   │       │       ├── ssao.rs, ao_blur.rs  # SSAO + position-aware blur (half-res)
+│   │       │       ├── lighting/            # Deferred lighting
+│   │       │       ├── atmosphere.rs        # Analytic sky
+│   │       │       ├── volumetric_cloud/    # Ray-marched volumetric clouds
+│   │       │       ├── ssr/                 # Screen-space reflections
+│   │       │       ├── god_ray.rs           # God rays
+│   │       │       ├── water_reflection.rs  # Planar water reflection
+│   │       │       ├── water/               # Forward water pass
+│   │       │       ├── composite.rs         # Merge opaque + water + clouds + god rays
+│   │       │       ├── bloom/               # Bloom mip chain
+│   │       │       ├── tone_mapping.rs      # HDR → LDR
+│   │       │       ├── fxaa.rs              # FXAA to swapchain
+│   │       │       └── debug.rs             # Line rendering (grid, gizmo)
 │   │       ├── physics/          # Physics (reserved)
 │   │       ├── math.rs
-│   │       ├── input.rs
-│   │       └── window.rs
+│   │       └── input.rs
 │   └── aether-launcher/         # Launcher binary (thin orchestration)
+│       └── src/
+│           ├── main.rs           # Entry point (~7 lines)
+│           ├── app.rs + app/     # Event loop, UI, editor interaction
+│           ├── inspector/        # Inspector panel
+│           └── pipeline.rs       # build_pipeline() + screenshot helpers
 ├── scenes/                      # .ron scene files
 ├── assets/                      # Meshes, textures, shaders
 └── docs/
@@ -149,18 +171,37 @@ main.rs (thin orchestration, ~80 lines)
 ### Render Pipeline
 
 ```
-PipelineBuilder
-  ├── ShadowPass       → writes: ShadowDepth
-  ├── GBufferPass      → writes: GPosition, GNormal, GAlbedo, GMaterial, GDepth
-  ├── SSAOPass         → reads: GPosition, GNormal  → writes: AOTexture
-  ├── LightingPass     → reads: GPosition, GNormal, GAlbedo, GMaterial, ShadowDepth, AOTexture
-  │                        writes: Swapchain
-  ├── SSRPass          → reads: GPosition, GNormal, GAlbedo, GMaterial → writes: ReflectionTexture
-  ├── CompositePass    → composites Lighting + SSR → writes: Swapchain
-  └── DebugLinePass    → reads: GDepth  → writes: Swapchain (LoadOp::Load)
+build_pipeline() (crates/aether-launcher/src/pipeline.rs) → PipelineBuilder
+  ├── ShadowPass           → writes: ShadowDepth (cascade array)
+  ├── GBufferPass          → writes: GPosition, GNormal, GAlbedo, GMaterial, GDepth
+  ├── TerrainPass          → writes: same G-buffer targets (terrain merged into the G-buffer)
+  │                          optional, when scene has terrain
+  ├── SSAOPass             → reads: GDepth, GNormal → writes: AOTexture (half-res)
+  ├── AOBlurPass           → reads: AOTexture, GPosition → writes: AOTextureBlurred (half-res)
+  │                          (SSAO + AOBlur are runtime-toggleable via ssao_enabled)
+  ├── LightingPass         → reads: GPosition, GNormal, GAlbedo, GMaterial, ShadowDepth, AOTextureBlurred
+  │                        → writes: SceneColor (HDR)
+  ├── AtmospherePass       → reads: GDepth → writes: SceneColor (sky drawn after lighting)
+  │                          optional, when scene has atmosphere
+  ├── VolumetricCloudPass  → reads: GDepth → writes: CloudColor
+  │                          optional, when scene has clouds
+  ├── SSRPass              → reads: GPosition, GNormal, GMaterial, GDepth, SceneColor
+  │                        → writes: SsrTraceResult (half-res) + ReflectionTexture
+  ├── GodRayPass           → reads: GDepth → writes: GodRayColor
+  │                          optional, when scene has god rays
+  ├── WaterReflectionPass  → writes: WaterReflectionColor, WaterReflectionDepth (planar reflection)
+  │                          optional, when scene has water with reflection enabled
+  ├── WaterPass            → reads: SceneColor, ReflectionTexture, WaterReflectionColor, GDepth
+  │                        → writes: WaterColor     optional, when scene has water
+  ├── CompositePass        → reads: SceneColor, ReflectionTexture, WaterColor, CloudColor, GodRayColor, G-buffer
+  │                        → writes: PostProcessInput
+  ├── BloomPass            → reads: PostProcessInput → writes: BloomResult
+  ├── ToneMappingPass      → reads: BloomResult → writes: FxaaInput (HDR → LDR)
+  ├── FXAAPass             → reads: FxaaInput → writes: Swapchain
+  └── DebugLinePass        → reads: GDepth → writes: Swapchain (grid/gizmo lines over the final image)
 ```
 
-Resource wiring is type-checked at build time. Execution order is topological.
+Resource wiring is type-checked at build time. The Scheduler derives execution order by topologically sorting these signatures — passes with no pending dependencies (e.g. WaterReflectionPass, VolumetricCloudPass, GodRayPass) may execute earlier than their registration position. Optional passes are skipped per frame via `should_run()`; TerrainPass is only registered when the scene contains terrain (ADR-0010). DebugLinePass is registered last and, as the final sequential writer of `Swapchain`, always executes last.
 
 ### Key Design Decisions
 
@@ -185,7 +226,9 @@ Resource wiring is type-checked at build time. Execution order is topological.
 | **Phase 3** | ECS runtime, ray picking, transform gizmo, editor UI shell, scene save/load, undo/redo, delete | ✅ Complete |
 | **Phase 4** | Post-process chain, tone mapping, Bloom, FXAA, GPU Instancing | ✅ Complete |
 | **Phase 5** | Terrain + Atmosphere + Water + Volumetric Clouds + God Rays | ✅ Complete |
-| **Phase 6** | Ray Tracing (Compute + Hybrid) | 🔲 Current |
+| **Phase 6** | Polish & engineering health (tests, shader error handling, perf, docs alignment) | 🔲 Current |
+
+> **Note:** Ray tracing (Compute Path Tracer / Hybrid RT / Denoising) is postponed — it will be re-planned after the polish phase.
 
 ## 📜 License
 

@@ -247,7 +247,7 @@ fn perlin_noise_3d(p_in: vec3<f32>, frequency: f32, octave_count: i32) -> f32 {
 }
 
 fn stackable_3d_noise(pixel: vec3<i32>) -> vec4<f32> {
-    let coord = vec3<f32>(pixel) / 128.0;
+    let coord = vec3<f32>(pixel) / f32(textureDimensions(output_tex).x);
 
     let perlin_noise_val = perlin_noise_3d(coord, 8.0, 3);
 

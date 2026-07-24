@@ -762,7 +762,7 @@ pub(super) fn capture_projection() -> [f32; 16] {
 
 // ── WGSL Shaders ─────────────────────────────────────────────────────
 
-const EQUIRECT_SHADER: &str = r#"
+pub(crate) const EQUIRECT_SHADER: &str = r#"
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) local_pos: vec3<f32>,
@@ -805,7 +805,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 }
 "#;
 
-const IRRADIANCE_SHADER: &str = r#"
+pub(crate) const IRRADIANCE_SHADER: &str = r#"
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) local_pos: vec3<f32>,
@@ -858,7 +858,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 }
 "#;
 
-const PREFILTER_SHADER: &str = r#"
+pub(crate) const PREFILTER_SHADER: &str = r#"
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) local_pos: vec3<f32>,
@@ -935,7 +935,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 }
 "#;
 
-const BRDF_LUT_SHADER: &str = r#"
+pub(crate) const BRDF_LUT_SHADER: &str = r#"
 @group(0) @binding(0) var output_lut: texture_storage_2d<rgba16float, write>;
 
 const PI: f32 = 3.14159265359;
@@ -1023,4 +1023,259 @@ pub(super) fn create_cubemap(
             | wgpu::TextureUsages::COPY_DST,
         view_formats: &[],
     })
+}
+
+// ── Tests ────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::super::{IblConfig, IblResources};
+    use super::{load_hdr_texture, CpuCubemap, CubeMesh};
+    use crate::test_utils::headless_device_queue;
+
+    /// Tiny sizes + procedural 16×8 checkerboard input so no HDR file is read.
+    fn tiny_checkerboard_config() -> IblConfig {
+        IblConfig {
+            env_size: 64,
+            irradiance_size: 16,
+            prefilter_size: 32,
+            prefilter_mips: 3,
+            brdf_lut_size: 64,
+            environment_path: None,
+            debug_checkerboard: true,
+        }
+    }
+
+    /// Copy an Rgba16Float texture (one or more array layers) back to CPU memory.
+    /// `width * 8` must be a multiple of 256 (wgpu copy row alignment).
+    fn read_texture_pixels(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        texture: &wgpu::Texture,
+        width: u32,
+        height: u32,
+        layers: u32,
+    ) -> Vec<u8> {
+        let bytes_per_row = width * 8; // Rgba16Float = 8 bytes/pixel
+        assert_eq!(
+            bytes_per_row % 256,
+            0,
+            "test texture width breaks copy alignment"
+        );
+        let layer_bytes = (bytes_per_row * height) as u64;
+        let staging = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Test Readback"),
+            size: layer_bytes * layers as u64,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        for layer in 0..layers {
+            encoder.copy_texture_to_buffer(
+                wgpu::TexelCopyTextureInfo {
+                    texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d {
+                        x: 0,
+                        y: 0,
+                        z: layer,
+                    },
+                    aspect: wgpu::TextureAspect::All,
+                },
+                wgpu::TexelCopyBufferInfo {
+                    buffer: &staging,
+                    layout: wgpu::TexelCopyBufferLayout {
+                        offset: layer_bytes * layer as u64,
+                        bytes_per_row: Some(bytes_per_row),
+                        rows_per_image: Some(height),
+                    },
+                },
+                wgpu::Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
+        queue.submit(std::iter::once(encoder.finish()));
+
+        let slice = staging.slice(..);
+        slice.map_async(wgpu::MapMode::Read, |_| {});
+        device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+        slice.get_mapped_range().to_vec()
+    }
+
+    fn decode_rgba16f(data: &[u8]) -> impl Iterator<Item = [f32; 4]> + '_ {
+        data.chunks_exact(8).map(|px| {
+            [
+                half::f16::from_bits(u16::from_le_bytes([px[0], px[1]])).to_f32(),
+                half::f16::from_bits(u16::from_le_bytes([px[2], px[3]])).to_f32(),
+                half::f16::from_bits(u16::from_le_bytes([px[4], px[5]])).to_f32(),
+                half::f16::from_bits(u16::from_le_bytes([px[6], px[7]])).to_f32(),
+            ]
+        })
+    }
+
+    #[test]
+    fn equirect_to_cubemap_renders_checkerboard_colors() {
+        let Some((device, queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
+        let config = tiny_checkerboard_config();
+        let (_hdr_tex, hdr_view, hdr_sampler) = load_hdr_texture(&device, &queue, &config);
+
+        // Test-owned cubemap with COPY_SRC so pixels can be read back;
+        // create_cubemap itself only requests TEXTURE_BINDING | RENDER_ATTACHMENT | COPY_DST.
+        let cubemap = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Test Cubemap"),
+            size: wgpu::Extent3d {
+                width: 64,
+                height: 64,
+                depth_or_array_layers: 6,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba16Float,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        let cube_mesh = CubeMesh::new(&device);
+        CpuCubemap::equirect_to_cubemap(
+            &device,
+            &queue,
+            &hdr_view,
+            &hdr_sampler,
+            &cubemap,
+            64,
+            &cube_mesh,
+        );
+
+        let pixels = read_texture_pixels(&device, &queue, &cubemap, 64, 64, 6);
+        let (mut magenta, mut cyan) = (0usize, 0usize);
+        for (i, [r, g, b, _a]) in decode_rgba16f(&pixels).enumerate() {
+            assert!(
+                r.is_finite() && g.is_finite() && b.is_finite(),
+                "cubemap pixel {i} is non-finite: [{r}, {g}, {b}]"
+            );
+            if r > 0.8 && b > 0.8 && g < 0.2 {
+                magenta += 1;
+            }
+            if g > 0.8 && b > 0.8 && r < 0.2 {
+                cyan += 1;
+            }
+        }
+        assert!(
+            magenta > 0,
+            "equirect→cubemap produced no magenta checkerboard pixels"
+        );
+        assert!(
+            cyan > 0,
+            "equirect→cubemap produced no cyan checkerboard pixels"
+        );
+    }
+
+    #[test]
+    fn ibl_generate_with_queue_runs_all_pipelines() {
+        let Some((device, queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
+        let config = tiny_checkerboard_config();
+        // First test to execute all four generation pipelines; must not panic.
+        let ibl = IblResources::generate(&device, Some(&queue), &config);
+
+        let irr = ibl.irradiance_texture();
+        assert_eq!(irr.size().width, 16, "irradiance cubemap width");
+        assert_eq!(irr.size().height, 16, "irradiance cubemap height");
+        assert_eq!(
+            irr.depth_or_array_layers(),
+            6,
+            "irradiance cubemap layer count"
+        );
+        assert_eq!(irr.mip_level_count(), 1, "irradiance cubemap mip count");
+        assert_eq!(
+            irr.format(),
+            wgpu::TextureFormat::Rgba16Float,
+            "irradiance cubemap format"
+        );
+
+        let pref = ibl.prefiltered_texture();
+        assert_eq!(pref.size().width, 32, "prefiltered cubemap width");
+        assert_eq!(
+            pref.depth_or_array_layers(),
+            6,
+            "prefiltered cubemap layer count"
+        );
+        assert_eq!(pref.mip_level_count(), 3, "prefiltered cubemap mip count");
+        assert_eq!(
+            pref.format(),
+            wgpu::TextureFormat::Rgba16Float,
+            "prefiltered cubemap format"
+        );
+
+        let lut = ibl.brdf_lut_texture();
+        assert_eq!(lut.size().width, 64, "BRDF LUT width");
+        assert_eq!(lut.size().height, 64, "BRDF LUT height");
+        assert_eq!(lut.depth_or_array_layers(), 1, "BRDF LUT layer count");
+        assert_eq!(
+            lut.format(),
+            wgpu::TextureFormat::Rgba16Float,
+            "BRDF LUT format"
+        );
+    }
+
+    #[test]
+    fn brdf_lut_compute_writes_valid_values() {
+        let Some((device, queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
+        let size = 64u32;
+        // Test-owned LUT texture with COPY_SRC for readback; the production
+        // texture omits COPY_SRC, and brdf_lut_debug only needs STORAGE_BINDING.
+        let lut = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Test BRDF LUT"),
+            size: wgpu::Extent3d {
+                width: size,
+                height: size,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba16Float,
+            usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        CpuCubemap::brdf_lut_debug(&device, &queue, &lut, size);
+
+        let pixels = read_texture_pixels(&device, &queue, &lut, size, size, 1);
+        let mut min = f32::INFINITY;
+        let mut max = f32::NEG_INFINITY;
+        let mut nonzero = 0usize;
+        for (i, [r, g, b, a]) in decode_rgba16f(&pixels).enumerate() {
+            assert!(
+                r.is_finite() && g.is_finite(),
+                "BRDF LUT texel {i} is non-finite: [{r}, {g}]"
+            );
+            assert_eq!(b, 0.0, "BRDF LUT texel {i} blue channel should be 0");
+            assert_eq!(a, 1.0, "BRDF LUT texel {i} alpha should be 1");
+            for v in [r, g] {
+                min = min.min(v);
+                max = max.max(v);
+                if v != 0.0 {
+                    nonzero += 1;
+                }
+            }
+        }
+        assert!(
+            min >= 0.0 && max <= 1.0,
+            "BRDF LUT values outside [0,1]: min={min}, max={max}"
+        );
+        assert!(nonzero > 0, "BRDF LUT is entirely zero");
+    }
 }

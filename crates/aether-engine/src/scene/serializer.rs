@@ -204,6 +204,7 @@ fn extract_objects(world: &World) -> Vec<ObjectConfig> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::headless_device_queue;
     use crate::asset::registry::BuiltinMeshRegistry;
     use crate::ecs::components::{Light, Name, Transform, Visibility};
     use crate::ecs::World;
@@ -215,17 +216,6 @@ mod tests {
     };
     use glam::{Quat, Vec3};
     use std::sync::Arc;
-
-    fn headless_device() -> wgpu::Device {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter =
-            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
-                .expect("need adapter");
-        let (device, _queue) =
-            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-                .expect("need device");
-        device
-    }
 
     fn spawn_camera_entity(world: &mut World, pos: [f32; 3], yaw: f32, pitch: f32, fov: f32) {
         world.spawn((
@@ -323,7 +313,10 @@ mod tests {
 
     #[test]
     fn extract_object_preserves_name() {
-        let device = headless_device();
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let registry = BuiltinMeshRegistry::new();
         let mut world = World::new();
         spawn_object_entity(&mut world, &device, &registry, "MyCube", "cube");
@@ -336,7 +329,10 @@ mod tests {
 
     #[test]
     fn extract_object_preserves_file_mesh_source() {
-        let device = headless_device();
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let registry = BuiltinMeshRegistry::new();
         let mut world = World::new();
         let cpu_mesh = registry.get("cube").expect("known mesh");
@@ -364,7 +360,10 @@ mod tests {
 
     #[test]
     fn serialize_world_full_roundtrip() {
-        let device = headless_device();
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let registry = BuiltinMeshRegistry::new();
         let mut world = World::new();
 
@@ -385,9 +384,35 @@ mod tests {
     }
 
     #[test]
+    fn camera_speed_survives_world_to_ron_roundtrip() {
+        // Regression guard: a non-default fly-camera speed must be written to
+        // RON and parsed back unchanged.
+        let mut world = World::new();
+        world.spawn((
+            Transform::default(),
+            crate::ecs::components::Camera {
+                speed: 17.5,
+                ..Default::default()
+            },
+        ));
+
+        let lighting = LightingUniforms::default();
+        let desc = serialize_world(&world, &lighting, "SpeedTest");
+        assert_eq!(desc.camera.speed, 17.5);
+
+        let ron = to_ron_string(&desc).expect("should serialize");
+        assert!(ron.contains("speed"), "speed field should be written to RON");
+        let parsed = SceneDescription::from_ron(&ron).expect("should deserialize");
+        assert_eq!(parsed.camera.speed, 17.5);
+    }
+
+    #[test]
     fn extract_object_spawned_with_selected_directly() {
         use crate::ecs::components::Selected;
-        let device = headless_device();
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let registry = BuiltinMeshRegistry::new();
         let mut world = World::new();
         let cpu_mesh = registry.get("cube").expect("known mesh");

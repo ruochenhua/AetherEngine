@@ -10,12 +10,15 @@ use serde::{Deserialize, Serialize};
 /// Volumetric cloud quality preset.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub enum CloudQuality {
-    /// Low quality — reduced noise resolution and step counts.
+    /// Low quality — smallest noise textures (32³ Perlin-Worley, 16³ Worley,
+    /// 512² weather).
     Low,
-    /// Medium quality — balanced quality and performance.
+    /// Medium quality — balanced quality and performance (64³ Perlin-Worley,
+    /// 32³ Worley, 1024² weather).
     #[default]
     Medium,
-    /// High quality — increased noise resolution and step counts.
+    /// High quality — largest noise textures (128³ Perlin-Worley, 32³ Worley,
+    /// 2048² weather).
     High,
 }
 
@@ -40,7 +43,7 @@ pub struct CloudConfig {
     /// Wind speed in world units per second.
     #[serde(default = "default_cloud_wind_speed")]
     pub wind_speed: f32,
-    /// Quality preset controlling noise resolution and step counts.
+    /// Quality preset controlling procedural noise texture resolution.
     #[serde(default)]
     pub quality: CloudQuality,
     /// Weather texture UV scale (RenderEngine's `weatherScale`).

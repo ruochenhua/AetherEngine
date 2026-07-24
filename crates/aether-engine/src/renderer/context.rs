@@ -63,6 +63,15 @@ impl RenderContext {
             .await
             .expect("Failed to create device");
 
+        // Global error handler: wgpu's default panics with the full error,
+        // which is easy to miss in the log noise. Log the complete validation
+        // report (shader label + naga line/column) via tracing first, then
+        // keep the fail-fast panic — errors must never be silently swallowed.
+        device.on_uncaptured_error(Arc::new(|error| {
+            tracing::error!("uncaptured wgpu error: {error}");
+            panic!("uncaptured wgpu error: {error}");
+        }));
+
         let surface_caps = surface.get_capabilities(&adapter);
 
         // Use a non-sRGB surface format so egui-wgpu can use its preferred

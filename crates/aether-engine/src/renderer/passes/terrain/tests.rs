@@ -1,4 +1,5 @@
 use super::*;
+use crate::test_utils::headless_device_queue;
 use crate::ecs::components::Terrain;
 use crate::ecs::World;
 use crate::math::{Frustum, Mat4, Vec3};
@@ -6,15 +7,6 @@ use crate::renderer::extract::extract_optional_pass_data;
 use crate::renderer::frame::{FrameConfig, RenderFrame};
 use crate::scene::{TerrainGeometry as TerrainGeometryConfig, TerrainSource};
 use crate::terrain::{Chunk, TerrainGeometry};
-
-fn headless_device() -> (wgpu::Device, wgpu::Queue) {
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-    let adapter =
-        pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
-            .expect("need adapter");
-    pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-        .expect("need device")
-}
 
 fn init_ctx<'a>(device: &'a wgpu::Device, queue: &'a wgpu::Queue) -> InitContext<'a> {
     let texture_cache = Box::leak(Box::new(crate::asset::texture_cache::GpuTextureCache::new(
@@ -64,7 +56,10 @@ fn build_terrain_geometry(
 
 #[test]
 fn terrain_pass_signature_declares_gbuffer_outputs() {
-    let (device, queue) = headless_device();
+    let Some((device, queue)) = headless_device_queue() else {
+        eprintln!("SKIP: no GPU adapter available");
+        return;
+    };
     let ctx = init_ctx(&device, &queue);
     let pass = TerrainPass::init(&ctx);
     let sig = pass.signature();
@@ -73,7 +68,10 @@ fn terrain_pass_signature_declares_gbuffer_outputs() {
 
 #[test]
 fn terrain_pass_skipped_when_no_terrain_component() {
-    let (device, queue) = headless_device();
+    let Some((device, queue)) = headless_device_queue() else {
+        eprintln!("SKIP: no GPU adapter available");
+        return;
+    };
     let ctx = init_ctx(&device, &queue);
     let pass = TerrainPass::init(&ctx);
     let world = World::new();
@@ -99,7 +97,10 @@ fn terrain_pass_skipped_when_no_terrain_component() {
 
 #[test]
 fn terrain_pass_runs_when_terrain_component_present() {
-    let (device, queue) = headless_device();
+    let Some((device, queue)) = headless_device_queue() else {
+        eprintln!("SKIP: no GPU adapter available");
+        return;
+    };
     let ctx = init_ctx(&device, &queue);
     let mut pass = TerrainPass::init(&ctx);
     let mut world = World::new();

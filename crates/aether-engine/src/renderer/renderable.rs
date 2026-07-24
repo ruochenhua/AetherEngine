@@ -58,3 +58,43 @@ impl Default for MaterialUniform {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::mem::{align_of, offset_of, size_of};
+
+    /// Layout guard: `ObjectUniform` is mirrored by the WGSL
+    /// `ObjectData { albedo: vec4<f32>, roughness: f32, metallic: f32 }`
+    /// (e.g. passes/water_reflection.rs) and is indexed via dynamic uniform
+    /// offsets, so its stride must stay aligned to 256 bytes.
+    #[test]
+    fn object_uniform_matches_gpu_layout() {
+        assert_eq!(
+            size_of::<ObjectUniform>(),
+            256,
+            "ObjectUniform stride must stay 256 bytes (dynamic uniform offset alignment)"
+        );
+        assert_eq!(
+            align_of::<ObjectUniform>(),
+            256,
+            "ObjectUniform must keep its repr(C, align(256)) alignment"
+        );
+        // Field offsets pinned by the WGSL ObjectData mirror.
+        assert_eq!(
+            offset_of!(ObjectUniform, albedo),
+            0,
+            "albedo must map to the vec4<f32> at offset 0"
+        );
+        assert_eq!(
+            offset_of!(ObjectUniform, roughness),
+            16,
+            "roughness must directly follow the albedo vec4"
+        );
+        assert_eq!(
+            offset_of!(ObjectUniform, metallic),
+            20,
+            "metallic must directly follow roughness"
+        );
+    }
+}

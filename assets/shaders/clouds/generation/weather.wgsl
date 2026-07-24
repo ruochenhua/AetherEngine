@@ -49,8 +49,9 @@ fn perlin_noise(uv: vec2<f32>, sc: f32, f: f32, a: f32, o: i32) -> f32 {
 @compute @workgroup_size(8, 8)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let pixel = vec2<i32>(global_id.xy);
-    let dx = 1.0 / 2048.0;
-    let dy = 1.0 / 2048.0;
+    let dims = textureDimensions(output_tex);
+    let dx = 1.0 / f32(dims.x);
+    let dy = 1.0 / f32(dims.y);
     let uv = vec2<f32>(f32(pixel.x) * dx, f32(pixel.y) * dy);
 
     let coverage = perlin_noise(uv, PERLIN_SCALE, PERLIN_FREQUENCY, PERLIN_AMPLITUDE, PERLIN_OCTAVES);

@@ -4,7 +4,7 @@ use super::{App, LauncherState};
 use aether_engine::renderer::{
     extract::{extract_optional_pass_data, extract_render_batches},
     frame::{FrameConfig, RenderFrame},
-    gizmo::{build_transform_gizmo, selected_entity_transform},
+    gizmo::{build_transform_gizmo, entity_transform},
 };
 use std::sync::Arc;
 use std::time::Instant;
@@ -75,6 +75,15 @@ pub(crate) fn frame(
     // yet ready (Timeout/Occluded/Outdated on first frame).
     for (id, image_delta) in &textures_delta.set {
         egui_renderer.update_texture(&ctx.device, &ctx.queue, *id, image_delta);
+    }
+    // Free textures egui no longer references. Without this every image
+    // texture handed to the UI would stay GPU-resident for the life of the
+    // renderer (the current font-atlas-only UI never frees anything, but any
+    // future `Image` widget would leak one texture each). egui guarantees
+    // freed ids are not referenced by this frame's paint jobs, so freeing
+    // them up-front alongside the updates is safe.
+    for id in &textures_delta.free {
+        egui_renderer.free_texture(id);
     }
 
     // Acquire surface
@@ -187,8 +196,13 @@ pub(crate) fn frame(
                 app.terrain_geometry = None;
             }
 
-            // Transform gizmo: build dynamic debug lines for selected entity
-            let gizmo_lines = if let Some((_, transform)) = selected_entity_transform(world) {
+            // Transform gizmo: build dynamic debug lines for the anchor
+            // (most recently selected) entity of the current selection.
+            let gizmo_lines = if let Some(transform) = app
+                .selection
+                .anchor()
+                .and_then(|entity| entity_transform(world, entity))
+            {
                 build_transform_gizmo(&transform)
             } else {
                 vec![]

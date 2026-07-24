@@ -66,21 +66,14 @@ impl ShaderLibrary {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn headless_device() -> wgpu::Device {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter =
-            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
-                .expect("need adapter");
-        let (device, _queue) =
-            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-                .expect("need device");
-        device
-    }
+    use crate::test_utils::headless_device_queue;
 
     #[test]
     fn terrain_splat_shader_compiles() {
-        let device = headless_device();
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let lib = ShaderLibrary::new();
         let module = lib.compile(&device, "terrain_splat.frag");
         assert!(module.is_some(), "terrain splat shader should compile");
@@ -88,7 +81,10 @@ mod tests {
 
     #[test]
     fn fullscreen_quad_shader_compiles() {
-        let device = headless_device();
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let lib = ShaderLibrary::new();
         let module = lib.compile(&device, "fullscreen_quad.vert");
         assert!(module.is_some(), "fullscreen quad shader should compile");

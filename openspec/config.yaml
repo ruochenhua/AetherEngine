@@ -56,7 +56,7 @@ context: |
   - 错误处理使用 `anyhow::Result` 或 `thiserror`
   - 所有公共 API 必须有文档注释 `#![warn(missing_docs)]`
   - 模块组织：每个系统一个目录，接口在 `mod.rs` 中暴露
-  - AI 协作原则：每个文件控制在 300-500 行，模块间零耦合
+  - AI 协作原则：一个文件一个职责；纯逻辑代码（不含内联 shader）约 600 行为健康区，超过约 800 行且能识别出第二个独立职责时才拆分；模块间零耦合
 
   ## 命名约定
   - 文件：snake_case（如 `render_graph.rs`）

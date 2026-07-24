@@ -212,6 +212,28 @@ mod tests {
     }
 
     #[test]
+    fn parse_camera_without_speed_uses_default() {
+        // Backward compatibility: scene files written before the `speed`
+        // field existed must still load, falling back to the default speed.
+        let ron = r#"
+            SceneDescription(
+                name: "Legacy Camera",
+                camera: (
+                    position: (0.0, 30.0, 0.0),
+                    yaw: 0.0,
+                    pitch: 0.0,
+                    fov: 60.0,
+                    near: 0.1,
+                    far: 1000.0,
+                ),
+            )
+        "#;
+        let scene = SceneDescription::from_ron(ron).expect("should parse");
+        assert_eq!(scene.camera.speed, CameraConfig::default().speed);
+        assert_eq!(scene.camera.fov, 60.0);
+    }
+
+    #[test]
     fn invalid_ron_returns_error() {
         let ron = "not valid ron {";
         let result = SceneDescription::from_ron(ron);

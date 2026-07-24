@@ -78,7 +78,7 @@
 | Scene save/load（RON 序列化，Open/Import 语义） | ✅ 已完成 | P1 |
 | Undo / Redo | ✅ 已完成 | P2 |
 | Delete 选中物体 | ✅ 已完成 | P2 |
-| 多选（Shift/Ctrl） | 🔲 待实现 | P2 |
+| 多选（Shift/Ctrl） | ✅ 已完成 | P2 |
 | Fullscreen 切换 | ✅ 已完成 | P2 |
 
 ### Phase 4: 后处理链 ✅
@@ -120,15 +120,22 @@
 | 体积云（Ray marching） | ✅ 已完成 (#84) | P3 |
 | God Ray | ✅ 已完成 (#85) | P3 |
 
-### Phase 6: 光线追踪 🔲 当前
+### Phase 6: 打磨与工程健康度 🔲 当前
 
-**目标**：从软件光追到硬件加速
+**目标**：暂缓新功能，把现有能力打磨扎实——工程健康度 + 文档一致性
 
 | 功能 | 状态 | 优先级 |
 |------|------|--------|
-| Compute Shader Path Tracer | 🔲 待实现 | P4 |
-| Hybrid Ray Tracing | 🔲 待实现 | P4 |
-| Denoising | 🔲 待实现 | P4 |
+| 完善单元测试 | ✅ 已完成（263→280 个，P0/P1 缺口补齐） | P3 |
+| Shader 编译错误处理 | ✅ 已完成 | P3 |
+| GPU 内存泄漏检查 | ✅ 已完成 | P3 |
+| PipelineBuilder transient 资源复用优化 | 🔲 待实现 | P4 |
+| 多线程 System 执行 | 🔲 待实现 | P4 |
+| 编辑器多选（Shift/Ctrl） | ✅ 已完成 | P4 |
+| Camera speed 持久化 | ✅ 已完成（早已实现，本轮补测试） | P4 |
+| README / CONTEXT 与实际管线对齐 | ✅ 已完成 | P4 |
+
+**备注**：光线追踪（Compute Path Tracer / Hybrid RT / Denoising）已暂缓，待打磨阶段完成后重新评估。
 
 ### Phase 7: 物理与动画（远期）
 
@@ -157,7 +164,7 @@
 | `09_terrain` | 地形 + 曲面细分 | Phase 5 |
 | `10_water` | 水体 | Phase 5 |
 | `11_volumetric` | 体积云 | Phase 5 |
-| `12_raytrace` | 光追 | Phase 6 |
+| `12_raytrace` | 光追（暂缓，见 Phase 6 备注） | 暂缓 |
 
 ---
 
@@ -176,8 +183,6 @@
 ### 低优先级
 - [x] 性能分析面板
 - [ ] 远程调试支持
-- [ ] 多选（Shift/Ctrl）
-- [ ] Camera speed 持久化（当前 save/load 不保存 speed）
 
 ---
 
@@ -219,10 +224,16 @@
 - ✅ CSM
 - ✅ GPU Timer
 
-### v0.6.0 - 光追版 🔲 当前
-- Path Tracer
-- Hybrid RT
-- Denoising
+### v0.6.0 - 打磨版 🔲 当前
+- 单元测试补全
+- Shader 编译错误处理
+- GPU 内存泄漏检查
+- PipelineBuilder transient 资源复用
+- 多线程 System 执行
+- 编辑器遗留项（多选、Camera speed 持久化）
+- 文档与管线对齐
+
+（原 v0.6.0 光追版暂缓，待打磨完成后重新规划）
 
 ---
 

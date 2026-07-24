@@ -127,64 +127,7 @@ impl Pass for ToneMappingPass {
 impl ToneMappingPass {
     /// Create a new tone mapping pass.
     pub fn new(device: &wgpu::Device, surface_format: wgpu::TextureFormat) -> Self {
-        let shader_source = r#"
-struct VertexOutput {
-    @builtin(position) clip_position: vec4<f32>,
-    @location(0) uv: vec2<f32>,
-};
-
-@vertex
-fn vs_main(@location(0) pos: vec2<f32>) -> VertexOutput {
-    var out: VertexOutput;
-    out.clip_position = vec4<f32>(pos, 0.0, 1.0);
-    out.uv = vec2<f32>(pos.x * 0.5 + 0.5, 0.5 - pos.y * 0.5);
-    return out;
-}
-
-struct ToneMappingUniforms {
-    mode: u32,
-};
-
-@group(0) @binding(0) var input_texture: texture_2d<f32>;
-@group(0) @binding(1) var tex_sampler: sampler;
-
-@group(1) @binding(0) var<uniform> uniforms: ToneMappingUniforms;
-
-// ── ACES Filmic Tone Mapping ─────────────────────────────────────────
-
-fn aces_tone_map(x: vec3<f32>) -> vec3<f32> {
-    // ACES Filmic approximation (Krzysztof Narkowicz)
-    let a = 2.51;
-    let b = 0.03;
-    let c = 2.43;
-    let d = 0.59;
-    let e = 0.14;
-    return clamp((x * (a * x + b)) / (x * (c * x + d) + e), vec3<f32>(0.0), vec3<f32>(1.0));
-}
-
-fn reinhard_tone_map(x: vec3<f32>) -> vec3<f32> {
-    return x / (x + vec3<f32>(1.0));
-}
-
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let hdr = textureSample(input_texture, tex_sampler, in.uv).rgb;
-
-    var ldr: vec3<f32>;
-    if (uniforms.mode == 0u) {
-        // Off — linear clip
-        ldr = clamp(hdr, vec3<f32>(0.0), vec3<f32>(1.0));
-    } else if (uniforms.mode == 1u) {
-        // Reinhard
-        ldr = reinhard_tone_map(hdr);
-    } else {
-        // ACES Filmic (default)
-        ldr = aces_tone_map(hdr);
-    }
-
-    return vec4<f32>(ldr, 1.0);
-}
-"#;
+        let shader_source = TONE_MAPPING_SHADER;
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Tone Mapping Shader"),
@@ -350,21 +293,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn headless_device() -> wgpu::Device {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter =
-            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
-                .expect("need adapter");
-        let (device, _) =
-            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-                .expect("need device");
-        device
-    }
+    use crate::test_utils::headless_device_queue;
 
     #[test]
     fn signature_declares_reads_and_write() {
-        let device = headless_device();
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let pass = ToneMappingPass::new(&device, wgpu::TextureFormat::Bgra8UnormSrgb);
         let sig = pass.signature();
         assert_eq!(sig.name, "ToneMapping");
@@ -374,19 +310,29 @@ mod tests {
 
     #[test]
     fn init_creates_resources() {
-        let _pass = ToneMappingPass::new(&headless_device(), wgpu::TextureFormat::Bgra8UnormSrgb);
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
+        let _pass = ToneMappingPass::new(&device, wgpu::TextureFormat::Bgra8UnormSrgb);
     }
 
     #[test]
     fn default_mode_is_aces() {
-        let device = headless_device();
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let pass = ToneMappingPass::new(&device, wgpu::TextureFormat::Bgra8UnormSrgb);
         assert_eq!(pass.mode, ToneMappingMode::ACES);
     }
 
     #[test]
     fn mode_can_be_changed() {
-        let device = headless_device();
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let mut pass = ToneMappingPass::new(&device, wgpu::TextureFormat::Bgra8UnormSrgb);
         pass.set_mode(ToneMappingMode::Reinhard);
         assert_eq!(pass.mode, ToneMappingMode::Reinhard);
@@ -394,3 +340,63 @@ mod tests {
         assert_eq!(pass.mode, ToneMappingMode::Off);
     }
 }
+
+/// WGSL source for the tone mapping pass.
+pub(crate) const TONE_MAPPING_SHADER: &str = r#"
+struct VertexOutput {
+    @builtin(position) clip_position: vec4<f32>,
+    @location(0) uv: vec2<f32>,
+};
+
+@vertex
+fn vs_main(@location(0) pos: vec2<f32>) -> VertexOutput {
+    var out: VertexOutput;
+    out.clip_position = vec4<f32>(pos, 0.0, 1.0);
+    out.uv = vec2<f32>(pos.x * 0.5 + 0.5, 0.5 - pos.y * 0.5);
+    return out;
+}
+
+struct ToneMappingUniforms {
+    mode: u32,
+};
+
+@group(0) @binding(0) var input_texture: texture_2d<f32>;
+@group(0) @binding(1) var tex_sampler: sampler;
+
+@group(1) @binding(0) var<uniform> uniforms: ToneMappingUniforms;
+
+// ── ACES Filmic Tone Mapping ─────────────────────────────────────────
+
+fn aces_tone_map(x: vec3<f32>) -> vec3<f32> {
+    // ACES Filmic approximation (Krzysztof Narkowicz)
+    let a = 2.51;
+    let b = 0.03;
+    let c = 2.43;
+    let d = 0.59;
+    let e = 0.14;
+    return clamp((x * (a * x + b)) / (x * (c * x + d) + e), vec3<f32>(0.0), vec3<f32>(1.0));
+}
+
+fn reinhard_tone_map(x: vec3<f32>) -> vec3<f32> {
+    return x / (x + vec3<f32>(1.0));
+}
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    let hdr = textureSample(input_texture, tex_sampler, in.uv).rgb;
+
+    var ldr: vec3<f32>;
+    if (uniforms.mode == 0u) {
+        // Off — linear clip
+        ldr = clamp(hdr, vec3<f32>(0.0), vec3<f32>(1.0));
+    } else if (uniforms.mode == 1u) {
+        // Reinhard
+        ldr = reinhard_tone_map(hdr);
+    } else {
+        // ACES Filmic (default)
+        ldr = aces_tone_map(hdr);
+    }
+
+    return vec4<f32>(ldr, 1.0);
+}
+"#;

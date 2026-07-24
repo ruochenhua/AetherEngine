@@ -1,8 +1,8 @@
 //! Types and constants for the volumetric cloud pass.
 //!
-//! Layout mirrors the uniform block consumed by
-//! `assets/shaders/clouds/volumetric_clouds.wgsl`, which is a direct port of
-//! NadirRoGue/RenderEngine's volumetricclouds.frag.
+//! Layout mirrors the uniform block consumed by the inlined `shader::SHADER`
+//! WGSL, which is a direct port of NadirRoGue/RenderEngine's
+//! volumetricclouds.frag.
 
 use bytemuck::{Pod, Zeroable};
 use glam::Mat4;

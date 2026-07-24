@@ -149,19 +149,14 @@ impl IblResources {
 mod tests {
     use super::super::IblConfig;
     use super::IblResources;
-
-    fn headless_device_and_queue() -> (wgpu::Device, wgpu::Queue) {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter =
-            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
-                .expect("need adapter");
-        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-            .expect("need device")
-    }
+    use crate::test_utils::headless_device_queue;
 
     #[test]
     fn ibl_resources_created_with_correct_sizes() {
-        let (device, _queue) = headless_device_and_queue();
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let config = IblConfig::default();
         let ibl = IblResources::generate(&device, None, &config);
         assert_eq!(ibl._irradiance_texture.size().width, 32);
@@ -172,7 +167,10 @@ mod tests {
 
     #[test]
     fn ibl_texture_formats_are_correct() {
-        let (device, _queue) = headless_device_and_queue();
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let config = IblConfig::default();
         let ibl = IblResources::generate(&device, None, &config);
         assert_eq!(

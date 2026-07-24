@@ -2,9 +2,9 @@ use crate::math::*;
 
 /// UE-style fly camera.
 ///
-/// Right-click to activate: mouse controls pitch/yaw, WASD moves along
-/// camera-relative axes, Q/E moves up/down in world space, scroll wheel
-/// adjusts movement speed.
+/// Hold Alt + left mouse button and drag to control pitch/yaw; WASD moves
+/// along camera-relative axes, Q/E moves down/up in world space, scroll
+/// wheel adjusts movement speed.
 #[derive(Debug, Clone)]
 pub struct FlyCamera {
     /// World-space position.
@@ -23,7 +23,7 @@ pub struct FlyCamera {
     pub max_speed: f32,
     /// Mouse sensitivity for look rotation.
     pub sensitivity: f32,
-    /// Whether fly mode is active (right mouse button held).
+    /// Unused legacy flag (fly mode used to be gated on this); always `false`.
     pub active: bool,
     /// Vertical field of view in radians.
     pub fov: f32,

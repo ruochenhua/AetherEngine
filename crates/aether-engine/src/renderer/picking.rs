@@ -1,7 +1,10 @@
 //! CPU ray-casting picking system.
 //!
 //! Casts a ray from the camera through the mouse position and tests against
-//! entity AABBs in the ECS World. The closest hit entity gets the `Selected` component.
+//! entity AABBs in the ECS World. The hit entity updates the `Selected`
+//! marker set: plain click single-selects, Shift/Ctrl + click toggles.
+//! The [`Selection`] struct tracks selection order on top of the markers so
+//! the editor can anchor the gizmo/inspector to the last selected entity.
 
 use crate::ecs::components::{MeshHandle, Selected, Transform};
 use crate::ecs::World;
@@ -94,13 +97,11 @@ pub fn ray_aabb_intersect(ray: &Ray, aabb: &Aabb, model_matrix: Mat4) -> Option<
     Some(if tmin < 0.0 { tmax } else { tmin })
 }
 
-/// Pick the closest visible entity under the mouse cursor.
+/// Find the closest visible entity under the mouse cursor, if any.
 ///
 /// Queries the world for entities with `(Transform, MeshHandle)` and tests
-/// each against the ray. If an entity is hit, it becomes selected and any
-/// previous selection is removed. If nothing is hit, the current selection
-/// is kept (clicking empty space does not deselect).
-pub fn pick_entity(world: &mut World, ray: &Ray) -> Option<hecs::Entity> {
+/// each against the ray. Pure hit test: does not modify the selection.
+pub fn raycast_entity(world: &World, ray: &Ray) -> Option<hecs::Entity> {
     let mut closest: Option<(hecs::Entity, f32)> = None;
 
     for (entity, transform, mesh_handle) in world
@@ -119,23 +120,110 @@ pub fn pick_entity(world: &mut World, ray: &Ray) -> Option<hecs::Entity> {
         }
     }
 
-    // Only change selection when something is actually hit.
-    // Clicking empty space keeps the current selection.
-    if let Some((entity, _)) = closest {
-        // Remove Selected from all entities
-        let selected_entities: Vec<hecs::Entity> = world
-            .query::<(hecs::Entity, &Selected)>()
-            .iter()
-            .map(|(e, _)| e)
-            .collect();
-        for e in selected_entities {
-            let _ = world.remove::<(Selected,)>(e);
+    closest.map(|(entity, _)| entity)
+}
+
+/// Apply a click selection to the `Selected` marker set.
+///
+/// - `additive == false` (plain click): single-select — clears every other
+///   entity's marker and selects `entity`.
+/// - `additive == true` (Shift/Ctrl + click): toggles `entity` — removes its
+///   marker if already selected, otherwise adds it to the selection.
+pub fn select_entity(world: &mut World, entity: hecs::Entity, additive: bool) {
+    if additive {
+        if world.query_one::<&Selected>(entity).get().is_ok() {
+            let _ = world.remove::<(Selected,)>(entity);
+        } else {
+            let _ = world.insert(entity, (Selected,));
         }
-        // Add Selected to hit entity
-        let _ = world.insert(entity, (Selected,));
-        Some(entity)
-    } else {
-        None
+        return;
+    }
+
+    // Remove Selected from all entities
+    let selected_entities: Vec<hecs::Entity> = world
+        .query::<(hecs::Entity, &Selected)>()
+        .iter()
+        .map(|(e, _)| e)
+        .collect();
+    for e in selected_entities {
+        let _ = world.remove::<(Selected,)>(e);
+    }
+    // Add Selected to hit entity
+    let _ = world.insert(entity, (Selected,));
+}
+
+/// Pick the closest visible entity under the mouse cursor.
+///
+/// With `additive == false` the hit entity becomes the single selection.
+/// With `additive == true` (Shift/Ctrl held) the hit entity's selection state
+/// is toggled instead. If nothing is hit, the current selection is kept
+/// (clicking empty space does not deselect).
+pub fn pick_entity(world: &mut World, ray: &Ray, additive: bool) -> Option<hecs::Entity> {
+    let hit = raycast_entity(world, ray);
+    if let Some(entity) = hit {
+        select_entity(world, entity, additive);
+    }
+    hit
+}
+
+/// Ordered editor selection set.
+///
+/// The ECS `Selected` marker is the source of truth for *membership*; this
+/// struct additionally tracks the *order* in which entities were selected so
+/// the editor can anchor the gizmo and inspector to the most recently
+/// selected entity. [`Selection::sync`] reconciles the order list with the
+/// marker set after any mutation (picking, hierarchy clicks, delete, undo).
+#[derive(Debug, Default)]
+pub struct Selection {
+    /// Selection order; the last entry is the most recently selected entity.
+    order: Vec<hecs::Entity>,
+}
+
+impl Selection {
+    /// Create an empty selection.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Whether the entity is part of the selection.
+    pub fn contains(&self, entity: hecs::Entity) -> bool {
+        self.order.contains(&entity)
+    }
+
+    /// The most recently selected entity (gizmo / inspector anchor).
+    pub fn anchor(&self) -> Option<hecs::Entity> {
+        self.order.last().copied()
+    }
+
+    /// Number of selected entities.
+    pub fn len(&self) -> usize {
+        self.order.len()
+    }
+
+    /// Whether nothing is selected.
+    pub fn is_empty(&self) -> bool {
+        self.order.is_empty()
+    }
+
+    /// Iterate over the selected entities in selection order.
+    pub fn iter(&self) -> impl Iterator<Item = hecs::Entity> + '_ {
+        self.order.iter().copied()
+    }
+
+    /// Reconcile with the ECS `Selected` marker set.
+    ///
+    /// Drops tracked entities that no longer exist or lost their marker
+    /// (despawn, single-select elsewhere), then appends marked entities that
+    /// are not tracked yet (scene load, undo restore) in query order.
+    pub fn sync(&mut self, world: &World) {
+        self.order.retain(|&e| {
+            world.contains(e) && world.query_one::<&Selected>(e).get().is_ok()
+        });
+        for (entity, _) in world.query::<(hecs::Entity, &Selected)>().iter() {
+            if !self.order.contains(&entity) {
+                self.order.push(entity);
+            }
+        }
     }
 }
 
@@ -143,6 +231,124 @@ pub fn pick_entity(world: &mut World, ray: &Ray) -> Option<hecs::Entity> {
 mod tests {
     use super::*;
     use glam::{Mat4, Vec3};
+
+    fn is_selected(world: &World, entity: hecs::Entity) -> bool {
+        world.query_one::<&Selected>(entity).get().is_ok()
+    }
+
+    #[test]
+    fn select_entity_replace_clears_previous_selection() {
+        let mut world = World::new();
+        let a = world.spawn((Transform::default(),));
+        let b = world.spawn((Transform::default(),));
+        let c = world.spawn((Transform::default(),));
+
+        select_entity(&mut world, a, false);
+        select_entity(&mut world, b, true);
+        assert!(is_selected(&world, a) && is_selected(&world, b));
+
+        select_entity(&mut world, c, false);
+        assert!(!is_selected(&world, a));
+        assert!(!is_selected(&world, b));
+        assert!(is_selected(&world, c));
+    }
+
+    #[test]
+    fn select_entity_additive_toggles_on_and_off() {
+        let mut world = World::new();
+        let a = world.spawn((Transform::default(),));
+        let b = world.spawn((Transform::default(),));
+
+        select_entity(&mut world, a, false);
+        // Shift+click b: adds without clearing a.
+        select_entity(&mut world, b, true);
+        assert!(is_selected(&world, a) && is_selected(&world, b));
+
+        // Shift+click b again: removes only b.
+        select_entity(&mut world, b, true);
+        assert!(is_selected(&world, a));
+        assert!(!is_selected(&world, b));
+
+        // Shift+click a: removes a, leaving an empty selection.
+        select_entity(&mut world, a, true);
+        assert!(!is_selected(&world, a));
+    }
+
+    #[test]
+    fn selection_tracks_click_order_via_sync() {
+        let mut world = World::new();
+        let a = world.spawn((Transform::default(),));
+        let b = world.spawn((Transform::default(),));
+
+        let mut selection = Selection::new();
+        assert!(selection.is_empty());
+        assert_eq!(selection.anchor(), None);
+
+        // Plain click on a, then Shift+click on b: b becomes the anchor.
+        select_entity(&mut world, a, false);
+        selection.sync(&world);
+        select_entity(&mut world, b, true);
+        selection.sync(&world);
+        assert_eq!(selection.len(), 2);
+        assert_eq!(selection.anchor(), Some(b));
+
+        // Plain click on a: single-select replaces the whole selection.
+        select_entity(&mut world, a, false);
+        selection.sync(&world);
+        assert_eq!(selection.len(), 1);
+        assert_eq!(selection.anchor(), Some(a));
+        assert!(selection.contains(a));
+        assert!(!selection.contains(b));
+    }
+
+    #[test]
+    fn selection_shift_click_deselect_restores_previous_anchor() {
+        let mut world = World::new();
+        let a = world.spawn((Transform::default(),));
+        let b = world.spawn((Transform::default(),));
+        let c = world.spawn((Transform::default(),));
+
+        let mut selection = Selection::new();
+        select_entity(&mut world, a, false);
+        select_entity(&mut world, b, true);
+        select_entity(&mut world, c, true);
+        selection.sync(&world);
+        assert_eq!(selection.iter().collect::<Vec<_>>(), vec![a, b, c]);
+        assert_eq!(selection.anchor(), Some(c));
+
+        // Shift+click c again deselects it; the anchor falls back to b.
+        select_entity(&mut world, c, true);
+        selection.sync(&world);
+        assert_eq!(selection.iter().collect::<Vec<_>>(), vec![a, b]);
+        assert_eq!(selection.anchor(), Some(b));
+    }
+
+    #[test]
+    fn selection_sync_prunes_despawned_and_appends_marked() {
+        let mut world = World::new();
+        let a = world.spawn((Transform::default(),));
+        let b = world.spawn((Transform::default(),));
+        let c = world.spawn((Transform::default(),));
+
+        let mut selection = Selection::new();
+        select_entity(&mut world, a, false);
+        select_entity(&mut world, c, true);
+        selection.sync(&world);
+        assert_eq!(selection.len(), 2);
+
+        // b gets the marker without the selection knowing (e.g. undo restore).
+        select_entity(&mut world, b, true);
+        // c is despawned while tracked.
+        let _ = world.despawn(c);
+
+        selection.sync(&world);
+        assert!(selection.contains(a));
+        assert!(selection.contains(b));
+        assert!(!selection.contains(c));
+        assert_eq!(selection.len(), 2);
+        // Previously tracked entity keeps its earlier position.
+        assert_eq!(selection.iter().next(), Some(a));
+    }
 
     #[test]
     fn test_ray_aabb_intersect_centered_cube() {

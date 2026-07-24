@@ -194,36 +194,7 @@ impl DebugLinePass {
         output_format: wgpu::TextureFormat,
         depth_format: wgpu::TextureFormat,
     ) -> Self {
-        let shader_source = r#"
-struct VertexInput {
-    @location(0) position: vec3<f32>,
-    @location(1) color: vec4<f32>,
-};
-
-struct VertexOutput {
-    @builtin(position) clip_position: vec4<f32>,
-    @location(0) color: vec4<f32>,
-};
-
-struct DebugUniform {
-    view_proj: mat4x4<f32>,
-};
-
-@group(0) @binding(0) var<uniform> uniforms: DebugUniform;
-
-@vertex
-fn vs_main(in: VertexInput) -> VertexOutput {
-    var out: VertexOutput;
-    out.clip_position = uniforms.view_proj * vec4<f32>(in.position, 1.0);
-    out.color = in.color;
-    return out;
-}
-
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return in.color;
-}
-"#;
+        let shader_source = DEBUG_LINE_SHADER;
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Debug Line Shader"),
@@ -466,4 +437,84 @@ pub fn build_gizmo_lines(length: f32) -> (Vec<DebugVertex>, u32) {
 
     let count = vertices.len() as u32;
     (vertices, count)
+}
+
+/// WGSL source for the debug line pass (lines, grids, gizmos).
+pub(crate) const DEBUG_LINE_SHADER: &str = r#"
+struct VertexInput {
+    @location(0) position: vec3<f32>,
+    @location(1) color: vec4<f32>,
+};
+
+struct VertexOutput {
+    @builtin(position) clip_position: vec4<f32>,
+    @location(0) color: vec4<f32>,
+};
+
+struct DebugUniform {
+    view_proj: mat4x4<f32>,
+};
+
+@group(0) @binding(0) var<uniform> uniforms: DebugUniform;
+
+@vertex
+fn vs_main(in: VertexInput) -> VertexOutput {
+    var out: VertexOutput;
+    out.clip_position = uniforms.view_proj * vec4<f32>(in.position, 1.0);
+    out.color = in.color;
+    return out;
+}
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    return in.color;
+}
+"#;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::headless_device_queue;
+    use std::any::TypeId;
+
+    #[test]
+    fn signature_declares_depth_read_and_swapchain_write() {
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
+        let output_format = wgpu::TextureFormat::Bgra8UnormSrgb;
+        let sig = DebugLinePass::new(&device, output_format, wgpu::TextureFormat::Depth32Float)
+            .signature();
+        assert_eq!(sig.name, "DebugLine");
+
+        assert_eq!(sig.reads.len(), 1, "DebugLine only reads the depth buffer");
+        assert_eq!(sig.reads[0].type_id, TypeId::of::<GDepth>());
+        assert_eq!(sig.reads[0].name, GDepth::NAME);
+
+        assert_eq!(sig.writes.len(), 1, "DebugLine only writes the swapchain");
+        assert_eq!(sig.writes[0].type_id, TypeId::of::<Swapchain>());
+        assert_eq!(
+            sig.writes[0].format,
+            Some(output_format),
+            "swapchain write format must match the format passed to new()"
+        );
+    }
+
+    #[test]
+    fn init_creates_pipeline_and_debug_geometry() {
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
+        // Compiles the inline WGSL and builds the grid/gizmo vertex buffers —
+        // must not panic.
+        let pass = DebugLinePass::new(
+            &device,
+            wgpu::TextureFormat::Bgra8UnormSrgb,
+            wgpu::TextureFormat::Depth32Float,
+        );
+        assert!(pass.grid_vertex_count > 0, "grid vertex buffer is empty");
+        assert!(pass.gizmo_vertex_count > 0, "gizmo vertex buffer is empty");
+    }
 }

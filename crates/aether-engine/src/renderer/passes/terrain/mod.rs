@@ -23,7 +23,7 @@ use crate::terrain::{
 };
 use std::sync::{Arc, RwLock};
 
-mod shaders;
+pub(crate) mod shaders;
 
 /// Terrain render pass.
 pub struct TerrainPass {

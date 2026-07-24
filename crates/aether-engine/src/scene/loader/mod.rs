@@ -148,6 +148,7 @@ impl SceneLoader {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::headless_device_queue;
     use crate::ecs::components::Transform;
     use crate::ecs::World;
     use crate::renderer::renderable::MaterialUniform;
@@ -155,17 +156,6 @@ mod tests {
         AtmosphereConfig, CameraConfig, LightConfig, MeshRef, ObjectConfig, TerrainConfig,
         TerrainGeometry, TerrainLayerConfig, TerrainSource, WaterConfig,
     };
-
-    fn headless_device() -> wgpu::Device {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter =
-            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
-                .expect("need adapter");
-        let (device, _queue) =
-            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-                .expect("need device");
-        device
-    }
 
     fn test_registry() -> BuiltinMeshRegistry {
         BuiltinMeshRegistry::new()
@@ -221,7 +211,10 @@ mod tests {
 
     #[test]
     fn build_world_creates_correct_number_of_entities() {
-        let device = headless_device();
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let registry = test_registry();
         let desc = test_scene_desc();
         let mut world = World::new();
@@ -236,7 +229,10 @@ mod tests {
 
     #[test]
     fn build_world_sets_correct_material() {
-        let device = headless_device();
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let registry = test_registry();
         let desc = test_scene_desc();
         let mut world = World::new();
@@ -257,7 +253,10 @@ mod tests {
 
     #[test]
     fn build_world_sets_correct_transform() {
-        let device = headless_device();
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let registry = test_registry();
         let desc = test_scene_desc();
         let mut world = World::new();
@@ -277,7 +276,10 @@ mod tests {
 
     #[test]
     fn build_world_sets_lighting_uniforms() {
-        let device = headless_device();
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let registry = test_registry();
         let desc = test_scene_desc();
         let mut world = World::new();
@@ -290,7 +292,10 @@ mod tests {
 
     #[test]
     fn build_world_spawns_camera_entity() {
-        let device = headless_device();
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let registry = test_registry();
         let desc = test_scene_desc();
         let mut world = World::new();
@@ -303,7 +308,10 @@ mod tests {
 
     #[test]
     fn build_world_spawns_light_entity() {
-        let device = headless_device();
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let registry = test_registry();
         let desc = test_scene_desc();
         let mut world = World::new();
@@ -316,7 +324,10 @@ mod tests {
 
     #[test]
     fn build_world_attaches_name_to_objects() {
-        let device = headless_device();
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let registry = test_registry();
         let desc = test_scene_desc();
         let mut world = World::new();
@@ -330,7 +341,10 @@ mod tests {
 
     #[test]
     fn build_world_attaches_name_to_scene_level_entities() {
-        let device = headless_device();
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let registry = test_registry();
         let desc = test_scene_desc();
         let mut world = World::new();
@@ -344,7 +358,10 @@ mod tests {
 
     #[test]
     fn build_world_unknown_mesh_returns_error() {
-        let device = headless_device();
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let registry = test_registry();
         let mut desc = test_scene_desc();
         desc.objects[0].mesh = MeshRef::Builtin("nonexistent".into());
@@ -357,7 +374,10 @@ mod tests {
 
     #[test]
     fn build_world_file_mesh_loads_obj() {
-        let device = headless_device();
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let registry = test_registry();
         let mut desc = test_scene_desc();
 
@@ -386,7 +406,10 @@ mod tests {
 
     #[test]
     fn open_scene_clears_world() {
-        let device = headless_device();
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let registry = test_registry();
         let mut world = World::new();
         world.spawn((Transform::default(), Name("extra".into())));
@@ -416,7 +439,10 @@ mod tests {
 
     #[test]
     fn import_scene_appends_objects() {
-        let device = headless_device();
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let registry = test_registry();
 
         let dir = std::env::temp_dir().join("aether_test_import_scene");
@@ -483,7 +509,10 @@ mod tests {
 
     #[test]
     fn build_world_no_terrain_entity_when_missing() {
-        let device = headless_device();
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let registry = test_registry();
         let desc = test_scene_desc();
         let mut world = World::new();
@@ -499,7 +528,10 @@ mod tests {
 
     #[test]
     fn build_world_spawns_terrain_entity_when_configured() {
-        let device = headless_device();
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let registry = test_registry();
         let mut desc = test_scene_desc();
         desc.terrain = Some(TerrainConfig {
@@ -530,7 +562,10 @@ mod tests {
 
     #[test]
     fn build_world_spawns_atmosphere_entity_when_configured() {
-        let device = headless_device();
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let registry = test_registry();
         let mut desc = test_scene_desc();
         desc.atmosphere = Some(AtmosphereConfig::default());
@@ -547,7 +582,10 @@ mod tests {
 
     #[test]
     fn build_world_spawns_water_entity_when_configured() {
-        let device = headless_device();
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let registry = test_registry();
         let mut desc = test_scene_desc();
         desc.water = Some(WaterConfig::default());

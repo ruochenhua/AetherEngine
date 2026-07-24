@@ -11,7 +11,7 @@ For every code change, the agent must run the tests and runtime verification tha
 - Run: `cargo build -p aether-launcher --release`
 - Run launcher and verify it reaches the first frame without panic:
   ```
-  E:/Users/ruochenhua/.cargo/aether-target/release/aether-launcher.exe --scene scenes/13_clouds.ron
+  target/release/aether-launcher.exe --scene scenes/13_clouds.ron
   ```
 
 ### Launcher pipeline registration changes (`crates/aether-launcher/src/pipeline.rs`, pass add/remove)
@@ -28,6 +28,16 @@ For every code change, the agent must run the tests and runtime verification tha
 ### Scene loader / config changes
 - Run: `cargo test -p aether-engine --lib`
 - Run launcher release with the affected `.ron` scenes and verify they load.
+
+## Shader Conventions
+
+- Every new shader must be registered in the shader validation manifest (`crates/aether-engine/src/renderer/shader_validation.rs`, `SHADER_MANIFEST`): expose its WGSL source as a `pub(crate) const` so the CPU-only naga validation test covers it.
+- Every `create_shader_module` call must use a descriptive label (e.g. "SSR Trace Shader", never "S" or "transient") — the label is what wgpu validation error reports show.
+
+## GPU Resource Conventions
+
+- **Replace-to-free**: any field that holds a GPU resource (`wgpu::Texture`, `Buffer`, `BindGroup`, `Arc<GpuTexture>`, …) must be updated by wholesale replacement — dropping the old value releases its device memory. Never mutate such a resource in place across frames in a way that keeps the old allocation alive.
+- **Cross-scene caches must be evictable**: any cache of GPU resources that outlives a single scene (e.g. `GpuTextureCache`) must expose an eviction interface (`clear()`) and that interface must be called on every scene switch (open / new scene). CPU-side registries that dedup by path may be retained so long as their ids stay stable and cannot alias a different cached GPU entry.
 
 ## Prohibited Shortcuts
 

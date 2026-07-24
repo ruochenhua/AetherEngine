@@ -341,73 +341,7 @@ impl Pass for WaterReflectionPass {
 impl WaterReflectionPass {
     /// Create a new planar reflection pass.
     pub fn new(device: &wgpu::Device, _queue: &wgpu::Queue) -> Self {
-        let shader_source = r#"
-struct VertexInput {
-    @location(0) position: vec3<f32>,
-    @location(1) normal: vec3<f32>,
-    @location(2) uv: vec2<f32>,
-    @location(3) tangent: vec4<f32>,
-};
-struct InstanceInput {
-    @location(4) model_matrix_0: vec4<f32>,
-    @location(5) model_matrix_1: vec4<f32>,
-    @location(6) model_matrix_2: vec4<f32>,
-    @location(7) model_matrix_3: vec4<f32>,
-    @location(8) entity_id: u32,
-};
-struct VertexOutput {
-    @builtin(position) clip_position: vec4<f32>,
-    @location(0) world_pos: vec3<f32>,
-    @location(1) world_normal: vec3<f32>,
-    @location(2) uv: vec2<f32>,
-};
-struct ReflectionUniform {
-    view: mat4x4<f32>,
-    proj: mat4x4<f32>,
-    light_dir: vec4<f32>,
-    light_color: vec4<f32>,
-    ambient: vec4<f32>,
-};
-@group(0) @binding(0) var<uniform> ru: ReflectionUniform;
-
-struct ObjectData { albedo: vec4<f32>, roughness: f32, metallic: f32, };
-@group(1) @binding(0) var<uniform> obj: ObjectData;
-@group(2) @binding(0) var albedo_texture: texture_2d<f32>;
-@group(2) @binding(1) var albedo_sampler: sampler;
-
-@vertex
-fn vs_main(in: VertexInput, instance: InstanceInput) -> VertexOutput {
-    var out: VertexOutput;
-    let model = mat4x4<f32>(instance.model_matrix_0, instance.model_matrix_1, instance.model_matrix_2, instance.model_matrix_3);
-    let world_pos = model * vec4<f32>(in.position, 1.0);
-    out.clip_position = ru.proj * ru.view * world_pos;
-    out.world_pos = world_pos.xyz;
-    let nm = mat3x3<f32>(model[0].xyz, model[1].xyz, model[2].xyz);
-    out.world_normal = normalize(nm * in.normal);
-    out.uv = in.uv;
-    return out;
-}
-
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let tex_color = textureSample(albedo_texture, albedo_sampler, in.uv);
-    let albedo = obj.albedo.rgb * tex_color.rgb;
-
-    let n = normalize(in.world_normal);
-    let l = normalize(ru.light_dir.xyz);
-    let v = normalize(-in.world_pos);
-    let h = normalize(l + v);
-
-    let n_dot_l = max(dot(n, l), 0.0);
-    let n_dot_h = max(dot(n, h), 0.0);
-
-    let diffuse = albedo * n_dot_l * ru.light_color.rgb;
-    let specular = pow(n_dot_h, 64.0) * ru.light_color.rgb;
-    let ambient = albedo * ru.ambient.rgb;
-
-    return vec4<f32>(ambient + diffuse + specular * 0.3, 1.0);
-}
-"#;
+        let shader_source = WATER_REFLECTION_SHADER;
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("WaterReflection Shader"),
@@ -520,107 +454,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         });
 
         // Terrain reflection shader: splatted albedo with simple forward lighting.
-        let terrain_shader_source = r#"
-struct VertexInput {
-    @location(0) position: vec3<f32>,
-    @location(1) normal: vec3<f32>,
-    @location(2) uv: vec2<f32>,
-    @location(3) tangent: vec4<f32>,
-};
-struct InstanceInput {
-    @location(4) model_matrix_0: vec4<f32>,
-    @location(5) model_matrix_1: vec4<f32>,
-    @location(6) model_matrix_2: vec4<f32>,
-    @location(7) model_matrix_3: vec4<f32>,
-    @location(8) lod: u32,
-};
-struct VertexOutput {
-    @builtin(position) clip_position: vec4<f32>,
-    @location(0) world_pos: vec3<f32>,
-    @location(1) world_normal: vec3<f32>,
-    @location(2) uv: vec2<f32>,
-};
-struct ReflectionUniform {
-    view: mat4x4<f32>,
-    proj: mat4x4<f32>,
-    light_dir: vec4<f32>,
-    light_color: vec4<f32>,
-    ambient: vec4<f32>,
-};
-@group(0) @binding(0) var<uniform> ru: ReflectionUniform;
-
-struct TerrainUniform {
-    layer_color_0: vec4<f32>,
-    layer_color_1: vec4<f32>,
-    layer_color_2: vec4<f32>,
-    layer_color_3: vec4<f32>,
-    layer_roughness: vec4<f32>,
-    layer_metallic: vec4<f32>,
-    has_splat_map: u32,
-    _pad0: u32,
-    splat_uv_scale: f32,
-    albedo_uv_scale: f32,
-    layer_uv_scale: vec4<f32>,
-};
-@group(1) @binding(0) var<uniform> terrain: TerrainUniform;
-@group(1) @binding(1) var splat_map: texture_2d<f32>;
-@group(1) @binding(2) var terrain_sampler: sampler;
-@group(1) @binding(3) var layer_albedo_0: texture_2d<f32>;
-@group(1) @binding(4) var layer_albedo_1: texture_2d<f32>;
-@group(1) @binding(5) var layer_albedo_2: texture_2d<f32>;
-@group(1) @binding(6) var layer_albedo_3: texture_2d<f32>;
-
-@vertex
-fn vs_main(in: VertexInput, instance: InstanceInput) -> VertexOutput {
-    var out: VertexOutput;
-    let model = mat4x4<f32>(instance.model_matrix_0, instance.model_matrix_1, instance.model_matrix_2, instance.model_matrix_3);
-    let world_pos = model * vec4<f32>(in.position, 1.0);
-    out.clip_position = ru.proj * ru.view * world_pos;
-    out.world_pos = world_pos.xyz;
-    let nm = mat3x3<f32>(model[0].xyz, model[1].xyz, model[2].xyz);
-    out.world_normal = normalize(nm * in.normal);
-    out.uv = world_pos.xz;
-    return out;
-}
-
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let splat_uv = in.uv * terrain.splat_uv_scale + vec2<f32>(0.5);
-    let albedo_uv = in.uv * terrain.albedo_uv_scale;
-
-    var weights: vec4<f32>;
-    if (terrain.has_splat_map != 0u) {
-        weights = textureSample(splat_map, terrain_sampler, splat_uv);
-    } else {
-        weights = vec4<f32>(1.0, 0.0, 0.0, 0.0);
-    }
-
-    let uv0 = albedo_uv * terrain.layer_uv_scale.x;
-    let uv1 = albedo_uv * terrain.layer_uv_scale.y;
-    let uv2 = albedo_uv * terrain.layer_uv_scale.z;
-    let uv3 = albedo_uv * terrain.layer_uv_scale.w;
-    let c0 = terrain.layer_color_0 * textureSample(layer_albedo_0, terrain_sampler, uv0);
-    let c1 = terrain.layer_color_1 * textureSample(layer_albedo_1, terrain_sampler, uv1);
-    let c2 = terrain.layer_color_2 * textureSample(layer_albedo_2, terrain_sampler, uv2);
-    let c3 = terrain.layer_color_3 * textureSample(layer_albedo_3, terrain_sampler, uv3);
-
-    let albedo = c0 * weights.x + c1 * weights.y + c2 * weights.z + c3 * weights.w;
-
-    let n = normalize(in.world_normal);
-    let l = normalize(ru.light_dir.xyz);
-    let v = normalize(-in.world_pos);
-    let h = normalize(l + v);
-
-    let n_dot_l = max(dot(n, l), 0.0);
-    let n_dot_h = max(dot(n, h), 0.0);
-
-    let diffuse = albedo.rgb * n_dot_l * ru.light_color.rgb;
-    let specular = pow(n_dot_h, 64.0) * ru.light_color.rgb;
-    let ambient = albedo.rgb * ru.ambient.rgb;
-
-    return vec4<f32>(ambient + diffuse + specular * 0.3, 1.0);
-}
-"#;
+        let terrain_shader_source = WATER_REFLECTION_TERRAIN_SHADER;
         let terrain_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("WaterReflection Terrain Shader"),
             source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(terrain_shader_source)),
@@ -861,24 +695,19 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::headless_device_queue;
     use crate::ecs::World;
     use crate::renderer::extract::extract_optional_pass_data;
     use crate::renderer::frame::{FrameConfig, RenderFrame};
     use crate::renderer::light::LightingUniforms;
     use crate::scene::{TerrainGeometry as TerrainGeometryConfig, TerrainSource, WaterConfig};
 
-    fn headless_device() -> (wgpu::Device, wgpu::Queue) {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter =
-            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
-                .expect("need adapter");
-        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-            .expect("need device")
-    }
-
     #[test]
     fn water_reflection_pass_stores_terrain_geometry() {
-        let (device, queue) = headless_device();
+        let Some((device, queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let pass = WaterReflectionPass::new(&device, &queue);
         assert!(pass.terrain_geometry.is_none());
 
@@ -931,4 +760,340 @@ mod tests {
         assert!(pass.should_run(&frame));
         assert!(pass.terrain_geometry.is_some());
     }
+
+    fn spawn_water(reflection_enabled: bool, level: f32) -> World {
+        let mut world = World::new();
+        world.spawn((crate::ecs::components::Water {
+            config: WaterConfig {
+                reflection_enabled,
+                level,
+                ..Default::default()
+            },
+            dudv_texture: None,
+            normal_texture: None,
+        },));
+        world
+    }
+
+    fn make_frame<'a>(
+        optional: &'a crate::renderer::extract::OptionalPassData,
+        camera: &'a crate::renderer::camera::FlyCamera,
+        lighting: &'a LightingUniforms,
+        queue: &'a wgpu::Queue,
+        config: &'a FrameConfig,
+        texture_cache: &'a crate::asset::texture_cache::GpuTextureCache,
+        asset_manager: &'a crate::asset::AssetManager,
+    ) -> RenderFrame<'a> {
+        RenderFrame {
+            batches: std::sync::Arc::from([]),
+            camera,
+            lighting,
+            queue,
+            aspect: 16.0 / 9.0,
+            delta_time: 0.016,
+            config,
+            optional,
+            terrain_geometry: None,
+            texture_cache,
+            asset_manager,
+        }
+    }
+
+    #[test]
+    fn mirrored_view_maps_point_above_water_to_mirror_point_below() {
+        let Some((device, queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
+        let level = 2.0;
+        let world = spawn_water(true, level);
+        let optional = extract_optional_pass_data(&world);
+        let camera = crate::renderer::camera::FlyCamera::default();
+        let lighting = LightingUniforms::default();
+        let texture_cache = crate::asset::texture_cache::GpuTextureCache::new(&device, &queue);
+        let asset_manager = crate::asset::AssetManager::new();
+        let config = FrameConfig::default();
+        let frame = make_frame(
+            &optional,
+            &camera,
+            &lighting,
+            &queue,
+            &config,
+            &texture_cache,
+            &asset_manager,
+        );
+
+        let mut pass = WaterReflectionPass::new(&device, &queue);
+        pass.apply_frame(&frame);
+
+        // The mirrored view must render a point at (x, level + h, z) exactly
+        // where the unmirrored camera would render (x, level - h, z).
+        let camera_view = camera.view_matrix();
+        for h in [0.5_f32, 3.0, 17.25] {
+            let p = Vec3::new(1.0, level + h, -2.0);
+            let mirror = Vec3::new(p.x, level - h, p.z);
+            let actual = pass.view.project_point3(p);
+            let expected = camera_view.project_point3(mirror);
+            assert!(
+                actual.abs_diff_eq(expected, 1e-4),
+                "point {p:?} (h={h}): mirrored view gave {actual:?}, \
+                 expected camera view of mirrored point {mirror:?} = {expected:?}"
+            );
+        }
+
+        // A point exactly on the water plane is its own mirror image.
+        let on_plane = Vec3::new(-4.0, level, 9.5);
+        let actual = pass.view.project_point3(on_plane);
+        let expected = camera_view.project_point3(on_plane);
+        assert!(
+            actual.abs_diff_eq(expected, 1e-4),
+            "point on water plane {on_plane:?}: mirrored view gave {actual:?}, \
+             expected unchanged view-space position {expected:?}"
+        );
+    }
+
+    #[test]
+    fn should_run_false_when_reflection_disabled() {
+        let Some((device, queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
+        let world = spawn_water(false, 2.0);
+        let optional = extract_optional_pass_data(&world);
+        let camera = crate::renderer::camera::FlyCamera::default();
+        let lighting = LightingUniforms::default();
+        let texture_cache = crate::asset::texture_cache::GpuTextureCache::new(&device, &queue);
+        let asset_manager = crate::asset::AssetManager::new();
+        let config = FrameConfig::default();
+        let frame = make_frame(
+            &optional,
+            &camera,
+            &lighting,
+            &queue,
+            &config,
+            &texture_cache,
+            &asset_manager,
+        );
+
+        let mut pass = WaterReflectionPass::new(&device, &queue);
+        pass.apply_frame(&frame);
+
+        assert!(pass.has_water, "water component present, has_water should be set");
+        assert!(
+            !pass.should_run(&frame),
+            "should_run must be false when reflection_enabled is false"
+        );
+        // apply_frame returns before computing the mirrored camera, so the
+        // view matrix keeps its initial identity value.
+        assert_eq!(
+            pass.view,
+            Mat4::IDENTITY,
+            "view matrix must not be updated when reflections are disabled"
+        );
+    }
+
+    #[test]
+    fn should_run_false_without_water() {
+        let Some((device, queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
+        let world = World::new();
+        let optional = extract_optional_pass_data(&world);
+        let camera = crate::renderer::camera::FlyCamera::default();
+        let lighting = LightingUniforms::default();
+        let texture_cache = crate::asset::texture_cache::GpuTextureCache::new(&device, &queue);
+        let asset_manager = crate::asset::AssetManager::new();
+        let config = FrameConfig::default();
+        let frame = make_frame(
+            &optional,
+            &camera,
+            &lighting,
+            &queue,
+            &config,
+            &texture_cache,
+            &asset_manager,
+        );
+
+        let mut pass = WaterReflectionPass::new(&device, &queue);
+        pass.apply_frame(&frame);
+
+        assert!(!pass.has_water);
+        assert!(
+            !pass.should_run(&frame),
+            "should_run must be false when the scene has no water"
+        );
+    }
 }
+
+/// WGSL source for the water reflection pass (scene objects drawn into the reflection target).
+pub(crate) const WATER_REFLECTION_SHADER: &str = r#"
+struct VertexInput {
+    @location(0) position: vec3<f32>,
+    @location(1) normal: vec3<f32>,
+    @location(2) uv: vec2<f32>,
+    @location(3) tangent: vec4<f32>,
+};
+struct InstanceInput {
+    @location(4) model_matrix_0: vec4<f32>,
+    @location(5) model_matrix_1: vec4<f32>,
+    @location(6) model_matrix_2: vec4<f32>,
+    @location(7) model_matrix_3: vec4<f32>,
+    @location(8) entity_id: u32,
+};
+struct VertexOutput {
+    @builtin(position) clip_position: vec4<f32>,
+    @location(0) world_pos: vec3<f32>,
+    @location(1) world_normal: vec3<f32>,
+    @location(2) uv: vec2<f32>,
+};
+struct ReflectionUniform {
+    view: mat4x4<f32>,
+    proj: mat4x4<f32>,
+    light_dir: vec4<f32>,
+    light_color: vec4<f32>,
+    ambient: vec4<f32>,
+};
+@group(0) @binding(0) var<uniform> ru: ReflectionUniform;
+
+struct ObjectData { albedo: vec4<f32>, roughness: f32, metallic: f32, };
+@group(1) @binding(0) var<uniform> obj: ObjectData;
+@group(2) @binding(0) var albedo_texture: texture_2d<f32>;
+@group(2) @binding(1) var albedo_sampler: sampler;
+
+@vertex
+fn vs_main(in: VertexInput, instance: InstanceInput) -> VertexOutput {
+    var out: VertexOutput;
+    let model = mat4x4<f32>(instance.model_matrix_0, instance.model_matrix_1, instance.model_matrix_2, instance.model_matrix_3);
+    let world_pos = model * vec4<f32>(in.position, 1.0);
+    out.clip_position = ru.proj * ru.view * world_pos;
+    out.world_pos = world_pos.xyz;
+    let nm = mat3x3<f32>(model[0].xyz, model[1].xyz, model[2].xyz);
+    out.world_normal = normalize(nm * in.normal);
+    out.uv = in.uv;
+    return out;
+}
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    let tex_color = textureSample(albedo_texture, albedo_sampler, in.uv);
+    let albedo = obj.albedo.rgb * tex_color.rgb;
+
+    let n = normalize(in.world_normal);
+    let l = normalize(ru.light_dir.xyz);
+    let v = normalize(-in.world_pos);
+    let h = normalize(l + v);
+
+    let n_dot_l = max(dot(n, l), 0.0);
+    let n_dot_h = max(dot(n, h), 0.0);
+
+    let diffuse = albedo * n_dot_l * ru.light_color.rgb;
+    let specular = pow(n_dot_h, 64.0) * ru.light_color.rgb;
+    let ambient = albedo * ru.ambient.rgb;
+
+    return vec4<f32>(ambient + diffuse + specular * 0.3, 1.0);
+}
+"#;
+
+/// WGSL source for the water reflection pass (terrain drawn into the reflection target).
+pub(crate) const WATER_REFLECTION_TERRAIN_SHADER: &str = r#"
+struct VertexInput {
+    @location(0) position: vec3<f32>,
+    @location(1) normal: vec3<f32>,
+    @location(2) uv: vec2<f32>,
+    @location(3) tangent: vec4<f32>,
+};
+struct InstanceInput {
+    @location(4) model_matrix_0: vec4<f32>,
+    @location(5) model_matrix_1: vec4<f32>,
+    @location(6) model_matrix_2: vec4<f32>,
+    @location(7) model_matrix_3: vec4<f32>,
+    @location(8) lod: u32,
+};
+struct VertexOutput {
+    @builtin(position) clip_position: vec4<f32>,
+    @location(0) world_pos: vec3<f32>,
+    @location(1) world_normal: vec3<f32>,
+    @location(2) uv: vec2<f32>,
+};
+struct ReflectionUniform {
+    view: mat4x4<f32>,
+    proj: mat4x4<f32>,
+    light_dir: vec4<f32>,
+    light_color: vec4<f32>,
+    ambient: vec4<f32>,
+};
+@group(0) @binding(0) var<uniform> ru: ReflectionUniform;
+
+struct TerrainUniform {
+    layer_color_0: vec4<f32>,
+    layer_color_1: vec4<f32>,
+    layer_color_2: vec4<f32>,
+    layer_color_3: vec4<f32>,
+    layer_roughness: vec4<f32>,
+    layer_metallic: vec4<f32>,
+    has_splat_map: u32,
+    _pad0: u32,
+    splat_uv_scale: f32,
+    albedo_uv_scale: f32,
+    layer_uv_scale: vec4<f32>,
+};
+@group(1) @binding(0) var<uniform> terrain: TerrainUniform;
+@group(1) @binding(1) var splat_map: texture_2d<f32>;
+@group(1) @binding(2) var terrain_sampler: sampler;
+@group(1) @binding(3) var layer_albedo_0: texture_2d<f32>;
+@group(1) @binding(4) var layer_albedo_1: texture_2d<f32>;
+@group(1) @binding(5) var layer_albedo_2: texture_2d<f32>;
+@group(1) @binding(6) var layer_albedo_3: texture_2d<f32>;
+
+@vertex
+fn vs_main(in: VertexInput, instance: InstanceInput) -> VertexOutput {
+    var out: VertexOutput;
+    let model = mat4x4<f32>(instance.model_matrix_0, instance.model_matrix_1, instance.model_matrix_2, instance.model_matrix_3);
+    let world_pos = model * vec4<f32>(in.position, 1.0);
+    out.clip_position = ru.proj * ru.view * world_pos;
+    out.world_pos = world_pos.xyz;
+    let nm = mat3x3<f32>(model[0].xyz, model[1].xyz, model[2].xyz);
+    out.world_normal = normalize(nm * in.normal);
+    out.uv = world_pos.xz;
+    return out;
+}
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    let splat_uv = in.uv * terrain.splat_uv_scale + vec2<f32>(0.5);
+    let albedo_uv = in.uv * terrain.albedo_uv_scale;
+
+    var weights: vec4<f32>;
+    if (terrain.has_splat_map != 0u) {
+        weights = textureSample(splat_map, terrain_sampler, splat_uv);
+    } else {
+        weights = vec4<f32>(1.0, 0.0, 0.0, 0.0);
+    }
+
+    let uv0 = albedo_uv * terrain.layer_uv_scale.x;
+    let uv1 = albedo_uv * terrain.layer_uv_scale.y;
+    let uv2 = albedo_uv * terrain.layer_uv_scale.z;
+    let uv3 = albedo_uv * terrain.layer_uv_scale.w;
+    let c0 = terrain.layer_color_0 * textureSample(layer_albedo_0, terrain_sampler, uv0);
+    let c1 = terrain.layer_color_1 * textureSample(layer_albedo_1, terrain_sampler, uv1);
+    let c2 = terrain.layer_color_2 * textureSample(layer_albedo_2, terrain_sampler, uv2);
+    let c3 = terrain.layer_color_3 * textureSample(layer_albedo_3, terrain_sampler, uv3);
+
+    let albedo = c0 * weights.x + c1 * weights.y + c2 * weights.z + c3 * weights.w;
+
+    let n = normalize(in.world_normal);
+    let l = normalize(ru.light_dir.xyz);
+    let v = normalize(-in.world_pos);
+    let h = normalize(l + v);
+
+    let n_dot_l = max(dot(n, l), 0.0);
+    let n_dot_h = max(dot(n, h), 0.0);
+
+    let diffuse = albedo.rgb * n_dot_l * ru.light_color.rgb;
+    let specular = pow(n_dot_h, 64.0) * ru.light_color.rgb;
+    let ambient = albedo.rgb * ru.ambient.rgb;
+
+    return vec4<f32>(ambient + diffuse + specular * 0.3, 1.0);
+}
+"#;

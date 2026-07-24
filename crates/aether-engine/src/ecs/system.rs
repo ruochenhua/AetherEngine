@@ -102,3 +102,152 @@ impl SystemRegistry {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    /// Records every lifecycle call into a shared log so tests can
+    /// assert execution order across systems and stages.
+    struct RecordingSystem {
+        name: &'static str,
+        log: Rc<RefCell<Vec<String>>>,
+    }
+
+    impl RecordingSystem {
+        fn new(name: &'static str, log: Rc<RefCell<Vec<String>>>) -> Self {
+            Self { name, log }
+        }
+    }
+
+    impl System for RecordingSystem {
+        fn name(&self) -> &str {
+            self.name
+        }
+
+        fn init(&mut self, _world: &mut World) {
+            self.log.borrow_mut().push(format!("init:{}", self.name));
+        }
+
+        fn update(&mut self, dt: f32, _world: &mut World) {
+            self.log
+                .borrow_mut()
+                .push(format!("update:{}:{dt}", self.name));
+        }
+
+        fn shutdown(&mut self, _world: &mut World) {
+            self.log
+                .borrow_mut()
+                .push(format!("shutdown:{}", self.name));
+        }
+    }
+
+    #[test]
+    fn run_startup_executes_systems_in_registration_order() {
+        let log = Rc::new(RefCell::new(Vec::new()));
+        let mut registry = SystemRegistry::new();
+        registry.add_startup(RecordingSystem::new("first", Rc::clone(&log)));
+        registry.add_startup(RecordingSystem::new("second", Rc::clone(&log)));
+        registry.add_startup(RecordingSystem::new("third", Rc::clone(&log)));
+
+        let mut world = World::new();
+        registry.run_startup(&mut world);
+
+        assert_eq!(
+            log.borrow().as_slice(),
+            ["init:first", "init:second", "init:third"],
+            "startup systems must be initialized in registration order"
+        );
+    }
+
+    #[test]
+    fn run_update_executes_systems_in_registration_order() {
+        let log = Rc::new(RefCell::new(Vec::new()));
+        let mut registry = SystemRegistry::new();
+        registry.add_update(RecordingSystem::new("first", Rc::clone(&log)));
+        registry.add_update(RecordingSystem::new("second", Rc::clone(&log)));
+        registry.add_update(RecordingSystem::new("third", Rc::clone(&log)));
+
+        let mut world = World::new();
+        registry.run_update(0.016, &mut world);
+
+        assert_eq!(
+            log.borrow().as_slice(),
+            [
+                "update:first:0.016",
+                "update:second:0.016",
+                "update:third:0.016"
+            ],
+            "update systems must run in registration order with the given dt"
+        );
+    }
+
+    #[test]
+    fn run_fixed_update_executes_systems_in_registration_order() {
+        let log = Rc::new(RefCell::new(Vec::new()));
+        let mut registry = SystemRegistry::new();
+        registry.add_fixed_update(RecordingSystem::new("first", Rc::clone(&log)));
+        registry.add_fixed_update(RecordingSystem::new("second", Rc::clone(&log)));
+        registry.add_fixed_update(RecordingSystem::new("third", Rc::clone(&log)));
+
+        let mut world = World::new();
+        registry.run_fixed_update(0.016, &mut world);
+
+        assert_eq!(
+            log.borrow().as_slice(),
+            [
+                "update:first:0.016",
+                "update:second:0.016",
+                "update:third:0.016"
+            ],
+            "fixed update systems must run in registration order with the given dt"
+        );
+    }
+
+    #[test]
+    fn run_shutdown_executes_systems_in_registration_order() {
+        let log = Rc::new(RefCell::new(Vec::new()));
+        let mut registry = SystemRegistry::new();
+        registry.add_shutdown(RecordingSystem::new("first", Rc::clone(&log)));
+        registry.add_shutdown(RecordingSystem::new("second", Rc::clone(&log)));
+        registry.add_shutdown(RecordingSystem::new("third", Rc::clone(&log)));
+
+        let mut world = World::new();
+        registry.run_shutdown(&mut world);
+
+        assert_eq!(
+            log.borrow().as_slice(),
+            ["shutdown:first", "shutdown:second", "shutdown:third"],
+            "shutdown systems must run in registration order"
+        );
+    }
+
+    #[test]
+    fn each_stage_runs_only_its_own_systems() {
+        let log = Rc::new(RefCell::new(Vec::new()));
+        let mut registry = SystemRegistry::new();
+        registry.add_startup(RecordingSystem::new("startup", Rc::clone(&log)));
+        registry.add_update(RecordingSystem::new("update", Rc::clone(&log)));
+        registry.add_fixed_update(RecordingSystem::new("fixed", Rc::clone(&log)));
+        registry.add_shutdown(RecordingSystem::new("shutdown", Rc::clone(&log)));
+
+        let mut world = World::new();
+        registry.run_startup(&mut world);
+        registry.run_update(0.5, &mut world);
+        registry.run_fixed_update(0.25, &mut world);
+        registry.run_shutdown(&mut world);
+
+        assert_eq!(
+            log.borrow().as_slice(),
+            [
+                "init:startup",
+                "update:update:0.5",
+                "update:fixed:0.25",
+                "shutdown:shutdown"
+            ],
+            "each run_* method must execute only the systems registered for that stage, with that call's dt"
+        );
+    }
+}

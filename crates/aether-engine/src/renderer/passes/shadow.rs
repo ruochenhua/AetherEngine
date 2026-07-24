@@ -229,26 +229,7 @@ impl Pass for ShadowPass {
 impl ShadowPass {
     /// Create a new cascaded shadow pass.
     pub fn new(device: &wgpu::Device) -> Self {
-        let src = r#"
-struct VertexInput { @location(0) position: vec3<f32>, @location(1) normal: vec3<f32>, @location(2) uv: vec2<f32>, @location(3) tangent: vec4<f32>, };
-struct InstanceInput {
-    @location(4) model_matrix_0: vec4<f32>,
-    @location(5) model_matrix_1: vec4<f32>,
-    @location(6) model_matrix_2: vec4<f32>,
-    @location(7) model_matrix_3: vec4<f32>,
-    @location(8) entity_id: u32,
-};
-struct VertexOutput { @builtin(position) clip_position: vec4<f32>, };
-struct LightVP { light_view_proj: mat4x4<f32>, };
-@group(0) @binding(0) var<uniform> lvp: LightVP;
-@vertex
-fn vs_main(in: VertexInput, instance: InstanceInput) -> VertexOutput {
-    var out: VertexOutput;
-    let model = mat4x4<f32>(instance.model_matrix_0, instance.model_matrix_1, instance.model_matrix_2, instance.model_matrix_3);
-    out.clip_position = lvp.light_view_proj * model * vec4<f32>(in.position, 1.0);
-    return out;
-}
-"#;
+        let src = SHADOW_SHADER;
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Shadow Shader"),
             source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(src)),
@@ -517,18 +498,10 @@ fn compute_cascade(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::headless_device_queue;
     use crate::renderer::camera::FlyCamera;
     use crate::renderer::frame::{FrameConfig, RenderFrame};
     use crate::renderer::light::LightingUniforms;
-
-    fn headless_queue() -> (wgpu::Device, wgpu::Queue) {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter =
-            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
-                .expect("need adapter");
-        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-            .expect("need device")
-    }
 
     fn build_frame<'a>(
         camera: &'a FlyCamera,
@@ -558,7 +531,10 @@ mod tests {
     fn compute_cascades_produces_valid_matrices() {
         let camera = FlyCamera::default();
         let lighting = LightingUniforms::default();
-        let (device, queue) = headless_queue();
+        let Some((device, queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let texture_cache = crate::asset::texture_cache::GpuTextureCache::new(&device, &queue);
         let asset_manager = crate::asset::AssetManager::new();
         let optional = crate::renderer::extract::OptionalPassData::default();
@@ -600,7 +576,10 @@ mod tests {
     fn cascade_matrix_contains_scene_points() {
         let camera = FlyCamera::default();
         let lighting = LightingUniforms::default();
-        let (device, queue) = headless_queue();
+        let Some((device, queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let texture_cache = crate::asset::texture_cache::GpuTextureCache::new(&device, &queue);
         let asset_manager = crate::asset::AssetManager::new();
         let optional = crate::renderer::extract::OptionalPassData::default();
@@ -645,7 +624,10 @@ mod tests {
     fn shadow_pass_stores_terrain_geometry() {
         let camera = FlyCamera::default();
         let lighting = LightingUniforms::default();
-        let (device, queue) = headless_queue();
+        let Some((device, queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let texture_cache = crate::asset::texture_cache::GpuTextureCache::new(&device, &queue);
         let asset_manager = crate::asset::AssetManager::new();
         let optional = crate::renderer::extract::OptionalPassData::default();
@@ -685,3 +667,25 @@ mod tests {
         drop(device);
     }
 }
+
+/// WGSL source for the shadow pass (depth-only vertex shader for cascaded shadow maps).
+pub(crate) const SHADOW_SHADER: &str = r#"
+struct VertexInput { @location(0) position: vec3<f32>, @location(1) normal: vec3<f32>, @location(2) uv: vec2<f32>, @location(3) tangent: vec4<f32>, };
+struct InstanceInput {
+    @location(4) model_matrix_0: vec4<f32>,
+    @location(5) model_matrix_1: vec4<f32>,
+    @location(6) model_matrix_2: vec4<f32>,
+    @location(7) model_matrix_3: vec4<f32>,
+    @location(8) entity_id: u32,
+};
+struct VertexOutput { @builtin(position) clip_position: vec4<f32>, };
+struct LightVP { light_view_proj: mat4x4<f32>, };
+@group(0) @binding(0) var<uniform> lvp: LightVP;
+@vertex
+fn vs_main(in: VertexInput, instance: InstanceInput) -> VertexOutput {
+    var out: VertexOutput;
+    let model = mat4x4<f32>(instance.model_matrix_0, instance.model_matrix_1, instance.model_matrix_2, instance.model_matrix_3);
+    out.clip_position = lvp.light_view_proj * model * vec4<f32>(in.position, 1.0);
+    return out;
+}
+"#;

@@ -5,10 +5,38 @@
 //! Worley, Perlin-Worley, curl and weather noise textures for density,
 //! and writes the result as a separate `CloudColor` overlay. The composite
 //! pass blends this overlay over the lit scene.
+//!
+//! ## Cloud shell placement convention
+//!
+//! The cloud shell is a spherical shell whose center is placed on the
+//! planet's vertical axis **directly below the camera** —
+//! `(cam_pos.x, -planet_radius, cam_pos.z)` — not at the camera position
+//! itself. If the center followed the camera, the shell would render
+//! incorrectly as soon as the camera rises or descends to an arbitrary
+//! height. See the inline comment in `apply_frame` (fix commit e7371a0).
+//!
+//! ## Noise texture lifecycle
+//!
+//! The Worley / Perlin-Worley / weather noise textures are created lazily:
+//! `apply_frame` calls `ensure_noise_textures` the first time a frame carries
+//! cloud data, and the textures are regenerated only when the requested
+//! `CloudQuality` changes (same quality → no-op). When a frame carries no
+//! cloud data (e.g. after switching to a cloudless scene), `apply_frame`
+//! calls `clear_noise_textures` so the textures — ~24 MB at High quality —
+//! do not stay GPU-resident while unused; they are recreated lazily if
+//! clouds reappear.
+//!
+//! ## `CloudQuality` resolutions
+//!
+//! `CloudQuality` (Low / Medium / High) scales the procedural noise texture
+//! resolutions in `crates/aether-engine/src/clouds/generate.rs`:
+//! High = Perlin-Worley 128³ / Worley 32³ / weather 2048², Medium = 64³ /
+//! 32³ / 1024², Low = 32³ / 16³ / 512². It does not affect ray-march step
+//! counts, which are fixed in the shader.
 
 mod execute;
 mod pipeline;
-mod shader;
+pub(crate) mod shader;
 mod textures;
 mod types;
 
@@ -70,7 +98,6 @@ impl Pass for VolumetricCloudPass {
         self.cloud_color_handle = Some(resources.handle::<CloudColor>());
 
         let depth_view = resources.get(self.depth_handle.unwrap());
-        let _cloud_color_view = resources.get(self.cloud_color_handle.unwrap());
 
         // Create the texture bind group: depth only.
         self.texture_bind_group = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -162,6 +189,11 @@ impl Pass for VolumetricCloudPass {
                 .write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
         } else {
             self.has_clouds = false;
+            // The scene has no clouds (e.g. after switching to a cloudless
+            // scene): release the noise textures so they do not stay
+            // GPU-resident until the pass is dropped. They are recreated
+            // lazily by `ensure_noise_textures` if clouds reappear.
+            self.clear_noise_textures();
         }
     }
 
@@ -223,11 +255,27 @@ impl VolumetricCloudPass {
         self.noise_bind_group = Some(resources.bind_group);
         self.current_noise_quality = Some(quality);
     }
+
+    /// Release the noise textures, sampler and bind group, freeing their GPU
+    /// memory (replace-to-free). A no-op when they are already released.
+    /// The textures are recreated lazily by `ensure_noise_textures`.
+    fn clear_noise_textures(&mut self) {
+        self.worley_texture = None;
+        self.worley_view = None;
+        self.perlin_worley_texture = None;
+        self.perlin_worley_view = None;
+        self.weather_texture = None;
+        self.weather_view = None;
+        self.multi_noise_sampler = None;
+        self.noise_bind_group = None;
+        self.current_noise_quality = None;
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::headless_device_queue;
     use crate::ecs::components::Clouds;
     use crate::ecs::World;
     use crate::renderer::camera::FlyCamera;
@@ -238,18 +286,12 @@ mod tests {
     use glam::Vec3;
     use std::sync::Arc;
 
-    fn headless_device_queue() -> (wgpu::Device, wgpu::Queue) {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter =
-            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
-                .expect("need adapter");
-        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-            .expect("need device")
-    }
-
     #[test]
     fn cloud_pass_signature_reads_depth_and_writes_cloud_color() {
-        let (device, queue) = headless_device_queue();
+        let Some((device, queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let sig = VolumetricCloudPass::new(&device, &queue).signature();
         assert_eq!(sig.name, "VolumetricCloud");
         assert_eq!(sig.reads.len(), 1);
@@ -258,7 +300,10 @@ mod tests {
 
     #[test]
     fn cloud_noise_texture_has_expected_dimensions() {
-        let (device, queue) = headless_device_queue();
+        let Some((device, queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let pass = VolumetricCloudPass::new_with_quality(
             &device,
             &queue,
@@ -272,58 +317,155 @@ mod tests {
         assert_eq!(worley.format(), wgpu::TextureFormat::Rgba8Unorm);
 
         let perlin_worley = pass.perlin_worley_texture.as_ref().unwrap();
-        assert_eq!(perlin_worley.width(), 128);
-        assert_eq!(perlin_worley.height(), 128);
-        assert_eq!(perlin_worley.depth_or_array_layers(), 128);
+        assert_eq!(perlin_worley.width(), 64);
+        assert_eq!(perlin_worley.height(), 64);
+        assert_eq!(perlin_worley.depth_or_array_layers(), 64);
         assert_eq!(perlin_worley.format(), wgpu::TextureFormat::Rgba8Unorm);
 
         let weather = pass.weather_texture.as_ref().unwrap();
-        assert_eq!(weather.width(), 2048);
-        assert_eq!(weather.height(), 2048);
+        assert_eq!(weather.width(), 1024);
+        assert_eq!(weather.height(), 1024);
         assert_eq!(weather.format(), wgpu::TextureFormat::Rgba8Unorm);
     }
 
     #[test]
-    fn cloud_noise_texture_dimensions_are_fixed_by_quality() {
-        fn assert_sizes(pass: &VolumetricCloudPass) {
+    fn cloud_noise_texture_dimensions_scale_with_quality() {
+        fn sizes(
+            pass: &VolumetricCloudPass,
+        ) -> ((u32, u32, u32), (u32, u32, u32), (u32, u32)) {
             let w = pass.worley_texture.as_ref().unwrap();
-            assert_eq!(w.width(), 32);
-            assert_eq!(w.height(), 32);
-            assert_eq!(w.depth_or_array_layers(), 32);
             assert_eq!(w.format(), wgpu::TextureFormat::Rgba8Unorm);
-
             let pw = pass.perlin_worley_texture.as_ref().unwrap();
-            assert_eq!(pw.width(), 128);
-            assert_eq!(pw.height(), 128);
-            assert_eq!(pw.depth_or_array_layers(), 128);
             assert_eq!(pw.format(), wgpu::TextureFormat::Rgba8Unorm);
-
             let wt = pass.weather_texture.as_ref().unwrap();
-            assert_eq!(wt.width(), 2048);
-            assert_eq!(wt.height(), 2048);
             assert_eq!(wt.format(), wgpu::TextureFormat::Rgba8Unorm);
+            (
+                (pw.width(), pw.height(), pw.depth_or_array_layers()),
+                (w.width(), w.height(), w.depth_or_array_layers()),
+                (wt.width(), wt.height()),
+            )
         }
 
-        let (device, queue) = headless_device_queue();
+        let Some((device, queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
+
         let low = VolumetricCloudPass::new_with_quality(
             &device, &queue, CloudQuality::Low,
         );
-        assert_sizes(&low);
+        assert_eq!(sizes(&low), ((32, 32, 32), (16, 16, 16), (512, 512)));
 
         let medium = VolumetricCloudPass::new_with_quality(
             &device, &queue, CloudQuality::Medium,
         );
-        assert_sizes(&medium);
+        assert_eq!(
+            sizes(&medium),
+            ((64, 64, 64), (32, 32, 32), (1024, 1024))
+        );
 
         let high = VolumetricCloudPass::new_with_quality(
             &device, &queue, CloudQuality::High,
         );
-        assert_sizes(&high);
+        assert_eq!(sizes(&high), ((128, 128, 128), (32, 32, 32), (2048, 2048)));
+    }
+
+    #[test]
+    fn cloud_noise_textures_regenerated_when_quality_changes() {
+        let Some((device, queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
+        let mut pass = VolumetricCloudPass::new_with_quality(
+            &device, &queue, CloudQuality::Low,
+        );
+
+        // Same quality: no-op, dimensions unchanged.
+        pass.ensure_noise_textures(&queue, CloudQuality::Low);
+        assert_eq!(pass.perlin_worley_texture.as_ref().unwrap().width(), 32);
+
+        // Different quality: textures recreated with new dimensions.
+        pass.ensure_noise_textures(&queue, CloudQuality::High);
+        assert_eq!(pass.perlin_worley_texture.as_ref().unwrap().width(), 128);
+        assert_eq!(pass.worley_texture.as_ref().unwrap().width(), 32);
+        assert_eq!(pass.weather_texture.as_ref().unwrap().width(), 2048);
+    }
+
+    #[test]
+    fn cloud_noise_textures_released_and_lazily_recreated() {
+        let Some((device, queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
+        let mut pass = VolumetricCloudPass::new_with_quality(
+            &device, &queue, CloudQuality::High,
+        );
+        assert!(pass.perlin_worley_texture.is_some());
+
+        // Releasing clears every noise-texture field so the GPU memory is freed.
+        pass.clear_noise_textures();
+        assert!(pass.worley_texture.is_none());
+        assert!(pass.worley_view.is_none());
+        assert!(pass.perlin_worley_texture.is_none());
+        assert!(pass.perlin_worley_view.is_none());
+        assert!(pass.weather_texture.is_none());
+        assert!(pass.weather_view.is_none());
+        assert!(pass.multi_noise_sampler.is_none());
+        assert!(pass.noise_bind_group.is_none());
+        assert_eq!(pass.current_noise_quality, None);
+
+        // Releasing twice is a no-op; a later ensure recreates the textures.
+        pass.clear_noise_textures();
+        pass.ensure_noise_textures(&queue, CloudQuality::Low);
+        assert_eq!(pass.perlin_worley_texture.as_ref().unwrap().width(), 32);
+        assert!(pass.noise_bind_group.is_some());
+        assert_eq!(pass.current_noise_quality, Some(CloudQuality::Low));
+    }
+
+    #[test]
+    fn cloud_pass_releases_noise_textures_on_cloudless_frame() {
+        let Some((device, queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
+        let mut pass = VolumetricCloudPass::new(&device, &queue);
+        assert!(pass.perlin_worley_texture.is_some());
+
+        // A frame without a Clouds component (e.g. after switching to a
+        // cloudless scene) must release the noise textures.
+        let world = World::new();
+        let optional = extract_optional_pass_data(&world);
+        let camera = FlyCamera::default();
+        let lighting = LightingUniforms::default();
+        let assets = crate::asset::AssetManager::new();
+        let texture_cache = crate::asset::texture_cache::GpuTextureCache::new(&device, &queue);
+        let frame = RenderFrame {
+            batches: Arc::from([]),
+            camera: &camera,
+            lighting: &lighting,
+            queue: &queue,
+            aspect: 1.0,
+            delta_time: 0.016,
+            config: &FrameConfig::default(),
+            optional: &optional,
+            terrain_geometry: None,
+            texture_cache: &texture_cache,
+            asset_manager: &assets,
+        };
+
+        pass.apply_frame(&frame);
+        assert!(!pass.has_clouds);
+        assert!(pass.perlin_worley_texture.is_none());
+        assert!(pass.noise_bind_group.is_none());
+        assert_eq!(pass.current_noise_quality, None);
     }
 
     #[test]
     fn cloud_pass_runs_when_cloud_component_present() {
-        let (device, queue) = headless_device_queue();
+        let Some((device, queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let pass = VolumetricCloudPass::new(&device, &queue);
         assert!(pass
             .signature()
@@ -339,7 +481,10 @@ mod tests {
 
     #[test]
     fn cloud_pass_skipped_without_component() {
-        let (device, queue) = headless_device_queue();
+        let Some((device, queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let pass = VolumetricCloudPass::new(&device, &queue);
         // Without apply_frame being called, has_clouds remains false.
         assert!(!pass.has_clouds);
@@ -347,7 +492,10 @@ mod tests {
 
     #[test]
     fn cloud_pass_applies_frame_with_high_quality() {
-        let (device, queue) = headless_device_queue();
+        let Some((device, queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let mut pass = VolumetricCloudPass::new(&device, &queue);
         let mut world = World::new();
         world.spawn((Clouds {

@@ -53,3 +53,5 @@ thiserror = { workspace = true }
 
 [dev-dependencies]
 tracing-subscriber = { workspace = true }
+# CPU-only WGSL validation in tests (same naga version wgpu 29 uses, no new downloads).
+naga = { version = "29.0", default-features = false, features = ["wgsl-in"] }

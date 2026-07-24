@@ -66,14 +66,15 @@ pub(crate) fn render(
     let fullscreen_3d = &mut app.fullscreen_3d;
     let debug_mode = app.debug_mode;
     let pending_select_entity = &mut app.pending_select_entity;
+    let selection = &app.selection;
 
-    // Extract inspector data before UI (mutable borrow needed for editing)
+    // Extract inspector data before UI (mutable borrow needed for editing).
+    // With a multi-selection the inspector edits the anchor (most recently
+    // selected entity).
     let mut inspector_target: Option<InspectorTarget> = None;
-    let mut selected_entity: Option<Entity> = None;
     if let LauncherState::Running { ref world, .. } = app.state {
-        if let Some(target) = inspector::extract(world) {
-            selected_entity = Some(target.entity());
-            inspector_target = Some(target);
+        if let Some(anchor) = selection.anchor() {
+            inspector_target = inspector::extract_entity(world, anchor);
         }
     }
 
@@ -206,7 +207,7 @@ pub(crate) fn render(
                                 egui::ScrollArea::vertical().show(ui, |ui| {
                                     for item in &hierarchy_items {
                                         ui.horizontal(|ui| {
-                                            let is_selected = selected_entity == Some(item.entity);
+                                            let is_selected = selection.contains(item.entity);
                                             let label = egui::Button::new(&item.name)
                                                 .selected(is_selected)
                                                 .fill(if is_selected {
@@ -215,7 +216,13 @@ pub(crate) fn render(
                                                     ui.visuals().widgets.inactive.weak_bg_fill
                                                 });
                                             if ui.add(label).clicked() {
-                                                *pending_select_entity = Some(item.entity);
+                                                // Shift/Ctrl + click toggles the
+                                                // entity in the multi-selection.
+                                                let additive = ui.input(|i| {
+                                                    i.modifiers.shift || i.modifiers.command
+                                                });
+                                                *pending_select_entity =
+                                                    Some((item.entity, additive));
                                             }
                                             if ui.small_button("🗑").clicked() {
                                                 app.pending_despawn_entity = Some(item.entity);
@@ -233,6 +240,16 @@ pub(crate) fn render(
                             .show_inside(ui, |ui| {
                                 egui::ScrollArea::vertical().show(ui, |ui| {
                                     // Inspector
+                                    if selection.len() > 1 {
+                                        ui.label(
+                                            egui::RichText::new(format!(
+                                                "{} objects selected",
+                                                selection.len()
+                                            ))
+                                            .strong(),
+                                        );
+                                        ui.separator();
+                                    }
                                     if let Some(ref mut target) = inspector_target.as_mut() {
                                         inspector::render(ui, target);
                                     }

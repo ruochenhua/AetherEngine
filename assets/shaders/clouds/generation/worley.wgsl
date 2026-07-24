@@ -71,6 +71,6 @@ fn sample_worley_octaves(coord: vec3<f32>) -> vec4<f32> {
 @compute @workgroup_size(4, 4, 4)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let pixel = vec3<i32>(global_id);
-    let coord = vec3<f32>(pixel) / 32.0;
+    let coord = vec3<f32>(pixel) / f32(textureDimensions(output_tex).x);
     textureStore(output_tex, pixel, sample_worley_octaves(coord));
 }

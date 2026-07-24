@@ -77,6 +77,14 @@ impl Scheduler {
 
     /// Rebuild resolution-dependent resources after a resize.
     pub fn rebuild(&mut self, device: &wgpu::Device, width: u32, height: u32) {
+        // Notify passes of the new size *before* reading their signatures, so
+        // resolution-dependent write sizes (half-res SSR/SSAO targets) and
+        // internal intermediate textures (bloom mips) are allocated at the new
+        // size in this same rebuild rather than one resize late.
+        for pass in &mut self.passes {
+            pass.set_screen_size(width, height);
+        }
+
         // Re-allocate all textures and re-resolve all passes
         let mut new_table = ResourceTable::new();
 
@@ -114,6 +122,7 @@ impl Scheduler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::headless_device_queue;
     use crate::renderer::pass::{InitContext, PassSignature, ResSlot, SlotKind};
     use crate::renderer::passes::debug::DebugLinePass;
     use crate::renderer::passes::gbuffer::GBufferPass;
@@ -317,9 +326,84 @@ mod tests {
         assert_eq!(order, vec![0]);
     }
 
+    /// A pass that records resize notifications and sizes its half-resolution
+    /// write target from the last notified size.
+    struct ResizeAwarePass {
+        log: std::sync::Arc<Mutex<Vec<(u32, u32)>>>,
+        width: u32,
+        height: u32,
+    }
+
+    impl Pass for ResizeAwarePass {
+        fn name(&self) -> &str {
+            "ResizeAware"
+        }
+
+        fn signature(&self) -> PassSignature {
+            PassSignature::new("ResizeAware").write_sized::<AOTexture>(
+                wgpu::TextureFormat::R8Unorm,
+                self.width.max(1),
+                self.height.max(1),
+            )
+        }
+
+        fn init(_ctx: &InitContext) -> Self {
+            panic!("ResizeAwarePass does not support init()")
+        }
+
+        fn set_screen_size(&mut self, width: u32, height: u32) {
+            self.log.lock().unwrap().push((width, height));
+            self.width = width / 2;
+            self.height = height / 2;
+        }
+
+        fn execute(
+            &self,
+            _encoder: &mut wgpu::CommandEncoder,
+            _resources: &ResourceTable,
+            _surface_view: &wgpu::TextureView,
+        ) {
+        }
+    }
+
+    #[test]
+    fn rebuild_notifies_passes_before_reading_signatures() {
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
+        let log = std::sync::Arc::new(Mutex::new(Vec::new()));
+        let pass = ResizeAwarePass {
+            log: log.clone(),
+            width: 8,
+            height: 8,
+        };
+        let mut scheduler = Scheduler {
+            passes: vec![Box::new(pass)],
+            resource_table: ResourceTable::new(),
+        };
+
+        scheduler.rebuild(&device, 256, 128);
+
+        // rebuild must notify the pass of the new size...
+        assert_eq!(log.lock().unwrap().as_slice(), &[(256, 128)]);
+        // ...and the transient write target must be allocated at the notified
+        // (half) size, not the stale pre-resize size.
+        let handle = scheduler.resource_table.handle::<AOTexture>();
+        let tex = scheduler
+            .resource_table
+            .texture(handle)
+            .expect("AOTexture should be owned by the table");
+        assert_eq!(tex.size().width, 128);
+        assert_eq!(tex.size().height, 64);
+    }
+
     #[test]
     fn rebuild_reallocates_textures() {
-        let (device, queue) = headless_device();
+        let Some((device, queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let texture_cache = crate::asset::texture_cache::GpuTextureCache::new(&device, &queue);
         let pass_a = ShadowPass::new(&device);
         let pass_b = GBufferPass::new(&device, &queue, &texture_cache);
@@ -343,7 +427,10 @@ mod tests {
 
     #[test]
     fn build_all_passes_works() {
-        let (device, queue) = headless_device();
+        let Some((device, queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let texture_cache = crate::asset::texture_cache::GpuTextureCache::new(&device, &queue);
         let sf = wgpu::TextureFormat::Bgra8UnormSrgb;
         let df = wgpu::TextureFormat::Depth32Float;
@@ -362,12 +449,4 @@ mod tests {
         assert_eq!(scheduler.pass_count(), 6);
     }
 
-    fn headless_device() -> (wgpu::Device, wgpu::Queue) {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter =
-            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
-                .expect("need adapter");
-        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-            .expect("need device")
-    }
 }

@@ -248,7 +248,423 @@ impl AtmospherePass {
     /// Create a new atmosphere pass.
     pub fn new(device: &wgpu::Device) -> Self {
         let output_format = wgpu::TextureFormat::Rgba16Float;
-        let shader_source = r#"
+        let shader_source = ATMOSPHERE_SHADER;
+
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Atmosphere Shader"),
+            source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(shader_source)),
+        });
+
+        let uniform_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Atmosphere Uniform Bind Group Layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
+
+        let texture_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Atmosphere Texture Bind Group Layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Depth,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                }],
+            });
+
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Atmosphere Pipeline Layout"),
+            bind_group_layouts: &[
+                Some(&uniform_bind_group_layout),
+                Some(&texture_bind_group_layout),
+            ],
+            immediate_size: 0,
+        });
+
+        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Atmosphere Pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_main"),
+                compilation_options: Default::default(),
+                buffers: &[wgpu::VertexBufferLayout {
+                    array_stride: std::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &[wgpu::VertexAttribute {
+                        offset: 0,
+                        shader_location: 0,
+                        format: wgpu::VertexFormat::Float32x2,
+                    }],
+                }],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_main"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: output_format,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: None,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+
+        let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Atmosphere Uniform Buffer"),
+            size: std::mem::size_of::<AtmosphereUniform>() as wgpu::BufferAddress,
+            usage: wgpu::BufferUsages::UNIFORM
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+
+        let uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Atmosphere Uniform Bind Group"),
+            layout: &uniform_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: uniform_buffer.as_entire_binding(),
+            }],
+        });
+
+        let quad_vertices: [[f32; 2]; 6] = [
+            [-1.0, -1.0],
+            [1.0, -1.0],
+            [1.0, 1.0],
+            [-1.0, -1.0],
+            [1.0, 1.0],
+            [-1.0, 1.0],
+        ];
+
+        let quad_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Atmosphere Quad Vertex Buffer"),
+            contents: bytemuck::cast_slice(&quad_vertices),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+
+        Self {
+            pipeline,
+            uniform_buffer,
+            uniform_bind_group,
+            texture_bind_group: None,
+            quad_vertex_buffer,
+            quad_vertex_count: 6,
+            scene_color_handle: None,
+            depth_handle: None,
+            has_atmosphere: false,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::headless_device_queue;
+    use crate::ecs::components::Atmosphere;
+    use crate::ecs::World;
+    use crate::renderer::camera::FlyCamera;
+    use crate::renderer::extract::extract_optional_pass_data;
+    use crate::renderer::frame::FrameConfig;
+    use crate::renderer::light::LightingUniforms;
+    use crate::renderer::resource::ResourceTag;
+    use crate::scene::AtmosphereConfig;
+    use glam::Vec3;
+
+    async fn read_uniform_buffer(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        buffer: &wgpu::Buffer,
+    ) -> Vec<u8> {
+        let size = std::mem::size_of::<AtmosphereUniform>() as u64;
+        let staging = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Atmosphere Uniform Readback"),
+            size,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Atmosphere Uniform Copy"),
+        });
+        encoder.copy_buffer_to_buffer(buffer, 0, &staging, 0, size);
+        queue.submit(std::iter::once(encoder.finish()));
+
+        let slice = staging.slice(..);
+        slice.map_async(wgpu::MapMode::Read, |_| {});
+        device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+        slice.get_mapped_range().to_vec()
+    }
+
+    fn init_ctx<'a>(device: &'a wgpu::Device, queue: &'a wgpu::Queue) -> InitContext<'a> {
+        let texture_cache = Box::leak(Box::new(crate::asset::texture_cache::GpuTextureCache::new(
+            device, queue,
+        )));
+        InitContext {
+            device,
+            queue,
+            surface_format: wgpu::TextureFormat::Bgra8UnormSrgb,
+            depth_format: wgpu::TextureFormat::Depth32Float,
+            width: 64,
+            height: 64,
+            ibl_resources: None,
+            texture_cache,
+        }
+    }
+
+    #[test]
+    fn atmosphere_pass_signature_reads_depth_and_writes_scene_color() {
+        let Some((device, queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
+        let ctx = init_ctx(&device, &queue);
+        let pass = AtmospherePass::init(&ctx);
+        let sig = pass.signature();
+        assert_eq!(sig.name, "Atmosphere");
+        assert!(sig.reads.iter().any(|s| s.name == GDepth::NAME));
+        assert_eq!(sig.writes.len(), 1);
+        assert_eq!(sig.writes[0].name, SceneColor::NAME);
+    }
+
+    #[test]
+    fn atmosphere_pass_skipped_without_component() {
+        let Some((device, queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
+        let ctx = init_ctx(&device, &queue);
+        let pass = AtmospherePass::init(&ctx);
+        let world = World::new();
+        let optional = extract_optional_pass_data(&world);
+        let camera = FlyCamera::default();
+        let lighting = LightingUniforms::default();
+        let assets = crate::asset::AssetManager::new();
+        let frame = RenderFrame {
+            batches: std::sync::Arc::from([]),
+            camera: &camera,
+            lighting: &lighting,
+            queue: &queue,
+            aspect: 1.0,
+            delta_time: 0.016,
+            config: &FrameConfig::default(),
+            optional: &optional,
+            terrain_geometry: None,
+            texture_cache: ctx.texture_cache,
+            asset_manager: &assets,
+        };
+        assert!(!pass.should_run(&frame));
+    }
+
+    #[test]
+    fn atmosphere_pass_runs_when_component_present() {
+        let Some((device, queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
+        let ctx = init_ctx(&device, &queue);
+        let mut pass = AtmospherePass::init(&ctx);
+        let mut world = World::new();
+        world.spawn((Atmosphere {
+            config: AtmosphereConfig::default(),
+        },));
+        let optional = extract_optional_pass_data(&world);
+        let camera = FlyCamera::default();
+        let lighting = LightingUniforms::default();
+        let assets = crate::asset::AssetManager::new();
+        let frame = RenderFrame {
+            batches: std::sync::Arc::from([]),
+            camera: &camera,
+            lighting: &lighting,
+            queue: &queue,
+            aspect: 1.0,
+            delta_time: 0.016,
+            config: &FrameConfig::default(),
+            optional: &optional,
+            terrain_geometry: None,
+            texture_cache: ctx.texture_cache,
+            asset_manager: &assets,
+        };
+        pass.apply_frame(&frame);
+        assert!(pass.should_run(&frame));
+    }
+
+    #[test]
+    fn atmosphere_pass_uses_light_direction_for_sun() {
+        let Some((device, queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
+        let ctx = init_ctx(&device, &queue);
+        let mut pass = AtmospherePass::init(&ctx);
+        let mut world = World::new();
+
+        // Any configured sun_direction in AtmosphereConfig is ignored; the pass
+        // must derive the sun direction from the scene's directional light.
+        world.spawn((Atmosphere {
+            config: AtmosphereConfig {
+                sun_direction: [0.5, 0.3, -0.8],
+                ..Default::default()
+            },
+        },));
+
+        let optional = extract_optional_pass_data(&world);
+        let camera = FlyCamera::default();
+        let mut lighting = LightingUniforms::default();
+        lighting.light.direction = [-0.2, -0.9, -0.3];
+        let assets = crate::asset::AssetManager::new();
+        let frame = RenderFrame {
+            batches: std::sync::Arc::from([]),
+            camera: &camera,
+            lighting: &lighting,
+            queue: &queue,
+            aspect: 1.0,
+            delta_time: 0.016,
+            config: &FrameConfig::default(),
+            optional: &optional,
+            terrain_geometry: None,
+            texture_cache: ctx.texture_cache,
+            asset_manager: &assets,
+        };
+        pass.apply_frame(&frame);
+
+        let bytes = pollster::block_on(read_uniform_buffer(&device, &queue, &pass.uniform_buffer));
+        let uniform: AtmosphereUniform = *bytemuck::from_bytes(&bytes);
+        let expected = -Vec3::from_array(lighting.light.direction).normalize();
+        let actual = Vec3::from_array(uniform.sun_direction);
+        assert!(
+            actual.abs_diff_eq(expected, 1e-4),
+            "expected sun_direction {expected:?}, got {actual:?}"
+        );
+    }
+
+    #[test]
+    fn atmosphere_pass_uses_configured_ozone_parameters() {
+        let Some((device, queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
+        let ctx = init_ctx(&device, &queue);
+        let mut pass = AtmospherePass::init(&ctx);
+        let mut world = World::new();
+
+        let absorption = [0.0006f32, 0.0012, 0.00015];
+        let scale_height = 18.0;
+        world.spawn((Atmosphere {
+            config: AtmosphereConfig {
+                ozone_absorption: absorption,
+                ozone_scale_height: scale_height,
+                ..Default::default()
+            },
+        },));
+
+        let optional = extract_optional_pass_data(&world);
+        let camera = FlyCamera::default();
+        let lighting = LightingUniforms::default();
+        let assets = crate::asset::AssetManager::new();
+        let frame = RenderFrame {
+            batches: std::sync::Arc::from([]),
+            camera: &camera,
+            lighting: &lighting,
+            queue: &queue,
+            aspect: 1.0,
+            delta_time: 0.016,
+            config: &FrameConfig::default(),
+            optional: &optional,
+            terrain_geometry: None,
+            texture_cache: ctx.texture_cache,
+            asset_manager: &assets,
+        };
+        pass.apply_frame(&frame);
+
+        let bytes = pollster::block_on(read_uniform_buffer(&device, &queue, &pass.uniform_buffer));
+        let uniform: AtmosphereUniform = *bytemuck::from_bytes(&bytes);
+        assert_eq!(
+            uniform.ozone_absorption, absorption,
+            "expected ozone_absorption {absorption:?}, got {:?}",
+            uniform.ozone_absorption
+        );
+        assert!(
+            (uniform.ozone_scale_height - scale_height).abs() < 1e-4,
+            "expected ozone_scale_height {scale_height}, got {}",
+            uniform.ozone_scale_height
+        );
+    }
+
+    #[test]
+    fn atmosphere_pass_uses_configured_multi_scattering_factor() {
+        let Some((device, queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
+        let ctx = init_ctx(&device, &queue);
+        let mut pass = AtmospherePass::init(&ctx);
+        let mut world = World::new();
+
+        let factor = 0.35;
+        world.spawn((Atmosphere {
+            config: AtmosphereConfig {
+                multi_scattering_factor: factor,
+                ..Default::default()
+            },
+        },));
+
+        let optional = extract_optional_pass_data(&world);
+        let camera = FlyCamera::default();
+        let lighting = LightingUniforms::default();
+        let assets = crate::asset::AssetManager::new();
+        let frame = RenderFrame {
+            batches: std::sync::Arc::from([]),
+            camera: &camera,
+            lighting: &lighting,
+            queue: &queue,
+            aspect: 1.0,
+            delta_time: 0.016,
+            config: &FrameConfig::default(),
+            optional: &optional,
+            terrain_geometry: None,
+            texture_cache: ctx.texture_cache,
+            asset_manager: &assets,
+        };
+        pass.apply_frame(&frame);
+
+        let bytes = pollster::block_on(read_uniform_buffer(&device, &queue, &pass.uniform_buffer));
+        let uniform: AtmosphereUniform = *bytemuck::from_bytes(&bytes);
+        assert!(
+            (uniform.multi_scattering_factor - factor).abs() < 1e-4,
+            "expected multi_scattering_factor {factor}, got {}",
+            uniform.multi_scattering_factor
+        );
+    }
+}
+
+/// WGSL source for the atmosphere pass (sky + aerial perspective).
+pub(crate) const ATMOSPHERE_SHADER: &str = r#"
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) uv: vec2<f32>,
@@ -462,406 +878,3 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     return vec4<f32>(color, 1.0);
 }
 "#;
-
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Atmosphere Shader"),
-            source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(shader_source)),
-        });
-
-        let uniform_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("Atmosphere Uniform Bind Group Layout"),
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                }],
-            });
-
-        let texture_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("Atmosphere Texture Bind Group Layout"),
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Depth,
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                }],
-            });
-
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Atmosphere Pipeline Layout"),
-            bind_group_layouts: &[
-                Some(&uniform_bind_group_layout),
-                Some(&texture_bind_group_layout),
-            ],
-            immediate_size: 0,
-        });
-
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Atmosphere Pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                compilation_options: Default::default(),
-                buffers: &[wgpu::VertexBufferLayout {
-                    array_stride: std::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
-                    step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &[wgpu::VertexAttribute {
-                        offset: 0,
-                        shader_location: 0,
-                        format: wgpu::VertexFormat::Float32x2,
-                    }],
-                }],
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: output_format,
-                    blend: None,
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: None,
-                polygon_mode: wgpu::PolygonMode::Fill,
-                unclipped_depth: false,
-                conservative: false,
-            },
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview_mask: None,
-            cache: None,
-        });
-
-        let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Atmosphere Uniform Buffer"),
-            size: std::mem::size_of::<AtmosphereUniform>() as wgpu::BufferAddress,
-            usage: wgpu::BufferUsages::UNIFORM
-                | wgpu::BufferUsages::COPY_DST
-                | wgpu::BufferUsages::COPY_SRC,
-            mapped_at_creation: false,
-        });
-
-        let uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Atmosphere Uniform Bind Group"),
-            layout: &uniform_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: uniform_buffer.as_entire_binding(),
-            }],
-        });
-
-        let quad_vertices: [[f32; 2]; 6] = [
-            [-1.0, -1.0],
-            [1.0, -1.0],
-            [1.0, 1.0],
-            [-1.0, -1.0],
-            [1.0, 1.0],
-            [-1.0, 1.0],
-        ];
-
-        let quad_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Atmosphere Quad Vertex Buffer"),
-            contents: bytemuck::cast_slice(&quad_vertices),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
-
-        Self {
-            pipeline,
-            uniform_buffer,
-            uniform_bind_group,
-            texture_bind_group: None,
-            quad_vertex_buffer,
-            quad_vertex_count: 6,
-            scene_color_handle: None,
-            depth_handle: None,
-            has_atmosphere: false,
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::ecs::components::Atmosphere;
-    use crate::ecs::World;
-    use crate::renderer::camera::FlyCamera;
-    use crate::renderer::extract::extract_optional_pass_data;
-    use crate::renderer::frame::FrameConfig;
-    use crate::renderer::light::LightingUniforms;
-    use crate::renderer::resource::ResourceTag;
-    use crate::scene::AtmosphereConfig;
-    use glam::Vec3;
-
-    async fn read_uniform_buffer(
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        buffer: &wgpu::Buffer,
-    ) -> Vec<u8> {
-        let size = std::mem::size_of::<AtmosphereUniform>() as u64;
-        let staging = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Atmosphere Uniform Readback"),
-            size,
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: false,
-        });
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Atmosphere Uniform Copy"),
-        });
-        encoder.copy_buffer_to_buffer(buffer, 0, &staging, 0, size);
-        queue.submit(std::iter::once(encoder.finish()));
-
-        let slice = staging.slice(..);
-        slice.map_async(wgpu::MapMode::Read, |_| {});
-        device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
-        slice.get_mapped_range().to_vec()
-    }
-
-    fn headless_device() -> (wgpu::Device, wgpu::Queue) {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter =
-            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
-                .expect("need adapter");
-        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-            .expect("need device")
-    }
-
-    fn init_ctx<'a>(device: &'a wgpu::Device, queue: &'a wgpu::Queue) -> InitContext<'a> {
-        let texture_cache = Box::leak(Box::new(crate::asset::texture_cache::GpuTextureCache::new(
-            device, queue,
-        )));
-        InitContext {
-            device,
-            queue,
-            surface_format: wgpu::TextureFormat::Bgra8UnormSrgb,
-            depth_format: wgpu::TextureFormat::Depth32Float,
-            width: 64,
-            height: 64,
-            ibl_resources: None,
-            texture_cache,
-        }
-    }
-
-    #[test]
-    fn atmosphere_pass_signature_reads_depth_and_writes_scene_color() {
-        let (device, queue) = headless_device();
-        let ctx = init_ctx(&device, &queue);
-        let pass = AtmospherePass::init(&ctx);
-        let sig = pass.signature();
-        assert_eq!(sig.name, "Atmosphere");
-        assert!(sig.reads.iter().any(|s| s.name == GDepth::NAME));
-        assert_eq!(sig.writes.len(), 1);
-        assert_eq!(sig.writes[0].name, SceneColor::NAME);
-    }
-
-    #[test]
-    fn atmosphere_pass_skipped_without_component() {
-        let (device, queue) = headless_device();
-        let ctx = init_ctx(&device, &queue);
-        let pass = AtmospherePass::init(&ctx);
-        let world = World::new();
-        let optional = extract_optional_pass_data(&world);
-        let camera = FlyCamera::default();
-        let lighting = LightingUniforms::default();
-        let assets = crate::asset::AssetManager::new();
-        let frame = RenderFrame {
-            batches: std::sync::Arc::from([]),
-            camera: &camera,
-            lighting: &lighting,
-            queue: &queue,
-            aspect: 1.0,
-            delta_time: 0.016,
-            config: &FrameConfig::default(),
-            optional: &optional,
-            terrain_geometry: None,
-            texture_cache: ctx.texture_cache,
-            asset_manager: &assets,
-        };
-        assert!(!pass.should_run(&frame));
-    }
-
-    #[test]
-    fn atmosphere_pass_runs_when_component_present() {
-        let (device, queue) = headless_device();
-        let ctx = init_ctx(&device, &queue);
-        let mut pass = AtmospherePass::init(&ctx);
-        let mut world = World::new();
-        world.spawn((Atmosphere {
-            config: AtmosphereConfig::default(),
-        },));
-        let optional = extract_optional_pass_data(&world);
-        let camera = FlyCamera::default();
-        let lighting = LightingUniforms::default();
-        let assets = crate::asset::AssetManager::new();
-        let frame = RenderFrame {
-            batches: std::sync::Arc::from([]),
-            camera: &camera,
-            lighting: &lighting,
-            queue: &queue,
-            aspect: 1.0,
-            delta_time: 0.016,
-            config: &FrameConfig::default(),
-            optional: &optional,
-            terrain_geometry: None,
-            texture_cache: ctx.texture_cache,
-            asset_manager: &assets,
-        };
-        pass.apply_frame(&frame);
-        assert!(pass.should_run(&frame));
-    }
-
-    #[test]
-    fn atmosphere_pass_uses_light_direction_for_sun() {
-        let (device, queue) = headless_device();
-        let ctx = init_ctx(&device, &queue);
-        let mut pass = AtmospherePass::init(&ctx);
-        let mut world = World::new();
-
-        // Any configured sun_direction in AtmosphereConfig is ignored; the pass
-        // must derive the sun direction from the scene's directional light.
-        world.spawn((Atmosphere {
-            config: AtmosphereConfig {
-                sun_direction: [0.5, 0.3, -0.8],
-                ..Default::default()
-            },
-        },));
-
-        let optional = extract_optional_pass_data(&world);
-        let camera = FlyCamera::default();
-        let mut lighting = LightingUniforms::default();
-        lighting.light.direction = [-0.2, -0.9, -0.3];
-        let assets = crate::asset::AssetManager::new();
-        let frame = RenderFrame {
-            batches: std::sync::Arc::from([]),
-            camera: &camera,
-            lighting: &lighting,
-            queue: &queue,
-            aspect: 1.0,
-            delta_time: 0.016,
-            config: &FrameConfig::default(),
-            optional: &optional,
-            terrain_geometry: None,
-            texture_cache: ctx.texture_cache,
-            asset_manager: &assets,
-        };
-        pass.apply_frame(&frame);
-
-        let bytes = pollster::block_on(read_uniform_buffer(&device, &queue, &pass.uniform_buffer));
-        let uniform: AtmosphereUniform = *bytemuck::from_bytes(&bytes);
-        let expected = -Vec3::from_array(lighting.light.direction).normalize();
-        let actual = Vec3::from_array(uniform.sun_direction);
-        assert!(
-            actual.abs_diff_eq(expected, 1e-4),
-            "expected sun_direction {expected:?}, got {actual:?}"
-        );
-    }
-
-    #[test]
-    fn atmosphere_pass_uses_configured_ozone_parameters() {
-        let (device, queue) = headless_device();
-        let ctx = init_ctx(&device, &queue);
-        let mut pass = AtmospherePass::init(&ctx);
-        let mut world = World::new();
-
-        let absorption = [0.0006f32, 0.0012, 0.00015];
-        let scale_height = 18.0;
-        world.spawn((Atmosphere {
-            config: AtmosphereConfig {
-                ozone_absorption: absorption,
-                ozone_scale_height: scale_height,
-                ..Default::default()
-            },
-        },));
-
-        let optional = extract_optional_pass_data(&world);
-        let camera = FlyCamera::default();
-        let lighting = LightingUniforms::default();
-        let assets = crate::asset::AssetManager::new();
-        let frame = RenderFrame {
-            batches: std::sync::Arc::from([]),
-            camera: &camera,
-            lighting: &lighting,
-            queue: &queue,
-            aspect: 1.0,
-            delta_time: 0.016,
-            config: &FrameConfig::default(),
-            optional: &optional,
-            terrain_geometry: None,
-            texture_cache: ctx.texture_cache,
-            asset_manager: &assets,
-        };
-        pass.apply_frame(&frame);
-
-        let bytes = pollster::block_on(read_uniform_buffer(&device, &queue, &pass.uniform_buffer));
-        let uniform: AtmosphereUniform = *bytemuck::from_bytes(&bytes);
-        assert_eq!(
-            uniform.ozone_absorption, absorption,
-            "expected ozone_absorption {absorption:?}, got {:?}",
-            uniform.ozone_absorption
-        );
-        assert!(
-            (uniform.ozone_scale_height - scale_height).abs() < 1e-4,
-            "expected ozone_scale_height {scale_height}, got {}",
-            uniform.ozone_scale_height
-        );
-    }
-
-    #[test]
-    fn atmosphere_pass_uses_configured_multi_scattering_factor() {
-        let (device, queue) = headless_device();
-        let ctx = init_ctx(&device, &queue);
-        let mut pass = AtmospherePass::init(&ctx);
-        let mut world = World::new();
-
-        let factor = 0.35;
-        world.spawn((Atmosphere {
-            config: AtmosphereConfig {
-                multi_scattering_factor: factor,
-                ..Default::default()
-            },
-        },));
-
-        let optional = extract_optional_pass_data(&world);
-        let camera = FlyCamera::default();
-        let lighting = LightingUniforms::default();
-        let assets = crate::asset::AssetManager::new();
-        let frame = RenderFrame {
-            batches: std::sync::Arc::from([]),
-            camera: &camera,
-            lighting: &lighting,
-            queue: &queue,
-            aspect: 1.0,
-            delta_time: 0.016,
-            config: &FrameConfig::default(),
-            optional: &optional,
-            terrain_geometry: None,
-            texture_cache: ctx.texture_cache,
-            asset_manager: &assets,
-        };
-        pass.apply_frame(&frame);
-
-        let bytes = pollster::block_on(read_uniform_buffer(&device, &queue, &pass.uniform_buffer));
-        let uniform: AtmosphereUniform = *bytemuck::from_bytes(&bytes);
-        assert!(
-            (uniform.multi_scattering_factor - factor).abs() < 1e-4,
-            "expected multi_scattering_factor {factor}, got {}",
-            uniform.multi_scattering_factor
-        );
-    }
-}

@@ -277,7 +277,7 @@ impl PipelineBuilder {
             | wgpu::TextureUsages::COPY_SRC
             | wgpu::TextureUsages::COPY_DST;
         device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("transient"),
+            label: Some("Transient Texture"),
             size: wgpu::Extent3d {
                 width,
                 height,
@@ -483,4 +483,356 @@ fn dfs(
     }
     color[node] = CycleColor::Black;
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::headless_device_queue;
+    use crate::renderer::pass::{InitContext, ResSlot, SlotKind};
+    use crate::renderer::resource::*;
+    use std::sync::{Arc, Mutex};
+
+    /// Mock pass mirroring the scheduler.rs test pattern, but recording
+    /// `resolve()` calls — the builder (not the scheduler) is responsible for
+    /// resolving passes during `build()`.
+    struct MockPass {
+        name: &'static str,
+        reads: Vec<ResSlot>,
+        writes: Vec<ResSlot>,
+        resolve_log: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl MockPass {
+        fn new(name: &'static str, resolve_log: Arc<Mutex<Vec<String>>>) -> Self {
+            Self {
+                name,
+                reads: Vec::new(),
+                writes: Vec::new(),
+                resolve_log,
+            }
+        }
+
+        fn with_write<T: ResourceTag>(mut self, format: wgpu::TextureFormat) -> Self {
+            self.writes.push(ResSlot {
+                type_id: TypeId::of::<T>(),
+                name: T::NAME,
+                format: Some(format),
+                kind: SlotKind::Write,
+                width: None,
+                height: None,
+                layers: None,
+            });
+            self
+        }
+
+        fn with_write_sized<T: ResourceTag>(
+            mut self,
+            format: wgpu::TextureFormat,
+            width: u32,
+            height: u32,
+        ) -> Self {
+            self.writes.push(ResSlot {
+                type_id: TypeId::of::<T>(),
+                name: T::NAME,
+                format: Some(format),
+                kind: SlotKind::Write,
+                width: Some(width),
+                height: Some(height),
+                layers: None,
+            });
+            self
+        }
+
+        fn with_write_array<T: ResourceTag>(
+            mut self,
+            format: wgpu::TextureFormat,
+            width: u32,
+            height: u32,
+            layers: u32,
+        ) -> Self {
+            self.writes.push(ResSlot {
+                type_id: TypeId::of::<T>(),
+                name: T::NAME,
+                format: Some(format),
+                kind: SlotKind::Write,
+                width: Some(width),
+                height: Some(height),
+                layers: Some(layers),
+            });
+            self
+        }
+
+        fn with_read<T: ResourceTag>(mut self) -> Self {
+            self.reads.push(ResSlot {
+                type_id: TypeId::of::<T>(),
+                name: T::NAME,
+                format: None,
+                kind: SlotKind::Read,
+                width: None,
+                height: None,
+                layers: None,
+            });
+            self
+        }
+    }
+
+    impl Pass for MockPass {
+        fn name(&self) -> &str {
+            self.name
+        }
+        fn signature(&self) -> PassSignature {
+            PassSignature {
+                name: self.name,
+                reads: self.reads.clone(),
+                writes: self.writes.clone(),
+            }
+        }
+        fn init(_ctx: &InitContext) -> Self {
+            panic!("MockPass does not support init()")
+        }
+        fn resolve(&mut self, _device: &wgpu::Device, _resources: &ResourceTable) {
+            self.resolve_log
+                .lock()
+                .unwrap()
+                .push(self.name.to_string());
+        }
+        fn execute(
+            &self,
+            _encoder: &mut wgpu::CommandEncoder,
+            _resources: &ResourceTable,
+            _surface_view: &wgpu::TextureView,
+        ) {
+        }
+    }
+
+    /// A read with no producing pass must fail `build()` with `MissingProducer`
+    /// naming the offending pass and resource.
+    #[test]
+    fn build_missing_producer_reports_pass_and_resource() {
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let consumer = MockPass::new("Consumer", log).with_read::<GPosition>();
+
+        let err = PipelineBuilder::new()
+            .add_pass(consumer)
+            .build(&device, 64, 64)
+            .err()
+            .expect("a read without a producer must fail the build");
+
+        match &err {
+            PipelineBuildError::MissingProducer { pass, resource } => {
+                assert_eq!(pass, "Consumer");
+                assert_eq!(resource, GPosition::NAME);
+            }
+            other => panic!("expected MissingProducer, got: {other}"),
+        }
+        assert_eq!(
+            err.to_string(),
+            "missing producer: pass 'Consumer' reads 'gbuffer_position' but no pass produces it"
+        );
+    }
+
+    /// A cyclic read/write graph must fail `build()` with `DependencyCycle`
+    /// naming the passes involved in the cycle.
+    #[test]
+    fn build_dependency_cycle_reports_involved_passes() {
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let a = MockPass::new("A", log.clone())
+            .with_write::<GPosition>(wgpu::TextureFormat::Rgba16Float)
+            .with_read::<GNormal>();
+        let b = MockPass::new("B", log)
+            .with_write::<GNormal>(wgpu::TextureFormat::Rgba16Float)
+            .with_read::<GPosition>();
+
+        let err = PipelineBuilder::new()
+            .add_pass(a)
+            .add_pass(b)
+            .build(&device, 64, 64)
+            .err()
+            .expect("a cyclic pass graph must fail the build");
+
+        match &err {
+            PipelineBuildError::DependencyCycle { passes } => {
+                assert!(
+                    passes.iter().any(|p| p == "A"),
+                    "cycle report should name pass A, got: {passes:?}"
+                );
+                assert!(
+                    passes.iter().any(|p| p == "B"),
+                    "cycle report should name pass B, got: {passes:?}"
+                );
+            }
+            other => panic!("expected DependencyCycle, got: {other}"),
+        }
+    }
+
+    /// The legal GBuffer+Terrain scenario: both passes write the same G-Buffer
+    /// targets (sequential writers). `build()` must succeed, allocate exactly
+    /// one texture per unique resource, and resolve every pass once.
+    #[test]
+    fn build_sequential_writers_allocates_each_resource_once() {
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
+        let resolve_log = Arc::new(Mutex::new(Vec::new()));
+
+        let gbuffer = MockPass::new("GBuffer", resolve_log.clone())
+            .with_write::<GPosition>(wgpu::TextureFormat::Rgba16Float)
+            .with_write::<GNormal>(wgpu::TextureFormat::Rgba16Float)
+            .with_write::<GAlbedo>(wgpu::TextureFormat::Rgba8Unorm)
+            .with_write::<GMaterial>(wgpu::TextureFormat::Rg8Unorm)
+            .with_write::<GDepth>(wgpu::TextureFormat::Depth32Float);
+        let terrain = MockPass::new("Terrain", resolve_log.clone())
+            .with_write::<GPosition>(wgpu::TextureFormat::Rgba16Float)
+            .with_write::<GNormal>(wgpu::TextureFormat::Rgba16Float)
+            .with_write::<GAlbedo>(wgpu::TextureFormat::Rgba8Unorm)
+            .with_write::<GMaterial>(wgpu::TextureFormat::Rg8Unorm)
+            .with_write::<GDepth>(wgpu::TextureFormat::Depth32Float);
+        let lighting = MockPass::new("Lighting", resolve_log.clone())
+            .with_read::<GPosition>()
+            .with_read::<GNormal>();
+
+        let scheduler = PipelineBuilder::new()
+            .add_pass(gbuffer)
+            .add_pass(terrain)
+            .add_pass(lighting)
+            .build(&device, 64, 64)
+            .expect("GBuffer+Terrain sequential double-write is a legal pipeline");
+
+        assert_eq!(scheduler.pass_count(), 3);
+        // Two writers per target, but only one texture per unique resource.
+        assert_eq!(
+            scheduler.resource_table.len(),
+            5,
+            "each unique (type, name) write must be allocated exactly once"
+        );
+
+        // Unsized writes fall back to the build dimensions.
+        let pos = scheduler.resource_table.handle::<GPosition>();
+        let pos_size = scheduler
+            .resource_table
+            .texture(pos)
+            .expect("transient texture should be owned by the table")
+            .size();
+        assert_eq!((pos_size.width, pos_size.height), (64, 64));
+
+        // Every pass was resolved exactly once during build.
+        let mut resolved = resolve_log.lock().unwrap().clone();
+        resolved.sort();
+        assert_eq!(resolved, vec!["GBuffer", "Lighting", "Terrain"]);
+    }
+
+    /// `validate_and_allocate` reports the same `MissingProducer` error as
+    /// `build()`, naming the first unresolved read.
+    #[test]
+    fn validate_and_allocate_missing_producer_reports_pass_and_resource() {
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let lighting = MockPass::new("Lighting", log)
+            .with_read::<GPosition>()
+            .with_read::<GNormal>();
+        let passes: Vec<&dyn Pass> = vec![&lighting];
+
+        let err = PipelineBuilder::validate_and_allocate(&passes, &device, 64, 64)
+            .err()
+            .expect("reads without producers must fail validation");
+
+        match &err {
+            PipelineBuildError::MissingProducer { pass, resource } => {
+                assert_eq!(pass, "Lighting");
+                // The first unresolved read in declaration order is reported.
+                assert_eq!(resource, GPosition::NAME);
+            }
+            other => panic!("expected MissingProducer, got: {other}"),
+        }
+    }
+
+    /// `validate_and_allocate` detects dependency cycles without taking
+    /// ownership of the passes.
+    #[test]
+    fn validate_and_allocate_dependency_cycle_returns_error() {
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let a = MockPass::new("A", log.clone())
+            .with_write::<GPosition>(wgpu::TextureFormat::Rgba16Float)
+            .with_read::<GNormal>();
+        let b = MockPass::new("B", log)
+            .with_write::<GNormal>(wgpu::TextureFormat::Rgba16Float)
+            .with_read::<GPosition>();
+        let passes: Vec<&dyn Pass> = vec![&a, &b];
+
+        let err = PipelineBuilder::validate_and_allocate(&passes, &device, 64, 64)
+            .err()
+            .expect("a cyclic pass graph must fail validation");
+
+        match &err {
+            PipelineBuildError::DependencyCycle { passes } => {
+                assert!(
+                    passes.iter().any(|p| p == "A"),
+                    "cycle report should name pass A, got: {passes:?}"
+                );
+                assert!(
+                    passes.iter().any(|p| p == "B"),
+                    "cycle report should name pass B, got: {passes:?}"
+                );
+            }
+            other => panic!("expected DependencyCycle, got: {other}"),
+        }
+    }
+
+    /// Allocation honors explicit per-slot sizes and array layers; unsized
+    /// writes fall back to the default screen size. `validate_and_allocate`
+    /// only allocates — it must not resolve passes.
+    #[test]
+    fn validate_and_allocate_honors_explicit_slot_sizes() {
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
+        let resolve_log = Arc::new(Mutex::new(Vec::new()));
+        let pass = MockPass::new("Sized", resolve_log.clone())
+            .with_write::<GPosition>(wgpu::TextureFormat::Rgba16Float)
+            .with_write_sized::<AOTexture>(wgpu::TextureFormat::R8Unorm, 32, 16)
+            .with_write_array::<ShadowDepth>(wgpu::TextureFormat::Depth32Float, 128, 128, 4);
+        let passes: Vec<&dyn Pass> = vec![&pass];
+
+        let table = PipelineBuilder::validate_and_allocate(&passes, &device, 640, 480)
+            .expect("a writes-only pass graph is valid");
+        assert_eq!(table.len(), 3);
+
+        // Unsized write falls back to the default (screen) size.
+        let pos = table.handle::<GPosition>();
+        let pos_size = table.texture(pos).expect("owned texture").size();
+        assert_eq!((pos_size.width, pos_size.height), (640, 480));
+
+        // Explicitly sized write keeps its declared dimensions.
+        let ao = table.handle::<AOTexture>();
+        let ao_size = table.texture(ao).expect("owned texture").size();
+        assert_eq!((ao_size.width, ao_size.height), (32, 16));
+
+        // Array write keeps its declared layer count.
+        let shadow = table.handle::<ShadowDepth>();
+        let shadow_size = table.texture(shadow).expect("owned texture").size();
+        assert_eq!(shadow_size.depth_or_array_layers, 4);
+
+        assert!(
+            resolve_log.lock().unwrap().is_empty(),
+            "validate_and_allocate must not resolve passes"
+        );
+    }
 }

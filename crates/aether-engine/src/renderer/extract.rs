@@ -179,6 +179,7 @@ pub fn extract_optional_pass_data(world: &World) -> OptionalPassData {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::headless_device_queue;
     use crate::asset::mesh::GpuMesh;
     use crate::asset::registry::BuiltinMeshRegistry;
     use crate::asset::terrain_material::TerrainMaterial;
@@ -205,20 +206,12 @@ mod tests {
     }
     use std::sync::Arc;
 
-    fn headless_device() -> wgpu::Device {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter =
-            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
-                .expect("need adapter");
-        let (device, _queue) =
-            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-                .expect("need device");
-        device
-    }
-
     #[test]
     fn extract_without_culling_includes_all_visible() {
-        let device = headless_device();
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let registry = BuiltinMeshRegistry::new();
         let cube_cpu = registry.get("cube").unwrap();
         let cube_gpu = Arc::new(GpuMesh::from_cpu(&device, &cube_cpu));
@@ -243,7 +236,10 @@ mod tests {
 
     #[test]
     fn extract_with_culling_skips_outside_entities() {
-        let device = headless_device();
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let registry = BuiltinMeshRegistry::new();
         let cube_cpu = registry.get("cube").unwrap();
         let cube_gpu = Arc::new(GpuMesh::from_cpu(&device, &cube_cpu));
@@ -285,7 +281,10 @@ mod tests {
 
     #[test]
     fn extract_respects_visibility_component() {
-        let device = headless_device();
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let registry = BuiltinMeshRegistry::new();
         let cube_cpu = registry.get("cube").unwrap();
         let cube_gpu = Arc::new(GpuMesh::from_cpu(&device, &cube_cpu));

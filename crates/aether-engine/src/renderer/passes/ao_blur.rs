@@ -64,6 +64,14 @@ impl Pass for AOBlurPass {
         Self::new(ctx.device)
     }
 
+    /// Update screen dimensions (called on init and on every resize before
+    /// signatures are read, so the half-resolution blurred target is sized correctly).
+    fn set_screen_size(&mut self, width: u32, height: u32) {
+        self.screen_size = [width as f32, height as f32];
+        self.half_width = width / 2;
+        self.half_height = height / 2;
+    }
+
     fn resolve(&mut self, device: &wgpu::Device, resources: &ResourceTable) {
         self.ao_handle = Some(resources.handle::<AOTexture>());
         self.pos_handle = Some(resources.handle::<GPosition>());
@@ -169,92 +177,9 @@ impl AOBlurPass {
         self.enabled = enabled;
     }
 
-    /// Update screen dimensions (called on init and resize).
-    pub fn set_screen_size(&mut self, width: u32, height: u32) {
-        self.screen_size = [width as f32, height as f32];
-        self.half_width = width / 2;
-        self.half_height = height / 2;
-    }
-
     /// Create a new AO blur pass with all GPU resources.
     pub fn new(device: &wgpu::Device) -> Self {
-        let shader_source = r#"
-struct VertexOutput {
-    @builtin(position) clip_position: vec4<f32>,
-    @location(0) uv: vec2<f32>,
-};
-@vertex
-fn vs_main(@location(0) pos: vec2<f32>) -> VertexOutput {
-    var out: VertexOutput;
-    out.clip_position = vec4<f32>(pos, 0.0, 1.0);
-    out.uv = vec2<f32>(pos.x * 0.5 + 0.5, 0.5 - pos.y * 0.5);
-    return out;
-}
-
-struct BlurParams {
-    depth_sigma: f32,
-    texel_size: vec2<f32>,
-    _pad0: f32,
-    _pad1: vec3<f32>,
-    _pad2: f32,
-};
-
-@group(0) @binding(0) var ao_tex: texture_2d<f32>;
-@group(0) @binding(1) var gbuffer_position: texture_2d<f32>;
-@group(0) @binding(2) var tex_sampler: sampler;
-
-@group(1) @binding(0) var<uniform> params: BlurParams;
-
-// Precomputed 3x3 gaussian kernel weights (sigma = 0.85)
-const KERNEL_SIZE: i32 = 1;
-const KERNEL_WEIGHTS: array<f32, 9> = array<f32, 9>(
-    0.077847, 0.123317, 0.077847,
-    0.123317, 0.195346, 0.123317,
-    0.077847, 0.123317, 0.077847,
-);
-
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let uv = in.uv;
-
-    // Sky check: AO texture is R8Unorm, cleared to WHITE (1.0).
-    // GBuffer position alpha: 1.0 = geometry, 0.0 = sky.
-    let center_pos = textureSample(gbuffer_position, tex_sampler, uv);
-    if (center_pos.a < 0.5) {
-        return vec4<f32>(textureSample(ao_tex, tex_sampler, uv).r, 0.0, 0.0, 1.0);
-    }
-
-    let center_depth = length(center_pos.xyz);
-    let texel_x = params.texel_size.x;
-    let texel_y = params.texel_size.y;
-
-    var blurred_ao: f32 = 0.0;
-    var total_weight: f32 = 0.0;
-
-    for (var y: i32 = -KERNEL_SIZE; y <= KERNEL_SIZE; y = y + 1) {
-        for (var x: i32 = -KERNEL_SIZE; x <= KERNEL_SIZE; x = x + 1) {
-            let idx = (y + KERNEL_SIZE) * 3 + (x + KERNEL_SIZE);
-            let gaussian_w = KERNEL_WEIGHTS[idx];
-
-            let sample_uv = uv + vec2<f32>(f32(x) * texel_x, f32(y) * texel_y);
-            let sample_ao = textureSample(ao_tex, tex_sampler, sample_uv).r;
-
-            // Bilateral weight: reduce contribution across depth edges
-            let sample_pos = textureSample(gbuffer_position, tex_sampler, sample_uv);
-            let sample_depth = length(sample_pos.xyz);
-            let depth_diff = abs(center_depth - sample_depth);
-            let bilateral_w = exp(-depth_diff / params.depth_sigma);
-
-            let w = gaussian_w * bilateral_w;
-            blurred_ao = blurred_ao + sample_ao * w;
-            total_weight = total_weight + w;
-        }
-    }
-
-    let result = blurred_ao / max(total_weight, 0.0001);
-    return vec4<f32>(result, 0.0, 0.0, 1.0);
-}
-"#;
+        let shader_source = AO_BLUR_SHADER;
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("AOBlur Shader"),
             source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(shader_source)),
@@ -406,22 +331,15 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::headless_device_queue;
     use std::any::TypeId;
-
-    fn headless_device() -> wgpu::Device {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter =
-            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
-                .expect("need adapter");
-        let (device, _) =
-            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-                .expect("need device");
-        device
-    }
 
     #[test]
     fn signature_declares_reads_and_writes() {
-        let device = headless_device();
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let sig = AOBlurPass::new(&device).signature();
         assert_eq!(sig.name, "AOBlur");
         assert_eq!(sig.reads.len(), 2);
@@ -434,6 +352,103 @@ mod tests {
 
     #[test]
     fn init_creates_resources() {
-        let _pass = AOBlurPass::new(&headless_device());
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
+        let _pass = AOBlurPass::new(&device);
+    }
+
+    #[test]
+    fn set_screen_size_updates_blurred_write_size() {
+        let Some((device, _queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
+        let mut pass = AOBlurPass::new(&device);
+        pass.set_screen_size(1920, 1080);
+        let sig = pass.signature();
+        assert_eq!(sig.writes[0].name, "ao_blurred");
+        assert_eq!(sig.writes[0].width, Some(960));
+        assert_eq!(sig.writes[0].height, Some(540));
     }
 }
+
+/// WGSL source for the AO blur pass.
+pub(crate) const AO_BLUR_SHADER: &str = r#"
+struct VertexOutput {
+    @builtin(position) clip_position: vec4<f32>,
+    @location(0) uv: vec2<f32>,
+};
+@vertex
+fn vs_main(@location(0) pos: vec2<f32>) -> VertexOutput {
+    var out: VertexOutput;
+    out.clip_position = vec4<f32>(pos, 0.0, 1.0);
+    out.uv = vec2<f32>(pos.x * 0.5 + 0.5, 0.5 - pos.y * 0.5);
+    return out;
+}
+
+struct BlurParams {
+    depth_sigma: f32,
+    texel_size: vec2<f32>,
+    _pad0: f32,
+    _pad1: vec3<f32>,
+    _pad2: f32,
+};
+
+@group(0) @binding(0) var ao_tex: texture_2d<f32>;
+@group(0) @binding(1) var gbuffer_position: texture_2d<f32>;
+@group(0) @binding(2) var tex_sampler: sampler;
+
+@group(1) @binding(0) var<uniform> params: BlurParams;
+
+// Precomputed 3x3 gaussian kernel weights (sigma = 0.85)
+const KERNEL_SIZE: i32 = 1;
+const KERNEL_WEIGHTS: array<f32, 9> = array<f32, 9>(
+    0.077847, 0.123317, 0.077847,
+    0.123317, 0.195346, 0.123317,
+    0.077847, 0.123317, 0.077847,
+);
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    let uv = in.uv;
+
+    // Sky check: AO texture is R8Unorm, cleared to WHITE (1.0).
+    // GBuffer position alpha: 1.0 = geometry, 0.0 = sky.
+    let center_pos = textureSample(gbuffer_position, tex_sampler, uv);
+    if (center_pos.a < 0.5) {
+        return vec4<f32>(textureSample(ao_tex, tex_sampler, uv).r, 0.0, 0.0, 1.0);
+    }
+
+    let center_depth = length(center_pos.xyz);
+    let texel_x = params.texel_size.x;
+    let texel_y = params.texel_size.y;
+
+    var blurred_ao: f32 = 0.0;
+    var total_weight: f32 = 0.0;
+
+    for (var y: i32 = -KERNEL_SIZE; y <= KERNEL_SIZE; y = y + 1) {
+        for (var x: i32 = -KERNEL_SIZE; x <= KERNEL_SIZE; x = x + 1) {
+            let idx = (y + KERNEL_SIZE) * 3 + (x + KERNEL_SIZE);
+            let gaussian_w = KERNEL_WEIGHTS[idx];
+
+            let sample_uv = uv + vec2<f32>(f32(x) * texel_x, f32(y) * texel_y);
+            let sample_ao = textureSample(ao_tex, tex_sampler, sample_uv).r;
+
+            // Bilateral weight: reduce contribution across depth edges
+            let sample_pos = textureSample(gbuffer_position, tex_sampler, sample_uv);
+            let sample_depth = length(sample_pos.xyz);
+            let depth_diff = abs(center_depth - sample_depth);
+            let bilateral_w = exp(-depth_diff / params.depth_sigma);
+
+            let w = gaussian_w * bilateral_w;
+            blurred_ao = blurred_ao + sample_ao * w;
+            total_weight = total_weight + w;
+        }
+    }
+
+    let result = blurred_ao / max(total_weight, 0.0001);
+    return vec4<f32>(result, 0.0, 0.0, 1.0);
+}
+"#;

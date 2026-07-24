@@ -18,7 +18,7 @@ use crate::renderer::resource_table::ResourceTable;
 use std::sync::Arc;
 
 mod execute;
-mod pipeline;
+pub(crate) mod pipeline;
 mod types;
 
 pub use types::WaterUniform;
@@ -251,6 +251,7 @@ impl Pass for WaterPass {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::headless_device_queue;
     use crate::ecs::components::Water;
     use crate::ecs::World;
     use crate::renderer::camera::FlyCamera;
@@ -260,15 +261,6 @@ mod tests {
     use crate::renderer::resource::ResourceTag;
     use crate::scene::WaterConfig;
     use glam::Vec3;
-
-    fn headless_device() -> (wgpu::Device, wgpu::Queue) {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter =
-            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
-                .expect("need adapter");
-        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-            .expect("need device")
-    }
 
     fn init_ctx<'a>(device: &'a wgpu::Device, queue: &'a wgpu::Queue) -> InitContext<'a> {
         let texture_cache = Box::leak(Box::new(crate::asset::texture_cache::GpuTextureCache::new(
@@ -288,7 +280,10 @@ mod tests {
 
     #[test]
     fn water_pass_signature_reads_lit_scene_depth_and_reflection() {
-        let (device, queue) = headless_device();
+        let Some((device, queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let ctx = init_ctx(&device, &queue);
         let pass = WaterPass::init(&ctx);
         let sig = pass.signature();
@@ -306,7 +301,10 @@ mod tests {
 
     #[test]
     fn water_pass_skipped_without_component() {
-        let (device, queue) = headless_device();
+        let Some((device, queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let ctx = init_ctx(&device, &queue);
         let pass = WaterPass::init(&ctx);
         let world = World::new();
@@ -332,7 +330,10 @@ mod tests {
 
     #[test]
     fn water_pass_runs_when_component_present() {
-        let (device, queue) = headless_device();
+        let Some((device, queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let ctx = init_ctx(&device, &queue);
         let mut pass = WaterPass::init(&ctx);
         let mut world = World::new();
@@ -364,7 +365,10 @@ mod tests {
 
     #[test]
     fn water_pass_uses_light_direction_for_sun() {
-        let (device, queue) = headless_device();
+        let Some((device, queue)) = headless_device_queue() else {
+            eprintln!("SKIP: no GPU adapter available");
+            return;
+        };
         let ctx = init_ctx(&device, &queue);
         let mut pass = WaterPass::init(&ctx);
         let mut world = World::new();

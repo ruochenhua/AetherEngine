@@ -1,9 +1,7 @@
 //! Per-frame input handling: debug hotkeys, camera movement, picking and gizmos.
 
 use super::{App, LauncherState};
-use aether_engine::renderer::gizmo::{
-    apply_drag, detect_hover, selected_entity_transform, GizmoCameraCtx,
-};
+use aether_engine::renderer::gizmo::{apply_drag, detect_hover, entity_transform, GizmoCameraCtx};
 use aether_engine::renderer::picking::{pick_entity, screen_ray};
 use winit::{event::MouseButton, keyboard::KeyCode};
 
@@ -70,6 +68,12 @@ pub(crate) fn process_debug_hotkeys(app: &mut App) {
 
 /// Update the fly camera, picking and gizmo interaction for the current frame.
 pub(crate) fn update_camera_and_picking(app: &mut App, dt: f32, egui_consumed: bool) {
+    // Reconcile the ordered selection with the ECS `Selected` markers; they
+    // may have changed via undo/redo, scene load, or despawns last frame.
+    if let LauncherState::Running { ref world, .. } = app.state {
+        app.selection.sync(world);
+    }
+
     // Camera update (only when pointer is not over egui UI)
     if !egui_consumed && matches!(app.state, LauncherState::Running { .. }) {
         let (dx, dy) = app.input.mouse_delta();
@@ -77,13 +81,14 @@ pub(crate) fn update_camera_and_picking(app: &mut App, dt: f32, egui_consumed: b
         app.scroll_input = 0.0;
     }
 
-    // Delete selected entity on Delete key
-    if app.input.key_pressed(KeyCode::Delete) {
-        if let LauncherState::Running { ref mut world, .. } = app.state {
-            if let Some((entity, _)) = selected_entity_transform(world) {
-                app.pending_despawn_entity = Some(entity);
-            }
-        }
+    // Delete all selected entities on Delete key. Suppressed while egui
+    // captures keyboard input (e.g. editing an Inspector text field), same
+    // guard as the debug hotkeys above.
+    if app.input.key_pressed(KeyCode::Delete)
+        && !app.selection.is_empty()
+        && !app.egui_ctx.egui_wants_keyboard_input()
+    {
+        app.pending_delete_selection = true;
     }
 
     // Picking + Gizmo interaction (only in Running state, and not over UI)
@@ -98,12 +103,17 @@ pub(crate) fn update_camera_and_picking(app: &mut App, dt: f32, egui_consumed: b
             let mouse_pressed = app.input.mouse_pressed(MouseButton::Left) && !app.input.alt_held();
             let mouse_held = app.input.mouse_held(MouseButton::Left) && !app.input.alt_held();
             let mouse_released = app.input.mouse_released(MouseButton::Left);
+            // Shift/Ctrl + click toggles selection instead of single-selecting.
+            let additive = app.input.shift_held() || app.input.ctrl_held();
+            // The gizmo anchors to the most recently selected entity.
+            let anchor = app.selection.anchor();
+            let anchor_transform = anchor.and_then(|entity| entity_transform(world, entity));
 
             // Gizmo drag handling
             if let Some(axis) = app.gizmo_drag_axis {
                 if mouse_held {
                     let (dx, dy) = app.input.mouse_delta();
-                    if let Some((entity, _)) = selected_entity_transform(world) {
+                    if let Some(entity) = anchor {
                         if let Ok(transform) = world
                             .query_one_mut::<&mut aether_engine::ecs::components::Transform>(entity)
                         {
@@ -124,7 +134,7 @@ pub(crate) fn update_camera_and_picking(app: &mut App, dt: f32, egui_consumed: b
                 }
                 if mouse_released {
                     // Record undo command if transform changed during drag
-                    if let Some((entity, _)) = selected_entity_transform(world) {
+                    if let Some(entity) = anchor {
                         if let Some(old_transform) = app.gizmo_drag_start_transform.take() {
                             if let Ok(transform) = world
                                 .query_one_mut::<&mut aether_engine::ecs::components::Transform>(
@@ -146,7 +156,7 @@ pub(crate) fn update_camera_and_picking(app: &mut App, dt: f32, egui_consumed: b
                 }
             } else if mouse_pressed {
                 // Check gizmo hover before picking
-                if let Some((_, transform)) = selected_entity_transform(world) {
+                if let Some(transform) = anchor_transform {
                     if let Some(hovered) =
                         detect_hover(&transform, view, proj, mx, my, width, height)
                     {
@@ -156,12 +166,14 @@ pub(crate) fn update_camera_and_picking(app: &mut App, dt: f32, egui_consumed: b
                         // Not hovering gizmo: perform picking
                         let ray =
                             screen_ray(mx, my, width, height, view, proj, app.camera.position);
-                        pick_entity(world, &ray);
+                        pick_entity(world, &ray, additive);
+                        app.selection.sync(world);
                     }
                 } else {
                     // No selection: perform picking
                     let ray = screen_ray(mx, my, width, height, view, proj, app.camera.position);
-                    pick_entity(world, &ray);
+                    pick_entity(world, &ray, additive);
+                    app.selection.sync(world);
                 }
             }
         }
