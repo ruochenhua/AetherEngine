@@ -33,6 +33,11 @@ struct CloudUniform {
     cloud_color: vec4<f32>,
 };
 
+struct CloudIntervals {
+    near: vec2<f32>,
+    far: vec2<f32>,
+};
+
 @group(0) @binding(0) var<uniform> clouds: CloudUniform;
 
 @group(1) @binding(0) var depth_tex: texture_depth_2d;
@@ -253,19 +258,27 @@ fn raymarch_to_light(pos: vec3<f32>, view_dir: vec3<f32>, step_size: f32) -> f32
 // Front-to-back raymarch
 // -----------------------------------------------------------------------------
 
-fn front_to_back_raymarch(start_pos: vec3<f32>, end_pos: vec3<f32>) -> vec4<f32> {
-    let path = end_pos - start_pos;
+fn interval_valid(interval: vec2<f32>) -> bool {
+    return interval.y > interval.x;
+}
+
+fn front_to_back_raymarch(
+    ray_origin: vec3<f32>,
+    ray_dir: vec3<f32>,
+    intervals: CloudIntervals,
+) -> vec4<f32> {
+    let near_valid = interval_valid(intervals.near);
+    let far_valid = interval_valid(intervals.far);
+    let span_start = select(intervals.far.x, intervals.near.x, near_valid);
+    let span_end = select(intervals.near.y, intervals.far.y, far_valid);
+    let path_length = span_end - span_start;
     let shell_thickness = outer_radius() - inner_radius();
-    let sample_count = i32(ceil(mix(48.0, 96.0, clamp(length(path) / shell_thickness, 0.0, 1.0))));
+    let sample_count = i32(ceil(mix(48.0, 96.0, clamp(path_length / shell_thickness, 0.0, 1.0))));
 
-    let step_vector = path / f32(sample_count - 1);
-    let step_size = length(step_vector);
-    let view_dir = normalize(path);
-
-    var pos = start_pos;
+    let step_size = path_length / f32(sample_count - 1);
     var result = vec4<f32>(0.0);
 
-    let lod_alpha = clamp(length(start_pos - clouds.camera_pos.xyz) / max_render_dist(), 0.0, 1.0);
+    let lod_alpha = clamp(span_start / max_render_dist(), 0.0, 1.0);
     let sampling_lod = mix(0.0, 6.0, lod_alpha);
 
     let a = i32(frag_coord.x) % 4;
@@ -276,33 +289,37 @@ fn front_to_back_raymarch(start_pos: vec3<f32>, end_pos: vec3<f32>) -> vec4<f32>
         3.0, 11.0, 1.0, 9.0,
         15.0, 7.0, 13.0, 5.0
     );
-    pos += step_vector * (bayer_filter[a * 4 + b] / 16.0);
+    var ray_t = span_start + step_size * (bayer_filter[a * 4 + b] / 16.0);
 
     let light_factor = clouds.light_color.a;
     let lc = clouds.light_color.rgb * light_factor * clouds.cloud_color.rgb;
     let ambient_l = ambient_light();
 
     for (var i: i32 = 0; i < sample_count; i = i + 1) {
-        let height_fraction = get_height_fraction(pos);
-        if (height_fraction < 0.0 || height_fraction > 1.0) {
-            break;
-        }
+        let in_near = near_valid && ray_t >= intervals.near.x && ray_t <= intervals.near.y;
+        let in_far = far_valid && ray_t >= intervals.far.x && ray_t <= intervals.far.y;
 
-        let cloud_density = sample_cloud_density(pos, sampling_lod, true, height_fraction);
-        if (cloud_density > 0.0) {
-            let le = raymarch_to_light(pos, view_dir, step_size);
-            // Lower absorption so clouds stay translucent and ground shadows are softer.
-            let alpha = cloud_density * 0.75;
-            var src = vec4<f32>(lc * le + ambient_l, alpha);
-            src = vec4<f32>(src.rgb * src.a, src.a);
-            result = (1.0 - result.a) * src + result;
+        if (in_near || in_far) {
+            let pos = ray_origin + ray_dir * ray_t;
+            let height_fraction = get_height_fraction(pos);
+            if (height_fraction >= 0.0 && height_fraction <= 1.0) {
+                let cloud_density = sample_cloud_density(pos, sampling_lod, true, height_fraction);
+                if (cloud_density > 0.0) {
+                    let le = raymarch_to_light(pos, ray_dir, step_size);
+                    // Lower absorption so clouds stay translucent and ground shadows are softer.
+                    let alpha = cloud_density * 0.75;
+                    var src = vec4<f32>(lc * le + ambient_l, alpha);
+                    src = vec4<f32>(src.rgb * src.a, src.a);
+                    result = (1.0 - result.a) * src + result;
 
-            if (result.a >= 0.95) {
-                break;
+                    if (result.a >= 0.95) {
+                        break;
+                    }
+                }
             }
         }
 
-        pos += step_vector;
+        ray_t += step_size;
     }
 
     return result;
@@ -312,12 +329,8 @@ fn front_to_back_raymarch(start_pos: vec3<f32>, end_pos: vec3<f32>) -> vec4<f32>
 // Sphere intersection
 // -----------------------------------------------------------------------------
 
-fn intersect_sphere(
-    o: vec3<f32>,
-    d: vec3<f32>,
-    start_pos: ptr<function, vec3<f32>>,
-    end_pos: ptr<function, vec3<f32>>,
-) -> bool {
+fn intersect_cloud_shell(o: vec3<f32>, d: vec3<f32>) -> CloudIntervals {
+    let empty = vec2<f32>(0.0);
     let sphere_to_origin = o - sphere_center();
     let b = dot(d, sphere_to_origin);
     let c = dot(sphere_to_origin, sphere_to_origin);
@@ -330,7 +343,7 @@ fn intersect_sphere(
 
     // Ray must at least intersect the outer sphere.
     if (outer_disc < 0.0) {
-        return false;
+        return CloudIntervals(empty, empty);
     }
 
     let outer_t0 = -b - sqrt(outer_disc);
@@ -338,53 +351,52 @@ fn intersect_sphere(
 
     // The whole outer sphere is behind the camera.
     if (outer_t1 < 0.0) {
-        return false;
+        return CloudIntervals(empty, empty);
     }
 
-    var t_start: f32;
-    var t_end: f32;
-
-    if (inner_disc < 0.0) {
-        // Ray does not enter the inner sphere hole: the shell is the full
-        // outer-sphere segment.
-        t_start = max(outer_t0, 0.0);
-        t_end = outer_t1;
-    } else {
-        let inner_t0 = -b - sqrt(inner_disc);
-        let inner_t1 = -b + sqrt(inner_disc);
-
-        // The cloud shell is [outer_t0, inner_t0] ∪ [inner_t1, outer_t1].
-        // Pick the first segment with t >= 0 along the ray.
-        if (outer_t0 >= 0.0) {
-            // Camera outside the shell, looking into the cloud layer.
-            t_start = outer_t0;
-            t_end = inner_t0;
-        } else if (inner_t0 >= 0.0) {
-            // Camera inside the cloud layer (between outer and inner spheres).
-            t_start = 0.0;
-            t_end = inner_t0;
-        } else if (inner_t1 >= 0.0) {
-            // Camera inside the inner sphere hole, looking out into clouds.
-            t_start = inner_t1;
-            t_end = outer_t1;
-        } else if (outer_t1 >= 0.0) {
-            // Camera inside the far-side cloud layer.
-            t_start = 0.0;
-            t_end = outer_t1;
-        } else {
-            return false;
-        }
+    let outer_interval = vec2<f32>(
+        max(outer_t0, 0.0),
+        min(outer_t1, max_render_dist()),
+    );
+    if (!interval_valid(outer_interval)) {
+        return CloudIntervals(empty, empty);
     }
 
-    if (t_start > max_render_dist()) {
-        return false;
+    // A tangent has a zero-length inner interval, so it must not change the
+    // outer interval. This keeps sampling continuous across the cloud base.
+    if (inner_disc <= 0.0) {
+        return CloudIntervals(outer_interval, empty);
     }
 
-    t_end = min(t_end, max_render_dist());
+    let inner_t0 = -b - sqrt(inner_disc);
+    let inner_t1 = -b + sqrt(inner_disc);
+    let hole = vec2<f32>(
+        max(inner_t0, outer_interval.x),
+        min(inner_t1, outer_interval.y),
+    );
 
-    *start_pos = o + d * t_start;
-    *end_pos = o + d * t_end;
-    return true;
+    if (!interval_valid(hole)) {
+        return CloudIntervals(outer_interval, empty);
+    }
+
+    var near = vec2<f32>(outer_interval.x, hole.x);
+    var far = vec2<f32>(hole.y, outer_interval.y);
+    if (!interval_valid(near)) {
+        near = empty;
+    }
+    if (!interval_valid(far)) {
+        far = empty;
+    }
+
+    return CloudIntervals(near, far);
+}
+
+fn clip_interval(interval: vec2<f32>, max_t: f32) -> vec2<f32> {
+    let clipped = vec2<f32>(interval.x, min(interval.y, max_t));
+    if (!interval_valid(clipped)) {
+        return vec2<f32>(0.0);
+    }
+    return clipped;
 }
 
 // -----------------------------------------------------------------------------
@@ -407,27 +419,19 @@ fn fs_main(@builtin(position) in_frag_coord: vec4<f32>) -> @location(0) vec4<f32
     let world_pos = world_h.xyz / world_h.w;
     let ray_dir = normalize(world_pos - clouds.camera_pos.xyz);
 
-    var start_pos: vec3<f32>;
-    var end_pos: vec3<f32>;
-    let intersect = intersect_sphere(clouds.camera_pos.xyz, ray_dir, &start_pos, &end_pos);
-
-    if (!intersect) {
-        return vec4<f32>(0.0);
-    }
-
     // Honour scene geometry: stop marching at the first opaque surface so
     // clouds appear correctly both when viewed from below and from above.
     let geo_dist = length(world_pos - clouds.camera_pos.xyz);
-    let t_start = length(start_pos - clouds.camera_pos.xyz);
-    let t_end = min(length(end_pos - clouds.camera_pos.xyz), geo_dist);
+    let shell_intervals = intersect_cloud_shell(clouds.camera_pos.xyz, ray_dir);
+    let intervals = CloudIntervals(
+        clip_interval(shell_intervals.near, geo_dist),
+        clip_interval(shell_intervals.far, geo_dist),
+    );
 
-    if (t_start >= t_end) {
+    if (!interval_valid(intervals.near) && !interval_valid(intervals.far)) {
         return vec4<f32>(0.0);
     }
 
-    start_pos = clouds.camera_pos.xyz + ray_dir * t_start;
-    end_pos = clouds.camera_pos.xyz + ray_dir * t_end;
-
-    return front_to_back_raymarch(start_pos, end_pos);
+    return front_to_back_raymarch(clouds.camera_pos.xyz, ray_dir, intervals);
 }
 "#;
