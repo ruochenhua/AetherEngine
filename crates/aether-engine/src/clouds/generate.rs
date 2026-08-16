@@ -6,26 +6,20 @@
 //!   - Worley 3D        (32^3, RGBA8)
 //!   - Weather 2D       (2048^2, RGBA8)
 
-const PERLIN_WORLEY_SHADER: &str = include_str!(
-    concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../assets/shaders/clouds/generation/perlinworley.wgsl"
-    )
-);
+const PERLIN_WORLEY_SHADER: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../assets/shaders/clouds/generation/perlinworley.wgsl"
+));
 
-const WORLEY_SHADER: &str = include_str!(
-    concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../assets/shaders/clouds/generation/worley.wgsl"
-    )
-);
+const WORLEY_SHADER: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../assets/shaders/clouds/generation/worley.wgsl"
+));
 
-const WEATHER_SHADER: &str = include_str!(
-    concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../assets/shaders/clouds/generation/weather.wgsl"
-    )
-);
+const WEATHER_SHADER: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../assets/shaders/clouds/generation/weather.wgsl"
+));
 
 /// GPU textures, sampler, and pre-built bind group for the cloud pass.
 pub struct CloudNoiseTextures {
@@ -188,6 +182,7 @@ fn create_storage_texture_2d(
     (texture, view)
 }
 
+#[allow(clippy::too_many_arguments)] // Private helper: flat GPU dispatch parameters are clearer at call sites.
 fn run_compute_pass(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
