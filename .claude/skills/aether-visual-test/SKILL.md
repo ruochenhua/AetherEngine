@@ -28,10 +28,24 @@ cargo run --bin aether-launcher -- \
   --no-gui-overlay
 ```
 
-Or run the full milestone verification script:
+Or run the milestone verification script:
 
 ```bash
 ./scripts/verify-milestone.sh
+```
+
+For the broader visual-regression matrix (Phase 0–5 scenes, deterministic
+2560x1440 captures, diff images, and reports), run:
+
+```bash
+# Run all scenes in tests/visual-matrix.json
+./scripts/verify-regression.sh
+
+# Run one scene
+./scripts/verify-regression.sh --scene 13_clouds
+
+# First-time baseline creation / deliberate reference updates
+./scripts/verify-regression.sh --update-references
 ```
 
 > **Issue-level outputs:** When capturing screenshots as part of an issue or
@@ -134,6 +148,10 @@ python3 scripts/should-verify-visual.py \
 | `--exit-after-frames <n>` | Exit after rendering n frames |
 | `--no-gui-overlay` | Hide egui overlay in Running state |
 | `--debug-mode <n>` | Force debug mode (0-14) |
+| `--freeze-time` | Freeze simulation time for deterministic screenshots |
+| `--ssr` | Enable SSR for SSR-specific scene captures |
+| `--width <px>` | Set physical pixel width (default 1280 logical) |
+| `--height <px>` | Set physical pixel height (default 720 logical) |
 
 ## Debug mode mapping
 

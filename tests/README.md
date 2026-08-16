@@ -41,9 +41,31 @@ cargo run --bin aether-launcher -- \
   --scene scenes/XX_name.ron \
   --screenshot tests/output/XX_name.png \
   --exit-after-frames 120 \
-  --no-gui-overlay
+  --no-gui-overlay \
+  --width 2560 \
+  --height 1440
 
 # Promote to reference
 cp tests/output/XX_name.png tests/reference/XX_name.png
 git add tests/reference/XX_name.png
 ```
+
+## Batch regression runner
+
+`tests/visual-matrix.json` defines the canonical visual regression matrix.
+Use `scripts/verify-regression.sh` to run the whole matrix or a single scene:
+
+```bash
+# Run all scenes in the matrix
+./scripts/verify-regression.sh
+
+# Run one scene
+./scripts/verify-regression.sh --scene 13_clouds
+
+# Generate or update golden references (only after reviewing the new screenshots)
+./scripts/verify-regression.sh --update-references
+```
+
+The runner captures deterministic screenshots (`--freeze-time`, `--no-gui-overlay`,
+fixed physical size), compares them with `tests/reference/*.png`, writes diff
+images, and generates a Markdown report under `tests/reports/`.

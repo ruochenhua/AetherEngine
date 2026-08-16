@@ -1,0 +1,179 @@
+{
+  "defaults": {
+    "no_gui_overlay": true,
+    "freeze_time": true
+  },
+  "scenes": [
+    {
+      "name": "01_deferred",
+      "scene": "scenes/01_deferred.ron",
+      "frames": 60,
+      "width": 2560,
+      "height": 1440,
+      "threshold": 0.99
+    },
+    {
+      "name": "02_multi_object",
+      "scene": "scenes/02_multi_object.ron",
+      "frames": 60,
+      "width": 2560,
+      "height": 1440,
+      "threshold": 0.99
+    },
+    {
+      "name": "03_shadow_demo",
+      "scene": "scenes/03_shadow_demo.ron",
+      "frames": 120,
+      "width": 2560,
+      "height": 1440,
+      "threshold": 0.99
+    },
+    {
+      "name": "03_shadow_debug",
+      "scene": "scenes/03_shadow_demo.ron",
+      "frames": 120,
+      "width": 2560,
+      "height": 1440,
+      "debug_mode": 6,
+      "threshold": 0.99
+    },
+    {
+      "name": "04_ibl_debug",
+      "scene": "scenes/04_ibl_debug.ron",
+      "frames": 120,
+      "width": 2560,
+      "height": 1440,
+      "threshold": 0.99
+    },
+    {
+      "name": "05_ssao_debug_mode14",
+      "scene": "scenes/05_ssao_debug.ron",
+      "frames": 120,
+      "width": 2560,
+      "height": 1440,
+      "debug_mode": 14,
+      "threshold": 0.99
+    },
+    {
+      "name": "06_ssao_extreme_mode14",
+      "scene": "scenes/06_ssao_extreme.ron",
+      "frames": 120,
+      "width": 2560,
+      "height": 1440,
+      "threshold": 0.99
+    },
+    {
+      "name": "07_ssr_debug",
+      "scene": "scenes/07_ssr_debug.ron",
+      "frames": 120,
+      "width": 2560,
+      "height": 1440,
+      "ssr": true,
+      "threshold": 0.99
+    },
+    {
+      "name": "08_terrain",
+      "scene": "scenes/08_terrain.ron",
+      "frames": 120,
+      "width": 2560,
+      "height": 1440,
+      "threshold": 0.99
+    },
+    {
+      "name": "09_terrain",
+      "scene": "scenes/09_terrain.ron",
+      "frames": 120,
+      "width": 2560,
+      "height": 1440,
+      "threshold": 0.99
+    },
+    {
+      "name": "10_csm",
+      "scene": "scenes/10_csm.ron",
+      "frames": 120,
+      "width": 2560,
+      "height": 1440,
+      "threshold": 0.99
+    },
+    {
+      "name": "11_atmosphere",
+      "scene": "scenes/11_atmosphere.ron",
+      "frames": 120,
+      "width": 2560,
+      "height": 1440,
+      "threshold": 0.99
+    },
+    {
+      "name": "12_water",
+      "scene": "scenes/12_water.ron",
+      "frames": 120,
+      "width": 2560,
+      "height": 1440,
+      "threshold": 0.99
+    },
+    {
+      "name": "13_clouds",
+      "scene": "scenes/13_clouds.ron",
+      "frames": 120,
+      "width": 2560,
+      "height": 1440,
+      "threshold": 0.99
+    },
+    {
+      "name": "14_god_rays",
+      "scene": "scenes/14_god_rays.ron",
+      "frames": 120,
+      "width": 2560,
+      "height": 1440,
+      "threshold": 0.99
+    },
+    {
+      "name": "16_terrain_perlin",
+      "scene": "scenes/16_terrain_perlin.ron",
+      "frames": 120,
+      "width": 2560,
+      "height": 1440,
+      "threshold": 0.99
+    },
+    {
+      "name": "17_textured_terrain",
+      "scene": "scenes/17_textured_terrain.ron",
+      "frames": 120,
+      "width": 2560,
+      "height": 1440,
+      "threshold": 0.99
+    },
+    {
+      "name": "18_textured_water",
+      "scene": "scenes/18_textured_water.ron",
+      "frames": 120,
+      "width": 2560,
+      "height": 1440,
+      "threshold": 0.99
+    },
+    {
+      "name": "19_water_reflection_test",
+      "scene": "scenes/19_water_reflection_test.ron",
+      "frames": 120,
+      "width": 2560,
+      "height": 1440,
+      "threshold": 0.99
+    },
+    {
+      "name": "20_terrain_water_clouds",
+      "scene": "scenes/20_terrain_water_clouds.ron",
+      "frames": 120,
+      "width": 2560,
+      "height": 1440,
+      "threshold": 0.99
+    },
+    {
+      "name": "20_model_loading_nanosuit",
+      "scene": "scenes/20_model_loading_nanosuit.ron",
+      "frames": 120,
+      "width": 2560,
+      "height": 1440,
+      "threshold": 0.99
+    }
+  ]
+}
