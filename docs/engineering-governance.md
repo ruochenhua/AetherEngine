@@ -54,6 +54,7 @@ CI 会尽可能自动检查；无法自动检查的规则由 Code Review / Agent
 - ~~`crates/aether-launcher/src/app.rs`~~（已拆分为 `app` + `app/handler`）
 - ~~`renderer/passes/ssao.rs`~~（已拆分为 `ssao` + `shaders` + `tests`）
 - ~~`renderer/passes/fxaa.rs`~~（已拆分为 `fxaa` + `shaders` + `tests`）
+- ~~`scene/serializer.rs`~~（已拆分为 `serializer` + `tests`）
 - 其余见 `scripts/module-health-baseline.json`
 
 ## 3. 重构纪律
