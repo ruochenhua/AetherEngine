@@ -43,7 +43,7 @@ CI 会尽可能自动检查；无法自动检查的规则由 Code Review / Agent
 
 - ~~`renderer/ibl/generate.rs`~~（已拆分为 `brdf` / `cubemap` / `equirect` / `hdr` / `irradiance` / `prefilter` / `shaders`）
 - ~~`renderer/passes/water_reflection.rs`~~（已拆分为 `water_reflection/pass` / `pipeline` / `shaders` / `terrain`）
-- `renderer/passes/atmosphere.rs`
+- ~~`renderer/passes/atmosphere.rs`~~（已拆分为 `atmosphere/pass` / `pipeline` / `shaders`）
 - `renderer/passes/god_ray.rs`
 - `renderer/passes/ssr/pipeline.rs`
 - `scene/config/mod.rs`
