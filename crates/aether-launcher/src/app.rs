@@ -305,12 +305,18 @@ impl ApplicationHandler for App {
             return;
         }
 
+        let inner_size: winit::dpi::Size = match (self.cli.width, self.cli.height) {
+            (Some(width), Some(height)) => winit::dpi::PhysicalSize::new(width, height).into(),
+            (Some(width), None) => winit::dpi::PhysicalSize::new(width, 720).into(),
+            (None, Some(height)) => winit::dpi::PhysicalSize::new(1280, height).into(),
+            (None, None) => winit::dpi::LogicalSize::new(1280u32, 720u32).into(),
+        };
         let window = Arc::new(
             event_loop
                 .create_window(
                     WindowAttributes::default()
                         .with_title("Aether Engine Launcher")
-                        .with_inner_size(winit::dpi::LogicalSize::new(1280u32, 720u32)),
+                        .with_inner_size(inner_size),
                 )
                 .expect("Failed to create window"),
         );
@@ -516,7 +522,10 @@ fn set_working_dir_to_project_root() {
         while let Some(current) = dir {
             if current.join("Cargo.toml").is_file() && current.join("assets").is_dir() {
                 if let Err(e) = std::env::set_current_dir(&current) {
-                    eprintln!("Warning: failed to set working directory to {:?}: {}", current, e);
+                    eprintln!(
+                        "Warning: failed to set working directory to {:?}: {}",
+                        current, e
+                    );
                 }
                 return;
             }
