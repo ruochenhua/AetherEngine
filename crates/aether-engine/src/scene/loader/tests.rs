@@ -266,6 +266,29 @@ fn open_scene_clears_world() {
 }
 
 #[test]
+fn open_scene_invalid_path_returns_error_without_panicking() {
+    let device = headless_device();
+    let registry = test_registry();
+    let mut assets = test_assets();
+    let mut world = World::new();
+
+    let dir = std::env::temp_dir().join("aether_test_invalid_scene");
+    let _ = std::fs::create_dir(&dir);
+    let path = dir.join("broken.ron");
+    std::fs::write(&path, "not a valid scene").unwrap();
+
+    let result = SceneLoader::open_scene(&path, &device, &registry, &mut assets, &mut world);
+    assert!(result.is_err(), "invalid scene should return an error");
+
+    // The world should remain usable after a failed load.
+    world.spawn((Transform::default(), Name("still-alive".into())));
+    assert_eq!(world.len(), 1);
+
+    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_dir(&dir);
+}
+
+#[test]
 fn import_scene_appends_objects() {
     let device = headless_device();
     let registry = test_registry();
