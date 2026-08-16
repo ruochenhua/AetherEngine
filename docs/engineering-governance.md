@@ -41,7 +41,7 @@ CI 会尽可能自动检查；无法自动检查的规则由 Code Review / Agent
 
 当前基线中的超限文件是明确的“治理目标”，应按优先级逐个拆分：
 
-- `renderer/ibl/generate.rs`
+- ~~`renderer/ibl/generate.rs`~~（已拆分为 `brdf` / `cubemap` / `equirect` / `hdr` / `irradiance` / `prefilter` / `shaders`）
 - `renderer/passes/water_reflection.rs`
 - `renderer/passes/atmosphere.rs`
 - `renderer/passes/god_ray.rs`
