@@ -47,6 +47,7 @@ CI 会尽可能自动检查；无法自动检查的规则由 Code Review / Agent
 - ~~`renderer/passes/god_ray.rs`~~（已拆分为 `god_ray/pass` / `pipeline` / `shaders` / `tests`）
 - ~~`renderer/passes/ssr/pipeline.rs`~~（已拆分为 `ssr/pipeline/trace_shader` / `upsample_shader`）
 - ~~`scene/config/mod.rs`~~（已拆分为 `config/mod` + `config/tests`）
+- ~~`renderer/passes/shadow.rs`~~（已拆分为 `shadow` + `shaders` + `tests`）
 - 其余见 `scripts/module-health-baseline.json`
 
 ## 3. 重构纪律
