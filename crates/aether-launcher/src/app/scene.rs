@@ -133,7 +133,8 @@ pub(crate) fn open_cli_scene(app: &mut App, ctx: &RenderContext) {
                 }
                 Err(e) => {
                     error!("Open scene error: {:?}", e);
-                    std::process::exit(1);
+                    // Keep the default empty scene alive so the launcher can
+                    // still be used for manual scene discovery/editing.
                 }
             }
         }
