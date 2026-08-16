@@ -1,6 +1,7 @@
 // God ray pipeline construction.
 
 use super::{GodRayPass, GodRayUniform};
+use crate::asset::shader::ShaderLibrary;
 use wgpu::util::DeviceExt;
 
 impl GodRayPass {
@@ -9,10 +10,8 @@ impl GodRayPass {
         let output_format = wgpu::TextureFormat::Rgba16Float;
         let shader_source = super::shaders::GOD_RAY_SHADER_SRC;
 
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("God Ray Shader"),
-            source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(shader_source)),
-        });
+        let shader = ShaderLibrary::create_shader_module(device, "God Ray Shader", shader_source)
+            .expect("God ray shader must be valid WGSL");
 
         let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("God Ray Uniform Buffer"),

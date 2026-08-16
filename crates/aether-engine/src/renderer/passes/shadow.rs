@@ -14,6 +14,7 @@
 //!   render pass, then switch via `set_bind_group(offset)` + draw per batch.
 
 use crate::asset::mesh::{InstanceData, Vertex};
+use crate::asset::shader::ShaderLibrary;
 use crate::renderer::extract::RenderBatch;
 use crate::renderer::frame::RenderFrame;
 use crate::renderer::pass::{InitContext, Pass, PassSignature, ResHandle};
@@ -234,10 +235,8 @@ impl ShadowPass {
     /// Create a new cascaded shadow pass.
     pub fn new(device: &wgpu::Device) -> Self {
         let src = shaders::SHADOW_SHADER_SRC;
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Shadow Shader"),
-            source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(src)),
-        });
+        let shader = ShaderLibrary::create_shader_module(device, "Shadow Shader", src)
+            .expect("Shadow shader must be valid WGSL");
 
         let vp_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("S VP BGL"),

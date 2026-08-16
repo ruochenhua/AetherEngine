@@ -1,6 +1,7 @@
 // Atmosphere pipeline construction.
 
 use super::{AtmospherePass, AtmosphereUniform};
+use crate::asset::shader::ShaderLibrary;
 use wgpu::util::DeviceExt;
 
 impl AtmospherePass {
@@ -9,10 +10,9 @@ impl AtmospherePass {
         let output_format = wgpu::TextureFormat::Rgba16Float;
         let shader_source = super::shaders::ATMOSPHERE_SHADER_SRC;
 
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Atmosphere Shader"),
-            source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(shader_source)),
-        });
+        let shader =
+            ShaderLibrary::create_shader_module(device, "Atmosphere Shader", shader_source)
+                .expect("Atmosphere shader must be valid WGSL");
 
         let uniform_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
