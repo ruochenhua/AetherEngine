@@ -203,7 +203,9 @@ impl Pass for ShadowPass {
 
             // Render terrain chunks into the shadow map so terrain casts shadows.
             if let Some(terrain_geometry) = &self.terrain_geometry {
-                let terrain = terrain_geometry.read().unwrap();
+                let Ok(terrain) = terrain_geometry.read() else {
+                    continue;
+                };
                 let chunks = terrain.chunks();
                 let chunk_meshes = terrain.chunk_meshes();
                 let instance_buffer = terrain.instance_buffer();

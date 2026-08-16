@@ -252,7 +252,9 @@ impl Pass for WaterReflectionPass {
 
         // Render terrain into the reflection so shorelines/hills appear on the water.
         if let Some(terrain_geometry) = &self.terrain_geometry {
-            let terrain = terrain_geometry.read().unwrap();
+            let Ok(terrain) = terrain_geometry.read() else {
+                return;
+            };
             let chunks = terrain.chunks();
             if !chunks.is_empty() {
                 pass.set_pipeline(&self.terrain_pipeline);

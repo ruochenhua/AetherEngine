@@ -112,7 +112,10 @@ impl Pass for TerrainPass {
         _surface_view: &wgpu::TextureView,
     ) {
         let terrain_geometry_guard = match &self.terrain_geometry {
-            Some(g) => g.read().unwrap(),
+            Some(g) => match g.read() {
+                Ok(guard) => guard,
+                Err(_) => return,
+            },
             None => return,
         };
         let terrain_geometry = &*terrain_geometry_guard;
