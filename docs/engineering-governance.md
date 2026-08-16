@@ -56,6 +56,7 @@ CI 会尽可能自动检查；无法自动检查的规则由 Code Review / Agent
 - ~~`renderer/passes/fxaa.rs`~~（已拆分为 `fxaa` + `shaders` + `tests`）
 - ~~`scene/serializer.rs`~~（已拆分为 `serializer` + `tests`）
 - ~~`renderer/passes/water/pipeline.rs`~~（已拆分为 `water/pipeline` + `shaders`）
+- ~~`renderer/gizmo.rs`~~（已拆分为 `gizmo` + `math`）
 - 其余见 `scripts/module-health-baseline.json`
 
 ## 3. 重构纪律
