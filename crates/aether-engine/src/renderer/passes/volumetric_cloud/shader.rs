@@ -4,9 +4,7 @@
 //! `assets/shaders/clouds/volumetric_clouds.wgsl`.
 
 /// Full-screen ray-marched cloud shader.
-pub(crate) const SHADER: &str = include_str!(
-    concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../assets/shaders/clouds/volumetric_clouds.wgsl"
-    )
-);
+pub(crate) const SHADER: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../assets/shaders/clouds/volumetric_clouds.wgsl"
+));

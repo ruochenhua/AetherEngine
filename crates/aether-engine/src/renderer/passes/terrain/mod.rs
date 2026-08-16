@@ -193,7 +193,12 @@ impl Pass for TerrainPass {
             let instance_end =
                 instance_start + std::mem::size_of::<ChunkInstanceData>() as wgpu::BufferAddress;
             pass.set_vertex_buffer(0, lod_mesh.vertex_buffer.slice(..));
-            pass.set_vertex_buffer(1, terrain_geometry.instance_buffer().slice(instance_start..instance_end));
+            pass.set_vertex_buffer(
+                1,
+                terrain_geometry
+                    .instance_buffer()
+                    .slice(instance_start..instance_end),
+            );
             if let Some(ref ib) = lod_mesh.index_buffer {
                 pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
                 pass.draw_indexed(0..lod_mesh.index_count, 0, 0..1);
@@ -385,10 +390,8 @@ impl TerrainPass {
             queue,
         );
 
-        let splat = texture_cache.get_or_upload_optional(
-            terrain.material.splat_map.clone(),
-            asset_manager,
-        );
+        let splat =
+            texture_cache.get_or_upload_optional(terrain.material.splat_map.clone(), asset_manager);
         let layer0 = texture_cache.get_or_upload_optional(
             terrain.material.layers[0].albedo_texture.clone(),
             asset_manager,

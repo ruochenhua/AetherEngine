@@ -43,13 +43,17 @@ pub fn worley_noise_3d(size: u32) -> Vec<u8> {
                     for dy in -1i32..=1i32 {
                         for dx in -1i32..=1i32 {
                             let cx = ((x as f32 / cell_size) as i32 + dx)
-                                .rem_euclid(cell_count as i32) as u32;
+                                .rem_euclid(cell_count as i32)
+                                as u32;
                             let cy = ((y as f32 / cell_size) as i32 + dy)
-                                .rem_euclid(cell_count as i32) as u32;
+                                .rem_euclid(cell_count as i32)
+                                as u32;
                             let cz = ((z as f32 / cell_size) as i32 + dz)
-                                .rem_euclid(cell_count as i32) as u32;
+                                .rem_euclid(cell_count as i32)
+                                as u32;
 
-                            let idx = (cz * cell_count * cell_count + cy * cell_count + cx) as usize;
+                            let idx =
+                                (cz * cell_count * cell_count + cy * cell_count + cx) as usize;
                             let fp = features[idx];
 
                             // Toroidal wrapping distance
@@ -93,7 +97,13 @@ fn hash3_jitter(cell: IVec3) -> Vec3 {
 
 /// Wrap a signed delta for toroidal distance.
 fn wrap_diff(d: f32, size: f32) -> f32 {
-    if d > size * 0.5 { d - size } else if d < -size * 0.5 { d + size } else { d }
+    if d > size * 0.5 {
+        d - size
+    } else if d < -size * 0.5 {
+        d + size
+    } else {
+        d
+    }
 }
 
 #[cfg(test)]

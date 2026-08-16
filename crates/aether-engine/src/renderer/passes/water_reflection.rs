@@ -232,7 +232,12 @@ impl Pass for WaterReflectionPass {
         // Update terrain material for reflection rendering.
         self.terrain_geometry = frame.terrain_geometry.clone();
         if let Some(terrain) = frame.optional.terrain.as_ref() {
-            self.update_terrain_material(terrain, frame.queue, frame.texture_cache, frame.asset_manager);
+            self.update_terrain_material(
+                terrain,
+                frame.queue,
+                frame.texture_cache,
+                frame.asset_manager,
+            );
         }
     }
 
@@ -318,14 +323,17 @@ impl Pass for WaterReflectionPass {
                 pass.set_vertex_buffer(1, terrain.instance_buffer().slice(..));
                 for (chunk_index, chunk) in chunks.iter().enumerate() {
                     let lod_mesh = &terrain.chunk_meshes()[chunk_index][chunk.lod as usize];
-                    let instance_start =
-                        (chunk_index * std::mem::size_of::<ChunkInstanceData>())
-                            as wgpu::BufferAddress;
-                    let instance_end =
-                        instance_start + std::mem::size_of::<ChunkInstanceData>()
-                            as wgpu::BufferAddress;
+                    let instance_start = (chunk_index * std::mem::size_of::<ChunkInstanceData>())
+                        as wgpu::BufferAddress;
+                    let instance_end = instance_start
+                        + std::mem::size_of::<ChunkInstanceData>() as wgpu::BufferAddress;
                     pass.set_vertex_buffer(0, lod_mesh.vertex_buffer.slice(..));
-                    pass.set_vertex_buffer(1, terrain.instance_buffer().slice(instance_start..instance_end));
+                    pass.set_vertex_buffer(
+                        1,
+                        terrain
+                            .instance_buffer()
+                            .slice(instance_start..instance_end),
+                    );
                     if let Some(ref ib) = lod_mesh.index_buffer {
                         pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
                         pass.draw_indexed(0..lod_mesh.index_count, 0, 0..1);
@@ -627,59 +635,56 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         });
 
         let terrain_bind_group_layout = create_terrain_material_bind_group_layout(device);
-        let terrain_pipeline_layout = device.create_pipeline_layout(
-            &wgpu::PipelineLayoutDescriptor {
+        let terrain_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("WaterReflection Terrain Pipeline Layout"),
                 bind_group_layouts: &[
                     Some(&uniform_bind_group_layout),
                     Some(&terrain_bind_group_layout),
                 ],
                 immediate_size: 0,
-            },
-        );
+            });
 
-        let terrain_pipeline = device.create_render_pipeline(
-            &wgpu::RenderPipelineDescriptor {
-                label: Some("WaterReflection Terrain Pipeline"),
-                layout: Some(&terrain_pipeline_layout),
-                vertex: wgpu::VertexState {
-                    module: &terrain_shader,
-                    entry_point: Some("vs_main"),
-                    compilation_options: Default::default(),
-                    buffers: &[Vertex::desc(), ChunkInstanceData::desc()],
-                },
-                fragment: Some(wgpu::FragmentState {
-                    module: &terrain_shader,
-                    entry_point: Some("fs_main"),
-                    compilation_options: Default::default(),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format: wgpu::TextureFormat::Rgba16Float,
-                        blend: None,
-                        write_mask: wgpu::ColorWrites::ALL,
-                    })],
-                }),
-                primitive: wgpu::PrimitiveState {
-                    topology: wgpu::PrimitiveTopology::TriangleList,
-                    strip_index_format: None,
-                    front_face: wgpu::FrontFace::Ccw,
-                    // Reflection flips triangle winding, so cull the opposite faces.
-                    cull_mode: Some(wgpu::Face::Front),
-                    polygon_mode: wgpu::PolygonMode::Fill,
-                    unclipped_depth: false,
-                    conservative: false,
-                },
-                depth_stencil: Some(wgpu::DepthStencilState {
-                    format: wgpu::TextureFormat::Depth32Float,
-                    depth_write_enabled: Some(true),
-                    depth_compare: Some(wgpu::CompareFunction::Less),
-                    stencil: wgpu::StencilState::default(),
-                    bias: wgpu::DepthBiasState::default(),
-                }),
-                multisample: wgpu::MultisampleState::default(),
-                multiview_mask: None,
-                cache: None,
+        let terrain_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("WaterReflection Terrain Pipeline"),
+            layout: Some(&terrain_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &terrain_shader,
+                entry_point: Some("vs_main"),
+                compilation_options: Default::default(),
+                buffers: &[Vertex::desc(), ChunkInstanceData::desc()],
             },
-        );
+            fragment: Some(wgpu::FragmentState {
+                module: &terrain_shader,
+                entry_point: Some("fs_main"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: wgpu::TextureFormat::Rgba16Float,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                // Reflection flips triangle winding, so cull the opposite faces.
+                cull_mode: Some(wgpu::Face::Front),
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: wgpu::TextureFormat::Depth32Float,
+                depth_write_enabled: Some(true),
+                depth_compare: Some(wgpu::CompareFunction::Less),
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
+            }),
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
+        });
 
         let terrain_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("WaterReflection Terrain Material Buf"),
@@ -800,10 +805,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             queue,
         );
 
-        let splat = texture_cache.get_or_upload_optional(
-            terrain.material.splat_map.clone(),
-            asset_manager,
-        );
+        let splat =
+            texture_cache.get_or_upload_optional(terrain.material.splat_map.clone(), asset_manager);
         let layer0 = texture_cache.get_or_upload_optional(
             terrain.material.layers[0].albedo_texture.clone(),
             asset_manager,

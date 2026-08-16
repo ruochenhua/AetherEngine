@@ -110,7 +110,8 @@ impl Pass for VolumetricCloudPass {
             let sun_toward = light_dir;
             let light_factor = sun_toward.dot(Vec3::Y).clamp(0.0, 1.0);
 
-            let raw_light_color = Vec3::from_array(frame.lighting.light.color) * frame.lighting.light.intensity;
+            let raw_light_color =
+                Vec3::from_array(frame.lighting.light.color) * frame.lighting.light.intensity;
             let real_light_color = raw_light_color;
 
             let proj = frame.camera.projection_matrix(frame.aspect);
@@ -128,24 +129,14 @@ impl Pass for VolumetricCloudPass {
                     cfg.cloud_top_offset,
                     0.0,
                 ),
-                wind_time: Vec4::new(
-                    cfg.wind_direction[0],
-                    0.0,
-                    cfg.wind_direction[1],
-                    self.time,
-                ),
+                wind_time: Vec4::new(cfg.wind_direction[0], 0.0, cfg.wind_direction[1], self.time),
                 noise_scales: Vec4::new(
                     cfg.weather_scale,
                     cfg.base_noise_scale,
                     cfg.high_freq_noise_scale,
                     cfg.high_freq_uv_scale,
                 ),
-                detail_params: Vec4::new(
-                    cfg.high_freq_h_scale,
-                    cfg.cloud_type,
-                    cfg.coverage,
-                    0.0,
-                ),
+                detail_params: Vec4::new(cfg.high_freq_h_scale, cfg.cloud_type, cfg.coverage, 0.0),
                 light_color: Vec4::new(
                     real_light_color.x,
                     real_light_color.y,
@@ -197,11 +188,7 @@ impl VolumetricCloudPass {
     /// Lazily create (or recreate) the noise textures and bind group for the
     /// requested quality. If the textures already exist with the same quality,
     /// this is a no-op.
-    fn ensure_noise_textures(
-        &mut self,
-        queue: &wgpu::Queue,
-        quality: CloudQuality,
-    ) {
+    fn ensure_noise_textures(&mut self, queue: &wgpu::Queue, quality: CloudQuality) {
         if self.current_noise_quality == Some(quality) {
             return;
         }
@@ -259,11 +246,7 @@ mod tests {
     #[test]
     fn cloud_noise_texture_has_expected_dimensions() {
         let (device, queue) = headless_device_queue();
-        let pass = VolumetricCloudPass::new_with_quality(
-            &device,
-            &queue,
-            CloudQuality::Medium,
-        );
+        let pass = VolumetricCloudPass::new_with_quality(&device, &queue, CloudQuality::Medium);
 
         let worley = pass.worley_texture.as_ref().unwrap();
         assert_eq!(worley.width(), 32);
@@ -305,19 +288,13 @@ mod tests {
         }
 
         let (device, queue) = headless_device_queue();
-        let low = VolumetricCloudPass::new_with_quality(
-            &device, &queue, CloudQuality::Low,
-        );
+        let low = VolumetricCloudPass::new_with_quality(&device, &queue, CloudQuality::Low);
         assert_sizes(&low);
 
-        let medium = VolumetricCloudPass::new_with_quality(
-            &device, &queue, CloudQuality::Medium,
-        );
+        let medium = VolumetricCloudPass::new_with_quality(&device, &queue, CloudQuality::Medium);
         assert_sizes(&medium);
 
-        let high = VolumetricCloudPass::new_with_quality(
-            &device, &queue, CloudQuality::High,
-        );
+        let high = VolumetricCloudPass::new_with_quality(&device, &queue, CloudQuality::High);
         assert_sizes(&high);
     }
 
@@ -361,8 +338,7 @@ mod tests {
         let camera = FlyCamera::default();
         let lighting = LightingUniforms::default();
         let assets = crate::asset::AssetManager::new();
-        let texture_cache = crate::asset::texture_cache::GpuTextureCache::new(&device, &queue,
-        );
+        let texture_cache = crate::asset::texture_cache::GpuTextureCache::new(&device, &queue);
         let frame = RenderFrame {
             batches: Arc::from([]),
             camera: &camera,
@@ -383,24 +359,15 @@ mod tests {
         // Read back the uniform buffer and verify the spherical-shell parameters.
         let uniform_size = std::mem::size_of::<CloudUniform>() as wgpu::BufferAddress;
         let staging = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("cloud uniform readback"),
-                size: uniform_size,
-                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-                mapped_at_creation: false,
-            },
-        );
-        let mut encoder = device.create_command_encoder(
-            &wgpu::CommandEncoderDescriptor {
-                label: Some("cloud uniform readback"),
-            },
-        );
-        encoder.copy_buffer_to_buffer(
-            &pass.uniform_buffer,
-            0,
-            &staging,
-            0,
-            uniform_size,
-        );
+            label: Some("cloud uniform readback"),
+            size: uniform_size,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("cloud uniform readback"),
+        });
+        encoder.copy_buffer_to_buffer(&pass.uniform_buffer, 0, &staging, 0, uniform_size);
         queue.submit(Some(encoder.finish()));
 
         let slice = staging.slice(..);

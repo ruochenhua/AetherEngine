@@ -317,6 +317,9 @@ mod tests {
             std::mem::size_of::<crate::asset::mesh::InstanceData>()
         );
         let layout = ChunkInstanceData::desc();
-        assert_eq!(layout.array_stride, std::mem::size_of::<ChunkInstanceData>() as u64);
+        assert_eq!(
+            layout.array_stride,
+            std::mem::size_of::<ChunkInstanceData>() as u64
+        );
     }
 }

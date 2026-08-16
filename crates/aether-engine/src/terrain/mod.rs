@@ -13,4 +13,7 @@ pub use geometry::{
 };
 pub use geometry_cache::{ChunkInstanceData, TerrainGeometry};
 pub use lod::{build_chunk_grid, cull_and_select_lod, Chunk};
-pub use material::{create_terrain_material_bind_group, create_terrain_material_bind_group_layout, write_terrain_uniforms, TerrainUniform};
+pub use material::{
+    create_terrain_material_bind_group, create_terrain_material_bind_group_layout,
+    write_terrain_uniforms, TerrainUniform,
+};

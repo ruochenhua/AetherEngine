@@ -443,8 +443,7 @@ mod tests {
         let camera = crate::renderer::camera::FlyCamera::default();
         let lighting = LightingUniforms::default();
         let assets = crate::asset::AssetManager::new();
-        let texture_cache = crate::asset::texture_cache::GpuTextureCache::new(&device, &queue,
-        );
+        let texture_cache = crate::asset::texture_cache::GpuTextureCache::new(&device, &queue);
         let frame = crate::renderer::frame::RenderFrame {
             batches: std::sync::Arc::from([]),
             camera: &camera,
@@ -472,13 +471,7 @@ mod tests {
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("GodRay Sun Direction Copy"),
         });
-        encoder.copy_buffer_to_buffer(
-            &pass.uniform_buffer,
-            0,
-            &staging,
-            0,
-            uniform_size,
-        );
+        encoder.copy_buffer_to_buffer(&pass.uniform_buffer, 0, &staging, 0, uniform_size);
         queue.submit(std::iter::once(encoder.finish()));
 
         let slice = staging.slice(..);

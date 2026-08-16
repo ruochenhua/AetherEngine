@@ -401,18 +401,10 @@ mod tests {
             usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
             mapped_at_creation: false,
         });
-        let mut encoder = device.create_command_encoder(
-            &wgpu::CommandEncoderDescriptor {
-                label: Some("Water Sun Direction Copy"),
-            },
-        );
-        encoder.copy_buffer_to_buffer(
-            &pass.uniform_buffer,
-            0,
-            &staging,
-            0,
-            uniform_size,
-        );
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Water Sun Direction Copy"),
+        });
+        encoder.copy_buffer_to_buffer(&pass.uniform_buffer, 0, &staging, 0, uniform_size);
         queue.submit(std::iter::once(encoder.finish()));
 
         let slice = staging.slice(..);

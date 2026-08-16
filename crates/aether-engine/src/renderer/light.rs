@@ -142,7 +142,10 @@ mod tests {
 
         let sun = sun_direction_from_lighting(&lighting);
         let expected = -glam::Vec3::from_array(lighting.light.direction).normalize();
-        assert!(sun.abs_diff_eq(expected, 1e-6), "expected {expected:?}, got {sun:?}");
+        assert!(
+            sun.abs_diff_eq(expected, 1e-6),
+            "expected {expected:?}, got {sun:?}"
+        );
     }
 
     #[test]
@@ -152,7 +155,10 @@ mod tests {
 
         let sun = sun_direction_from_lighting(&lighting);
         let expected = glam::Vec3::new(0.0, 0.2, -1.0).normalize();
-        assert!(sun.abs_diff_eq(expected, 1e-6), "expected {expected:?}, got {sun:?}");
+        assert!(
+            sun.abs_diff_eq(expected, 1e-6),
+            "expected {expected:?}, got {sun:?}"
+        );
     }
 
     #[test]
@@ -164,6 +170,9 @@ mod tests {
 
         let sun = sun_direction_from_lighting(&lighting);
         let expected = glam::Vec3::new(-0.2, 0.6, 0.8).normalize();
-        assert!(sun.abs_diff_eq(expected, 1e-6), "expected {expected:?}, got {sun:?}");
+        assert!(
+            sun.abs_diff_eq(expected, 1e-6),
+            "expected {expected:?}, got {sun:?}"
+        );
     }
 }

@@ -206,12 +206,10 @@ impl Pass for ShadowPass {
                 pass.set_vertex_buffer(1, instance_buffer.slice(..));
                 for (chunk_index, chunk) in chunks.iter().enumerate() {
                     let lod_mesh = &chunk_meshes[chunk_index][chunk.lod as usize];
-                    let instance_start =
-                        (chunk_index * std::mem::size_of::<ChunkInstanceData>())
-                            as wgpu::BufferAddress;
-                    let instance_end =
-                        instance_start + std::mem::size_of::<ChunkInstanceData>()
-                            as wgpu::BufferAddress;
+                    let instance_start = (chunk_index * std::mem::size_of::<ChunkInstanceData>())
+                        as wgpu::BufferAddress;
+                    let instance_end = instance_start
+                        + std::mem::size_of::<ChunkInstanceData>() as wgpu::BufferAddress;
                     pass.set_vertex_buffer(0, lod_mesh.vertex_buffer.slice(..));
                     pass.set_vertex_buffer(1, instance_buffer.slice(instance_start..instance_end));
                     if let Some(ref ib) = lod_mesh.index_buffer {
@@ -681,7 +679,13 @@ mod tests {
         let mut pass = ShadowPass::new(&device);
         pass.apply_frame(&frame);
         assert!(pass.terrain_geometry.is_some());
-        assert!(!pass.terrain_geometry.unwrap().read().unwrap().chunks().is_empty());
+        assert!(!pass
+            .terrain_geometry
+            .unwrap()
+            .read()
+            .unwrap()
+            .chunks()
+            .is_empty());
         drop(device);
     }
 }
