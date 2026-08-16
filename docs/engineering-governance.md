@@ -50,6 +50,7 @@ CI 会尽可能自动检查；无法自动检查的规则由 Code Review / Agent
 - ~~`renderer/passes/shadow.rs`~~（已拆分为 `shadow` + `shaders` + `tests`）
 - ~~`renderer/passes/lighting/pipeline.rs`~~（已拆分为 `lighting/pipeline` + `shaders`）
 - ~~`renderer/passes/gbuffer.rs`~~（已拆分为 `gbuffer` + `shaders` + `tests`）
+- ~~`scene/loader/mod.rs`~~（已拆分为 `loader/mod` + `loader/tests`）
 - 其余见 `scripts/module-health-baseline.json`
 
 ## 3. 重构纪律
