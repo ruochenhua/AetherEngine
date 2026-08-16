@@ -58,7 +58,9 @@ CI 会尽可能自动检查；无法自动检查的规则由 Code Review / Agent
 - ~~`renderer/passes/water/pipeline.rs`~~（已拆分为 `water/pipeline` + `shaders`）
 - ~~`renderer/gizmo.rs`~~（已拆分为 `gizmo` + `math`）
 - ~~`renderer/passes/composite.rs`~~（已拆分为 `composite` + `shaders` + `tests`）
-- 其余见 `scripts/module-health-baseline.json`
+- ~~`crates/aether-launcher/src/app/scene.rs`~~（已拆分为 `app/scene` + `app/scene/ops`）
+
+当前基线中已无超过 500 行的 Rust 文件。
 
 ## 3. 重构纪律
 
