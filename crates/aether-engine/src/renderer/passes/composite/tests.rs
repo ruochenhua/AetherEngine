@@ -1,4 +1,3 @@
-
 use super::*;
 fn headless_device() -> wgpu::Device {
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());

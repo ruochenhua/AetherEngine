@@ -1,4 +1,3 @@
-
 use super::*;
 use crate::renderer::camera::FlyCamera;
 use crate::renderer::frame::{FrameConfig, RenderFrame};

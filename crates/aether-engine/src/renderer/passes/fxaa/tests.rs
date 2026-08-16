@@ -1,4 +1,3 @@
-
 use super::*;
 
 fn headless_device() -> wgpu::Device {

@@ -1,4 +1,3 @@
-
 use super::*;
 use crate::ecs::components::GodRay;
 use crate::ecs::World;

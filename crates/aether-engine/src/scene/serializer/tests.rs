@@ -1,4 +1,3 @@
-
 use super::*;
 use crate::asset::registry::BuiltinMeshRegistry;
 use crate::ecs::components::{Light, Name, Transform, Visibility};
