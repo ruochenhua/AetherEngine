@@ -1,11 +1,13 @@
 # Tone Mapping Pass — Task Breakdown
 
+> 状态：✅ 已完成（代码已合入，任务清单归档）
+
 ## 任务 1：准备工作 + RED（测试与验证场景）
 
-- [ ] 创建 `openspec/specs/tone-mapping-pass/` 及本文档
-- [ ] 验证 `cargo check` 基线通过
-- [ ] 编写 ToneMappingPass 单元测试骨架：`signature_declares_correct_resources`、`init_does_not_panic`
-- [ ] 创建验证场景 `scenes/08_tonemapping.ron`（高曝光 HDR 场景：强光源 + 高金属度球体）
+- [x] 创建 `openspec/specs/tone-mapping-pass/` 及本文档
+- [x] 验证 `cargo check` 基线通过
+- [x] 编写 ToneMappingPass 单元测试骨架：`signature_declares_correct_resources`、`init_does_not_panic`
+- [x] 创建验证场景 `scenes/08_tonemapping.ron`（高曝光 HDR 场景：强光源 + 高金属度球体）
 
 **验收标准**：
 - `cargo check` 0 errors
@@ -16,9 +18,9 @@
 
 ## 任务 2：LightingPass 移除 tone mapping
 
-- [ ] 从 `lighting.rs` shader 中移除 tone mapping 段落（`mapped = select(...)` 块）
-- [ ] 改为直接 `return vec4<f32>(output_color, 1.0)`
-- [ ] 验证 LightingPass 输出仍为 `Rgba16Float`
+- [x] 从 `lighting.rs` shader 中移除 tone mapping 段落（`mapped = select(...)` 块）
+- [x] 改为直接 `return vec4<f32>(output_color, 1.0)`
+- [x] 验证 LightingPass 输出仍为 `Rgba16Float`
 
 **验收标准**：
 - `cargo check` 通过
@@ -29,10 +31,10 @@
 
 ## 任务 3：CompositePass 改为 write PostProcessInput
 
-- [ ] 在 `resource.rs` 新增 `PostProcessInput` tag
-- [ ] 修改 CompositePass `signature()`：添加 `.write::<PostProcessInput>("post_process_input", Rgba16Float)`
-- [ ] 修改 CompositePass `execute()`：render pass 输出到 `PostProcessInput` 而非 `surface_view`
-- [ ] 更新 CompositePass 单元测试
+- [x] 在 `resource.rs` 新增 `PostProcessInput` tag
+- [x] 修改 CompositePass `signature()`：添加 `.write::<PostProcessInput>("post_process_input", Rgba16Float)`
+- [x] 修改 CompositePass `execute()`：render pass 输出到 `PostProcessInput` 而非 `surface_view`
+- [x] 更新 CompositePass 单元测试
 
 **验收标准**：
 - `cargo check` 通过
@@ -43,11 +45,11 @@
 
 ## 任务 4：ToneMappingPass 实现（shader + pass 结构）
 
-- [ ] 创建 `renderer/passes/tonemapping.rs`
-- [ ] 实现 `Pass` trait：signature / init / resolve / execute
-- [ ] 内联 WGSL shader：全屏 quad + ACES / Reinhard / Off 三种算法
-- [ ] Uniform buffer：`algorithm: u32`
-- [ ] 添加单元测试：signature / init / resolve
+- [x] 创建 `renderer/passes/tonemapping.rs`
+- [x] 实现 `Pass` trait：signature / init / resolve / execute
+- [x] 内联 WGSL shader：全屏 quad + ACES / Reinhard / Off 三种算法
+- [x] Uniform buffer：`algorithm: u32`
+- [x] 添加单元测试：signature / init / resolve
 
 **Shader 伪代码**：
 ```wgsl
@@ -77,11 +79,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 ## 任务 5：Launcher 集成（PipelineBuilder 注册 + UI）
 
-- [ ] `passes/mod.rs` 导出 `tonemapping`
-- [ ] `main.rs` PipelineBuilder 中 `.add(ToneMappingPass::init(&ctx.device))`
-- [ ] `scheduler.rs` 新增 `set_tone_mapping_algorithm()` setter
-- [ ] Launcher egui 面板添加算法下拉框（Off / Reinhard / ACES）
-- [ ] 默认算法设为 ACES
+- [x] `passes/mod.rs` 导出 `tonemapping`
+- [x] `main.rs` PipelineBuilder 中 `.add(ToneMappingPass::init(&ctx.device))`
+- [x] `scheduler.rs` 新增 `set_tone_mapping_algorithm()` setter
+- [x] Launcher egui 面板添加算法下拉框（Off / Reinhard / ACES）
+- [x] 默认算法设为 ACES
 
 **验收标准**：
 - `cargo check` 通过
@@ -92,9 +94,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 ## 任务 6：编译验证
 
-- [ ] `cargo check --all-targets` 0 errors
-- [ ] `cargo clippy --all-targets` 无新增 warnings
-- [ ] `cargo test -p aether-engine` 全部通过
+- [x] `cargo check --all-targets` 0 errors
+- [x] `cargo clippy --all-targets` 无新增 warnings
+- [x] `cargo test -p aether-engine` 全部通过
 
 **验收标准**：
 - `cargo check` 0 errors, 0 warnings
@@ -105,15 +107,15 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 ## 任务 7：运行时验证 + 视觉测试
 
-- [ ] 运行 Launcher，加载 `08_tonemapping.ron`
-- [ ] 分别切换 ACES / Reinhard / Off，确认视觉效果差异
-- [ ] ACES：暗部有细节，高光不爆
-- [ ] Reinhard：与修改前基线一致（regression 验证）
-- [ ] Off：明显过曝/裁切，用于 HDR 调试
-- [ ] Debug grid/gizmo 仍正确显示
-- [ ] 运行 `scripts/should-verify-visual.py` 确认 MUST_VERIFY
-- [ ] Agent 读取截图，判定 PASS/FAIL
-- [ ] 生成视觉测试报告 `tests/reports/YYYY-MM-DD-tonemapping.md`
+- [x] 运行 Launcher，加载 `08_tonemapping.ron`
+- [x] 分别切换 ACES / Reinhard / Off，确认视觉效果差异
+- [x] ACES：暗部有细节，高光不爆
+- [x] Reinhard：与修改前基线一致（regression 验证）
+- [x] Off：明显过曝/裁切，用于 HDR 调试
+- [x] Debug grid/gizmo 仍正确显示
+- [x] 运行 `scripts/should-verify-visual.py` 确认 MUST_VERIFY
+- [x] Agent 读取截图，判定 PASS/FAIL
+- [x] 生成视觉测试报告 `tests/reports/YYYY-MM-DD-tonemapping.md`
 
 **验收标准**：
 - 三种算法视觉差异可感知
