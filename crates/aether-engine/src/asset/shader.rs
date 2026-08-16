@@ -28,6 +28,23 @@ impl ShaderLibrary {
         self.shaders.get(name).map(|s| s.as_str())
     }
 
+    /// Validate and create a shader module.
+    ///
+    /// Returns an error with the WGSL parse message instead of letting wgpu
+    /// surface a less actionable runtime validation failure later.
+    pub fn create_shader_module(
+        device: &wgpu::Device,
+        label: &str,
+        source: &str,
+    ) -> anyhow::Result<wgpu::ShaderModule> {
+        naga::front::wgsl::parse_str(source)
+            .map_err(|e| anyhow::anyhow!("WGSL parse error in {label}: {e}"))?;
+        Ok(device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some(label),
+            source: wgpu::ShaderSource::Wgsl(source.into()),
+        }))
+    }
+
     /// Register a shader.
     pub fn register(&mut self, name: impl Into<String>, source: impl Into<String>) {
         self.shaders.insert(name.into(), source.into());
@@ -36,10 +53,7 @@ impl ShaderLibrary {
     /// Compile a shader module from source.
     pub fn compile(&self, device: &wgpu::Device, name: &str) -> Option<wgpu::ShaderModule> {
         let source = self.shaders.get(name)?;
-        Some(device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some(name),
-            source: wgpu::ShaderSource::Wgsl(source.into()),
-        }))
+        Self::create_shader_module(device, name, source).ok()
     }
 
     fn register_builtin_shaders(&mut self) {
@@ -92,5 +106,11 @@ mod tests {
         let lib = ShaderLibrary::new();
         let module = lib.compile(&device, "fullscreen_quad.vert");
         assert!(module.is_some(), "fullscreen quad shader should compile");
+    }
+    #[test]
+    fn invalid_shader_returns_parse_error() {
+        let device = headless_device();
+        let result = ShaderLibrary::create_shader_module(&device, "bad", "@invalid wgsl");
+        assert!(result.is_err());
     }
 }

@@ -40,6 +40,9 @@ noise = { workspace = true }
 serde = { workspace = true }
 ron = { workspace = true }
 
+# Shader validation
+naga = { workspace = true }
+
 # Runtime
 pollster = { workspace = true }
 
