@@ -94,6 +94,17 @@ impl ResourceTable {
         &self.views[handle.index]
     }
 
+    /// Get a texture view from an optional handle.
+    ///
+    /// Returns `None` when a pass has not been resolved yet, allowing callers
+    /// to skip execution instead of panicking on missing internal state.
+    pub fn get_if_handle<T: ResourceTag>(
+        &self,
+        handle: Option<ResHandle<T>>,
+    ) -> Option<&wgpu::TextureView> {
+        Some(self.get(handle?))
+    }
+
     /// Get the owning texture by handle, if the resource table owns it.
     pub fn texture<T: ResourceTag>(&self, handle: ResHandle<T>) -> Option<&wgpu::Texture> {
         self.textures.get(handle.index).and_then(|t| t.as_ref())
@@ -245,5 +256,10 @@ mod tests {
 
         assert_ne!(pos_h.index, norm_h.index);
         assert_ne!(pos_h.index, ao_h.index);
+    }
+    #[test]
+    fn get_if_handle_none_returns_none() {
+        let table = ResourceTable::new();
+        assert!(table.get_if_handle::<GPosition>(None).is_none());
     }
 }

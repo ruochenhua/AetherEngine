@@ -188,11 +188,27 @@ impl Pass for GBufferPass {
         resources: &ResourceTable,
         _surface_view: &wgpu::TextureView,
     ) {
+        let Some(pos_view) = resources.get_if_handle(self.pos_handle) else {
+            return;
+        };
+        let Some(normal_view) = resources.get_if_handle(self.normal_handle) else {
+            return;
+        };
+        let Some(albedo_view) = resources.get_if_handle(self.albedo_handle) else {
+            return;
+        };
+        let Some(material_view) = resources.get_if_handle(self.material_handle) else {
+            return;
+        };
+        let Some(depth_view) = resources.get_if_handle(self.depth_handle) else {
+            return;
+        };
+
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("GBuffer"),
             color_attachments: &[
                 Some(wgpu::RenderPassColorAttachment {
-                    view: resources.get(self.pos_handle.unwrap()),
+                    view: pos_view,
                     depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
@@ -201,7 +217,7 @@ impl Pass for GBufferPass {
                     },
                 }),
                 Some(wgpu::RenderPassColorAttachment {
-                    view: resources.get(self.normal_handle.unwrap()),
+                    view: normal_view,
                     depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
@@ -210,7 +226,7 @@ impl Pass for GBufferPass {
                     },
                 }),
                 Some(wgpu::RenderPassColorAttachment {
-                    view: resources.get(self.albedo_handle.unwrap()),
+                    view: albedo_view,
                     depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
@@ -219,7 +235,7 @@ impl Pass for GBufferPass {
                     },
                 }),
                 Some(wgpu::RenderPassColorAttachment {
-                    view: resources.get(self.material_handle.unwrap()),
+                    view: material_view,
                     depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
@@ -229,7 +245,7 @@ impl Pass for GBufferPass {
                 }),
             ],
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                view: resources.get(self.depth_handle.unwrap()),
+                view: depth_view,
                 depth_ops: Some(wgpu::Operations {
                     load: wgpu::LoadOp::Clear(1.0),
                     store: wgpu::StoreOp::Store,
