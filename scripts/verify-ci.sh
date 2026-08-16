@@ -5,6 +5,7 @@
 #   - formatting
 #   - clippy warnings as errors
 #   - all workspace tests
+#   - module health / file-size governance
 #   - release build of the whole workspace
 #
 # Usage:
@@ -43,6 +44,11 @@ fi
 step "cargo test --workspace"
 if ! cargo test --workspace; then
     fail "cargo test failed"
+fi
+
+step "./scripts/verify-module-health.sh"
+if ! ./scripts/verify-module-health.sh; then
+    fail "module health check failed"
 fi
 
 step "cargo build --workspace --release"

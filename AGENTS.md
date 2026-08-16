@@ -1,5 +1,15 @@
 # Aether Engine Agent Rules
 
+## Engineering Governance
+
+The full mandatory ruleset is in `docs/engineering-governance.md`. The short version:
+
+- Always run `./scripts/verify-ci.sh` before marking work done.
+- New Rust files must be ≤ 500 lines.
+- Existing over-limit files must not grow; split them before adding more code.
+- Run `./scripts/verify-module-health.sh`; do not update the baseline casually.
+- Render-affecting refactors must also run `./scripts/verify-regression.sh` on relevant scenes.
+
 ## Change-What-Test-What Rule
 
 For every code change, the agent must run the tests and runtime verification that correspond to the changed code. Do not rely on "it compiled" or "unit tests passed" alone when the change affects the render graph, pipeline registration, or launcher startup.
