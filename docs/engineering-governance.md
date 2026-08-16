@@ -45,7 +45,7 @@ CI 会尽可能自动检查；无法自动检查的规则由 Code Review / Agent
 - ~~`renderer/passes/water_reflection.rs`~~（已拆分为 `water_reflection/pass` / `pipeline` / `shaders` / `terrain`）
 - ~~`renderer/passes/atmosphere.rs`~~（已拆分为 `atmosphere/pass` / `pipeline` / `shaders`）
 - ~~`renderer/passes/god_ray.rs`~~（已拆分为 `god_ray/pass` / `pipeline` / `shaders` / `tests`）
-- `renderer/passes/ssr/pipeline.rs`
+- ~~`renderer/passes/ssr/pipeline.rs`~~（已拆分为 `ssr/pipeline/trace_shader` / `upsample_shader`）
 - `scene/config/mod.rs`
 - 其余见 `scripts/module-health-baseline.json`
 
