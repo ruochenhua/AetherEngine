@@ -10,7 +10,7 @@
 
 - **现代架构**：ECS (hecs) + 类型安全的 Pass 调度（PipelineBuilder / Scheduler）
 - **跨平台**：wgpu 自动适配 Vulkan/Metal/DX12
-- **延迟着色**：基于 G-Buffer 的 Blinn-Phong PBR，支持分通道调试
+- **延迟着色**：基于 G-Buffer 的 Cook-Torrance PBR（GGX NDF + Smith G + Schlick Fresnel），支持分通道调试
 - **UE 风格飞行相机**：右键漫游，WASD + QE 移动，滚轮调速
 - **调试工具**：世界网格、RGB 三轴指示器、光照分通道可视化
 - **场景编辑器**：鼠标点击拾取物体、变换 Gizmo（平移 / 旋转 / 缩放）、场景层级面板、属性检查器（位置 / 旋转 / 缩放 / 材质）、撤销/重做、删除、打开/导入/保存场景（RON）、全屏视口切换
@@ -35,17 +35,16 @@ cargo run -p aether-launcher
 
 | 按键 | 功能 |
 |------|------|
-| `鼠标右键` | 切换飞行模式 |
+| `Alt + 左键拖拽` | 旋转视角 / 环绕相机 |
 | `W A S D` | 前 / 左 / 后 / 右 |
 | `Q` / `E` | 下降 / 上升（世界空间） |
-| `鼠标` | 旋转视角（飞行模式） |
 | `滚轮` | 调节移动速度 |
-| `0` – `5` | 光照调试：完整 / 环境光 / 漫反射 / 高光 / 法线 / NdotL |
-| `Alt + 左键拖拽` | 环绕相机（编辑器模式） |
+| `0` – `9` | 光照调试：完整 / 环境光 / 漫反射 / 高光 / 法线 / NdotL / Shadow / Direct / IBL / Alpha |
+| `F1` – `F5` | IBL/Skybox/SSAO 调试：NormalAlpha / NDC / EnvFix / VDir / SSAO |
 | `左键点击` | 在视口中拾取物体 |
 | `⛶ 全屏` | 切换全屏视口（隐藏侧边面板） |
 
-> **注意：** 当 egui 输入框拥有键盘焦点时，调试热键（`0`–`9`、`F1`–`F4`）会自动被屏蔽，避免在编辑数值时意外切换渲染模式。
+> **注意：** 当 egui 输入框拥有键盘焦点时，调试热键（`0`–`9`、`F1`–`F5`）会自动被屏蔽，避免在编辑数值时意外切换渲染模式。
 
 ## 🤖 AI 优先设计
 
@@ -181,9 +180,9 @@ PipelineBuilder
 | **Phase 1** | Deferred PBR、飞行相机、调试工具、类型安全调度器、阴影映射 | ✅ 完成 |
 | **Phase 2** | IBL、屏幕空间效果（SSAO、SSR） | ✅ 完成 |
 | **Phase 3** | ECS 运行时、射线拾取、变换 Gizmo、编辑器 UI、场景保存/加载、撤销/重做、删除 | ✅ 完成 |
-| **Phase 4** | 后处理链、色调映射 | 🔲 计划中 |
-| **Phase 5** | 地形 + 大气 + 水体 + 体积云 | 🔲 计划中 |
-| **Phase 6** | 光线追踪（Compute + Hybrid） | 🔲 计划中 |
+| **Phase 4** | 后处理链、色调映射、Bloom、FXAA、GPU Instancing | ✅ 完成 |
+| **Phase 5** | 地形 + 大气 + 水体 + 体积云 + God Ray | ✅ 完成 |
+| **Phase 6** | 光线追踪（Compute + Hybrid） | 🔲 当前 |
 
 ## 📜 许可证
 

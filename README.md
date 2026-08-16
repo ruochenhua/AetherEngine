@@ -37,17 +37,16 @@ cargo run -p aether-launcher
 
 | Input | Action |
 |-------|--------|
-| `Left Mouse + Drag` | Look around |
+| `Alt + Left Mouse + Drag` | Look around / orbit camera |
 | `W A S D` | Move forward / left / back / right |
 | `Q` / `E` | Move down / up (world space) |
 | `Scroll` | Adjust movement speed |
 | `0` – `9` | Lighting debug: Full / Ambient / Diffuse / Specular / Normals / NdotL / Shadow / Direct / IBL / Alpha |
-| `F1` – `F4` | IBL/Skybox debug: NormalAlpha / NDC / EnvFix / VDir |
-| `Alt + Left Drag` | Orbit camera (editor mode) |
+| `F1` – `F5` | IBL/Skybox/SSAO debug: NormalAlpha / NDC / EnvFix / VDir / SSAO |
 | `Left Click` | Pick object in viewport |
 | `⛶ Full Screen` | Toggle fullscreen viewport (hides side panels) |
 
-> **Note:** Debug hotkeys (`0`–`9`, `F1`–`F4`) are automatically blocked when an egui input field has keyboard focus, preventing accidental mode switches while editing values.
+> **Note:** Debug hotkeys (`0`–`9`, `F1`–`F5`) are automatically blocked when an egui input field has keyboard focus, preventing accidental mode switches while editing values.
 
 ## 🤖 AI-First Design
 

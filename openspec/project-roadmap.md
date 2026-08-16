@@ -11,6 +11,8 @@
 - ✅ 所有渲染 Pass 和示例程序（Phase 0–2）
 - ✅ 编辑器基础设施（Phase 3 完成）
 - ✅ 后处理链（Phase 4 完成）
+- ✅ 大场景渲染（Phase 5 完成）
+- ✅ 视觉回归矩阵与批量验证脚本（Phase 0–5 场景）
 
 ---
 
@@ -153,17 +155,25 @@
 | `05_ssao_debug` | SSAO 调试 | Phase 2 |
 | `06_ssao_extreme` | SSAO 极端场景 | Phase 2 |
 | `07_ssr_debug` | SSR 调试 | Phase 2 |
-| `08_postprocess` | Bloom + Tone mapping | Phase 4 |
-| `09_terrain` | 地形 + 曲面细分 | Phase 5 |
-| `10_water` | 水体 | Phase 5 |
-| `11_volumetric` | 体积云 | Phase 5 |
-| `12_raytrace` | 光追 | Phase 6 |
+| `08_terrain` / `09_terrain` | 地形渲染 | Phase 5 |
+| `10_csm` | CSM 级联阴影 | Phase 5 |
+| `11_atmosphere` | 大气散射 | Phase 5 |
+| `12_water` / `18_textured_water` | 水体 | Phase 5 |
+| `13_clouds` | 体积云 | Phase 5 |
+| `14_god_rays` | God Ray | Phase 5 |
+| `16_terrain_perlin` / `17_textured_terrain` | 程序化地形 / 材质 Splatting | Phase 5 |
+| `19_water_reflection_test` | 水面反射 | Phase 5 |
+| `20_terrain_water_clouds` | 大场景综合 | Phase 5 |
+| `20_model_loading_nanosuit` | 模型加载 | Phase 5 |
+| `21_raytrace` | 光追 | Phase 6（待创建） |
 
 ---
 
 ## 技术债务与优化
 
 ### 高优先级
+- [x] 建立 CI 验证脚本（fmt / clippy / test / release build）
+- [x] 建立视觉回归矩阵（Phase 0–5 场景）
 - [ ] 完善单元测试
 - [ ] Shader 编译错误处理
 - [ ] GPU 内存泄漏检查
