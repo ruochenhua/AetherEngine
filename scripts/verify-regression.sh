@@ -7,7 +7,8 @@
 #   ./scripts/verify-regression.sh --update-references
 #
 # The script captures screenshots from the launcher, compares them with
-# tests/reference/*.png when available, and writes a report to tests/reports/.
+# tests/reference/*.png when available, and writes an HTML report to
+# tests/reports/.
 
 set -euo pipefail
 
@@ -19,7 +20,7 @@ MATRIX="tests/visual-matrix.json"
 OUTPUT_DIR="tests/output"
 REFERENCE_DIR="tests/reference"
 REPORT_DIR="tests/reports"
-COMPARE_SCRIPT=".claude/skills/aether-visual-test/scripts/compare_images.py"
+COMPARE_SCRIPT="${AETHER_COMPARE_SCRIPT:-.claude/skills/aether-visual-test/scripts/compare_images.py}"
 
 FILTER=""
 UPDATE_REFS=false
@@ -50,10 +51,63 @@ done
 mkdir -p "$OUTPUT_DIR" "$REFERENCE_DIR" "$REPORT_DIR"
 
 REPORT_NAME="${REPORT_NAME:-$(date +%Y%m%d-%H%M%S)-visual-regression}"
-REPORT_FILE="$REPORT_DIR/$REPORT_NAME.md"
+REPORT_FILE="$REPORT_DIR/$REPORT_NAME.html"
+
+if [[ -n "${AETHER_LAUNCHER_BIN:-}" ]]; then
+    LAUNCHER_COMMAND=("$AETHER_LAUNCHER_BIN")
+else
+    LAUNCHER_COMMAND=(cargo run --bin aether-launcher --quiet --)
+fi
+
+html_escape() {
+    printf '%s' "$1" | sed \
+        -e 's/&/\&amp;/g' \
+        -e 's/</\&lt;/g' \
+        -e 's/>/\&gt;/g' \
+        -e 's/"/\&quot;/g'
+}
+
+status_class() {
+    case "$1" in
+        *"❌"*) printf 'fail' ;;
+        *"✅"*) printf 'pass' ;;
+        *) printf 'warn' ;;
+    esac
+}
+
+append_result_row() {
+    local name="$1"
+    local status="$2"
+    local ssim="$3"
+    local mae="$4"
+    local diff="$5"
+    local diff_url="${6:-}"
+    local side_url="${7:-}"
+    local image_cell="—"
+
+    if [[ -n "$diff_url" ]]; then
+        local escaped_diff_url
+        escaped_diff_url="$(html_escape "$diff_url")"
+        image_cell="<a href=\"$escaped_diff_url\">diff</a>"
+        if [[ -n "$side_url" ]]; then
+            local escaped_side_url
+            escaped_side_url="$(html_escape "$side_url")"
+            image_cell+=" · <a href=\"$escaped_side_url\">side</a>"
+        fi
+    fi
+
+    printf '        <tr class="%s"><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n' \
+        "$(status_class "$status")" \
+        "$(html_escape "$name")" \
+        "$(html_escape "$status")" \
+        "$(html_escape "$ssim")" \
+        "$(html_escape "$mae")" \
+        "$(html_escape "$diff")" \
+        "$image_cell" >> "$REPORT_FILE"
+}
 
 # Read matrix into a shell-escaped TSV list via Python (keeps JSON handling simple).
-# Columns: name<TAB>scene<TAB>frames<TAB>width<TAB>height<TAB>debug_mode<TAB>ssr<TAB>threshold
+# Columns: name<TAB>scene<TAB>frames<TAB>width<TAB>height<TAB>debug_mode<TAB>ssao<TAB>ssr<TAB>threshold
 MATRIX_ROWS="$(python3 - "$MATRIX" "$FILTER" <<'PY'
 import json
 import sys
@@ -74,9 +128,10 @@ for item in data.get("scenes", []):
     width = item.get("width", defaults.get("width", 1280))
     height = item.get("height", defaults.get("height", 720))
     debug_mode = item.get("debug_mode") or "none"
+    ssao = "1" if item.get("ssao", False) else "0"
     ssr = "1" if item.get("ssr", False) else "0"
     threshold = item.get("threshold", defaults.get("threshold", 0.95))
-    print(f"{name}\t{scene}\t{frames}\t{width}\t{height}\t{debug_mode}\t{ssr}\t{threshold}")
+    print(f"{name}\t{scene}\t{frames}\t{width}\t{height}\t{debug_mode}\t{ssao}\t{ssr}\t{threshold}")
 PY
 )"
 
@@ -85,11 +140,37 @@ if [[ -z "$MATRIX_ROWS" ]]; then
     exit 0
 fi
 
+REPORT_TIMESTAMP="$(date +%Y-%m-%d\ %H:%M:%S)"
 cat > "$REPORT_FILE" <<EOF
-# Visual Regression Report — $(date +%Y-%m-%d\ %H:%M:%S)
-
-| Scene | Status | SSIM | MAE | Diff% | Diff Image |
-|-------|--------|------|-----|-------|------------|
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Visual Regression Report — $REPORT_TIMESTAMP</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+    body { margin: 0; padding: 2rem; background: Canvas; color: CanvasText; }
+    main { max-width: 72rem; margin: 0 auto; }
+    .meta { color: GrayText; }
+    table { width: 100%; border-collapse: collapse; margin-top: 1.5rem; }
+    th, td { padding: 0.65rem 0.8rem; border-bottom: 1px solid ButtonBorder; text-align: left; }
+    th { background: color-mix(in srgb, CanvasText 10%, Canvas); }
+    tr.pass td:nth-child(2) { color: #188038; }
+    tr.warn td:nth-child(2) { color: #b06000; }
+    tr.fail td:nth-child(2) { color: #c5221f; }
+    .summary { margin-top: 1.5rem; padding: 1rem; border: 1px solid ButtonBorder; border-radius: 0.5rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Visual Regression Report</h1>
+    <p class="meta">Generated: $REPORT_TIMESTAMP</p>
+    <table>
+      <thead>
+        <tr><th scope="col">Scene</th><th scope="col">Status</th><th scope="col">SSIM</th><th scope="col">MAE</th><th scope="col">Diff%</th><th scope="col">Images</th></tr>
+      </thead>
+      <tbody>
 EOF
 
 OVERALL_PASS=true
@@ -98,7 +179,7 @@ PASSED=0
 FAILED=0
 NEW=0
 
-while IFS=$'\t' read -r name scene frames width height debug_mode ssr threshold; do
+while IFS=$'\t' read -r name scene frames width height debug_mode ssao ssr threshold; do
     TOTAL=$((TOTAL + 1))
     echo ""
     echo "▶ [$name] $scene"
@@ -113,14 +194,17 @@ while IFS=$'\t' read -r name scene frames width height debug_mode ssr threshold;
     if [[ "$debug_mode" != "none" ]]; then
         ARGS+=(--debug-mode "$debug_mode")
     fi
+    if [[ "$ssao" == "1" ]]; then
+        ARGS+=(--ssao)
+    fi
     if [[ "$ssr" == "1" ]]; then
         ARGS+=(--ssr)
     fi
     ARGS+=(--no-gui-overlay --freeze-time --width "$width" --height "$height")
 
-    if ! cargo run --bin aether-launcher --quiet -- "${ARGS[@]}" >/dev/null 2>&1; then
+    if ! "${LAUNCHER_COMMAND[@]}" "${ARGS[@]}" >/dev/null 2>&1; then
         echo "  ❌ Launcher failed for $name"
-        echo "| $name | ❌ CRASH | N/A | N/A | N/A | N/A |" >> "$REPORT_FILE"
+        append_result_row "$name" "❌ CRASH" "N/A" "N/A" "N/A"
         OVERALL_PASS=false
         FAILED=$((FAILED + 1))
         continue
@@ -128,7 +212,7 @@ while IFS=$'\t' read -r name scene frames width height debug_mode ssr threshold;
 
     if [[ ! -f "$OUT_IMAGE" ]]; then
         echo "  ❌ Screenshot missing for $name"
-        echo "| $name | ❌ NO_IMG | N/A | N/A | N/A | N/A |" >> "$REPORT_FILE"
+        append_result_row "$name" "❌ NO_IMG" "N/A" "N/A" "N/A"
         OVERALL_PASS=false
         FAILED=$((FAILED + 1))
         continue
@@ -139,11 +223,11 @@ while IFS=$'\t' read -r name scene frames width height debug_mode ssr threshold;
         if [[ "$UPDATE_REFS" == "true" ]]; then
             cp "$OUT_IMAGE" "$REF_IMAGE"
             echo "  ✅ Reference created: $REF_IMAGE"
-            echo "| $name | ✅ REF_CREATED | N/A | N/A | N/A | N/A |" >> "$REPORT_FILE"
+            append_result_row "$name" "✅ REF_CREATED" "N/A" "N/A" "N/A"
             NEW=$((NEW + 1))
         else
             echo "  → Run with --update-references to create the baseline"
-            echo "| $name | ⚠️ NEW | N/A | N/A | N/A | N/A |" >> "$REPORT_FILE"
+            append_result_row "$name" "⚠️ NEW" "N/A" "N/A" "N/A"
             NEW=$((NEW + 1))
         fi
         continue
@@ -152,21 +236,27 @@ while IFS=$'\t' read -r name scene frames width height debug_mode ssr threshold;
     if [[ "$UPDATE_REFS" == "true" ]]; then
         cp "$OUT_IMAGE" "$REF_IMAGE"
         echo "  ✅ Reference updated: $REF_IMAGE"
-        echo "| $name | ✅ REF_UPDATED | N/A | N/A | N/A | N/A |" >> "$REPORT_FILE"
+        append_result_row "$name" "✅ REF_UPDATED" "N/A" "N/A" "N/A"
         NEW=$((NEW + 1))
         continue
     fi
 
     DIFF_IMAGE="$OUTPUT_DIR/${name}.diff.png"
     SIDE_IMAGE="$OUTPUT_DIR/${name}.side.png"
-    METRICS="$(python3 "$COMPARE_SCRIPT" "$REF_IMAGE" "$OUT_IMAGE" \
+    if ! METRICS="$(python3 "$COMPARE_SCRIPT" "$REF_IMAGE" "$OUT_IMAGE" \
         --threshold "$threshold" \
         --diff "$DIFF_IMAGE" \
         --side-by-side "$SIDE_IMAGE" \
-        --json 2>/dev/null || true)"
+        --json 2>/dev/null)"; then
+        echo "  ❌ COMPARE_ERROR for $name"
+        append_result_row "$name" "❌ COMPARE_ERROR" "N/A" "N/A" "N/A"
+        OVERALL_PASS=false
+        FAILED=$((FAILED + 1))
+        continue
+    fi
 
     # Parse metrics from JSON in Python; missing/NaN values become N/A.
-    parsed="$(python3 - "$METRICS" <<'PY'
+    if ! parsed="$(python3 - "$METRICS" <<'PY'
 import json
 import sys
 
@@ -174,8 +264,7 @@ raw = sys.argv[1] if len(sys.argv) > 1 else ""
 try:
     data = json.loads(raw)
 except Exception:
-    print("N/A\tN/A\tN/A\tN/A")
-    raise SystemExit(0)
+    raise SystemExit(1)
 
 ssim = data.get("ssim")
 if ssim is None:
@@ -186,7 +275,13 @@ mae = data.get("mae", 0)
 diff_pct = data.get("diff_pct", 0)
 print(f"{ssim}\t{mae:.2f}\t{diff_pct:.2f}")
 PY
-)"
+    )"; then
+        echo "  ❌ COMPARE_ERROR for $name (invalid metrics)"
+        append_result_row "$name" "❌ COMPARE_ERROR" "N/A" "N/A" "N/A"
+        OVERALL_PASS=false
+        FAILED=$((FAILED + 1))
+        continue
+    fi
     ssim_metric="$(echo "$parsed" | cut -f1)"
     mae_metric="$(echo "$parsed" | cut -f2)"
     diff_metric="$(echo "$parsed" | cut -f3)"
@@ -236,24 +331,22 @@ PY
         PASSED=$((PASSED + 1))
     fi
 
-    echo "| $name | $status_metric | $ssim_metric | $mae_metric | $diff_metric% | [$name.diff.png]($DIFF_IMAGE) |" >> "$REPORT_FILE"
+    append_result_row "$name" "$status_metric" "$ssim_metric" "$mae_metric" "$diff_metric%" \
+        "../output/$(basename "$DIFF_IMAGE")" "../output/$(basename "$SIDE_IMAGE")"
 done <<< "$MATRIX_ROWS"
 
-echo "" >> "$REPORT_FILE"
-echo "## Summary" >> "$REPORT_FILE"
-echo "" >> "$REPORT_FILE"
-echo "- Total: $TOTAL" >> "$REPORT_FILE"
-echo "- Passed: $PASSED" >> "$REPORT_FILE"
-echo "- Failed: $FAILED" >> "$REPORT_FILE"
-echo "- New/No-Reference: $NEW" >> "$REPORT_FILE"
-
-if [[ "$OVERALL_PASS" == "true" ]]; then
-    echo "" >> "$REPORT_FILE"
-    echo "**Overall: ✅ PASS**" >> "$REPORT_FILE"
-else
-    echo "" >> "$REPORT_FILE"
-    echo "**Overall: ❌ FAIL**" >> "$REPORT_FILE"
-fi
+cat >> "$REPORT_FILE" <<EOF
+      </tbody>
+    </table>
+    <section class="summary">
+      <h2>Summary</h2>
+      <p>Total: $TOTAL · Passed: $PASSED · Failed: $FAILED · New/No-Reference: $NEW</p>
+      <p>Overall: $(if [[ "$OVERALL_PASS" == "true" ]]; then printf '✅ PASS'; else printf '❌ FAIL'; fi)</p>
+    </section>
+  </main>
+</body>
+</html>
+EOF
 
 echo ""
 echo "Report saved to: $REPORT_FILE"

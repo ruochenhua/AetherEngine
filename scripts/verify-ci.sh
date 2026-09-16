@@ -4,6 +4,7 @@
 # Runs the same checks a human/CI should run before merging:
 #   - formatting
 #   - clippy warnings as errors
+#   - verification report format
 #   - all workspace tests
 #   - module health / file-size governance
 #   - release build of the whole workspace
@@ -39,6 +40,11 @@ fi
 step "cargo clippy --workspace --all-targets -- -D warnings"
 if ! cargo clippy --workspace --all-targets -- -D warnings; then
     fail "cargo clippy failed"
+fi
+
+step "./tests/report-format-test.sh"
+if ! ./tests/report-format-test.sh; then
+    fail "verification report format check failed"
 fi
 
 step "cargo test --workspace"

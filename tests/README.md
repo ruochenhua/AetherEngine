@@ -29,7 +29,7 @@ This directory holds visual regression tests for Aether Engine scenes.
 
 3. **Inspect** — Agent reads the screenshot and judges quality against the PRD.
 
-4. **Report** — Results are written to `tests/reports/<timestamp>-report.md`.
+4. **Report** — Results are written to `tests/reports/<timestamp>-report.html`.
 
 ## Adding a new reference
 
@@ -68,4 +68,15 @@ Use `scripts/verify-regression.sh` to run the whole matrix or a single scene:
 
 The runner captures deterministic screenshots (`--freeze-time`, `--no-gui-overlay`,
 fixed physical size), compares them with `tests/reference/*.png`, writes diff
-images, and generates a Markdown report under `tests/reports/`.
+images, and generates an HTML report under `tests/reports/`. Static debug scenes
+such as the SSAO mode 14 cases use one frozen frame; scenes with temporal effects
+retain longer frame windows in the matrix.
+
+For SSR effect verification, use the paired harness so the same scene is captured
+once with SSR disabled and once with SSR enabled. It compares the two real outputs
+and writes an HTML report; it does not promote either image to a baseline:
+
+```bash
+AETHER_LAUNCHER_BIN=target/release/aether-launcher \
+  ./tests/ssr-effect-test.sh
+```

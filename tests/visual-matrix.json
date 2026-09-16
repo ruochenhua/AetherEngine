@@ -48,18 +48,21 @@
     {
       "name": "05_ssao_debug_mode14",
       "scene": "scenes/05_ssao_debug.ron",
-      "frames": 120,
+      "frames": 1,
       "width": 2560,
       "height": 1440,
       "debug_mode": 14,
+      "ssao": true,
       "threshold": 0.99
     },
     {
       "name": "06_ssao_extreme_mode14",
       "scene": "scenes/06_ssao_extreme.ron",
-      "frames": 120,
+      "frames": 1,
       "width": 2560,
       "height": 1440,
+      "debug_mode": 14,
+      "ssao": true,
       "threshold": 0.99
     },
     {
@@ -173,6 +176,24 @@
       "frames": 120,
       "width": 2560,
       "height": 1440,
+      "threshold": 0.99
+    },
+    {
+      "name": "21_ssr_debug_clear_off",
+      "scene": "scenes/21_ssr_debug_clear.ron",
+      "frames": 1,
+      "width": 1280,
+      "height": 720,
+      "ssr": false,
+      "threshold": 0.99
+    },
+    {
+      "name": "21_ssr_debug_clear_on",
+      "scene": "scenes/21_ssr_debug_clear.ron",
+      "frames": 1,
+      "width": 1280,
+      "height": 720,
+      "ssr": true,
       "threshold": 0.99
     }
   ]
