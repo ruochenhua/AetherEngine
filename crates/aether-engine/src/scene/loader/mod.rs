@@ -16,6 +16,7 @@ use tracing::warn;
 mod lighting;
 mod objects;
 mod spawn;
+mod transaction;
 
 /// Loads RON scene files and spawns entities into an ECS World.
 pub struct SceneLoader;
@@ -29,7 +30,7 @@ impl SceneLoader {
 
     /// Open a scene file, replacing all entities in the world.
     ///
-    /// Clears the world, then spawns camera, lights, and objects from the RON.
+    /// Builds in isolation and keeps the existing world on parse/build errors.
     pub fn open_scene(
         path: &Path,
         device: &wgpu::Device,
@@ -38,8 +39,7 @@ impl SceneLoader {
         world: &mut World,
     ) -> anyhow::Result<LightingUniforms> {
         let desc = Self::from_file(path)?;
-        world.clear();
-        Self::build_world(&desc, device, registry, assets, world)
+        transaction::replace_scene(&desc, device, registry, assets, world)
     }
 
     /// Import objects from a `.ron` file into an existing world.

@@ -173,9 +173,9 @@ mod tests {
         }
         fn signature(&self) -> PassSignature {
             PassSignature {
-                name: self.name,
                 reads: self.reads.clone(),
                 writes: self.writes.clone(),
+                ..PassSignature::new(self.name)
             }
         }
         fn init(_ctx: &InitContext) -> Self {

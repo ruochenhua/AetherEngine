@@ -33,7 +33,8 @@ use std::any::TypeId;
 use std::collections::{HashMap, VecDeque};
 use thiserror::Error;
 use tracing::debug;
-
+#[path = "pipeline_builder_phase.rs"]
+mod phase;
 /// Errors that can occur while building a render pipeline.
 #[derive(Debug, Error)]
 pub enum PipelineBuildError {
@@ -69,13 +70,11 @@ pub enum PipelineBuildError {
 pub struct PipelineBuilder {
     passes: Vec<Box<dyn Pass>>,
 }
-
 impl Default for PipelineBuilder {
     fn default() -> Self {
         Self::new()
     }
 }
-
 impl PipelineBuilder {
     /// Create a new empty pipeline builder.
     pub fn new() -> Self {
@@ -146,6 +145,7 @@ impl PipelineBuilder {
             }
         }
 
+        phase::add_phase_dependencies(&mut deps, &sigs);
         // Detect cycles
         if let Some(cycle) = detect_cycles_ref(&deps, n, &sigs) {
             return Err(PipelineBuildError::DependencyCycle { passes: cycle });
@@ -339,10 +339,10 @@ pub(crate) fn compute_topological_order(
         }
     }
 
+    phase::add_phase_dependencies_for_passes(&mut deps, passes);
     if let Some(cycle) = detect_cycles(&deps, n, passes) {
         return Err(PipelineBuildError::DependencyCycle { passes: cycle });
     }
-
     let order = topological_sort(&deps, n, |i| passes[i].name().to_string())?;
 
     debug!(
