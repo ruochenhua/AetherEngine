@@ -7,10 +7,10 @@ use super::types::SSRSettings;
 use std::borrow::Cow;
 use std::mem::size_of;
 use wgpu::util::DeviceExt;
-
+#[cfg(test)]
+mod shader_tests;
 mod trace_shader;
 mod upsample_shader;
-
 /// Device-owned objects required by [`SSRPass`].
 pub(super) struct DeviceObjects {
     /// Half-resolution ray-march pipeline.
@@ -82,7 +82,7 @@ pub(super) fn create_device_objects(device: &wgpu::Device) -> DeviceObjects {
                 binding: 3,
                 visibility: wgpu::ShaderStages::FRAGMENT,
                 ty: wgpu::BindingType::Texture {
-                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                    sample_type: wgpu::TextureSampleType::Depth,
                     view_dimension: wgpu::TextureViewDimension::D2,
                     multisampled: false,
                 },

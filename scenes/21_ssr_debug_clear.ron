@@ -1,0 +1,102 @@
+SceneDescription(
+    name: "21 SSR Debug Clear",
+    camera: (
+        position: (0.0, 3.2, 8.0),
+        yaw: -1.57,
+        pitch: -0.22,
+        speed: 5.0,
+        fov: 55.0,
+    ),
+    lights: [(
+        light_type: Directional,
+        direction: (-0.35, -0.8, 0.25),
+        color: (1.0, 0.95, 0.9),
+        intensity: 2.8,
+    )],
+    ambient: 0.02,
+    objects: [
+        // Bright, low-roughness floor: SSR should reflect the targets above it.
+        (
+            name: "MirrorFloor",
+            mesh: Builtin("plane"),
+            transform: (
+                translation: (0.0, 0.0, -1.5),
+                scale: (7.0, 1.0, 7.0),
+            ),
+            material: (
+                albedo: (0.68, 0.72, 0.78, 1.0),
+                roughness: 0.03,
+                metallic: 0.95,
+            ),
+        ),
+        // Matte wall provides a stable screen-space backdrop.
+        (
+            name: "Backdrop",
+            mesh: Builtin("plane"),
+            transform: (
+                translation: (0.0, 3.0, -5.5),
+                rotation: (0.707, 0.0, 0.0, 0.707),
+                scale: (7.0, 1.0, 3.5),
+            ),
+            material: (
+                albedo: (0.06, 0.10, 0.18, 1.0),
+                roughness: 0.42,
+                metallic: 0.0,
+            ),
+        ),
+        // Three saturated targets make the reflected colors unambiguous.
+        (
+            name: "RedTarget",
+            mesh: Builtin("cube"),
+            transform: (
+                translation: (-2.2, 1.35, -3.4),
+                scale: (0.85, 1.35, 0.85),
+            ),
+            material: (
+                albedo: (0.95, 0.04, 0.03, 1.0),
+                roughness: 0.28,
+                metallic: 0.05,
+            ),
+        ),
+        (
+            name: "CyanTarget",
+            mesh: Builtin("sphere"),
+            transform: (
+                translation: (0.0, 1.25, -4.0),
+                scale: (1.15, 1.15, 1.15),
+            ),
+            material: (
+                albedo: (0.02, 0.72, 0.92, 1.0),
+                roughness: 0.22,
+                metallic: 0.15,
+            ),
+        ),
+        (
+            name: "GoldTarget",
+            mesh: Builtin("cube"),
+            transform: (
+                translation: (2.2, 1.0, -3.2),
+                scale: (0.9, 1.0, 0.9),
+            ),
+            material: (
+                albedo: (0.98, 0.55, 0.05, 1.0),
+                roughness: 0.2,
+                metallic: 0.12,
+            ),
+        ),
+        // A near, pale target helps expose reflection edge fading.
+        (
+            name: "WhiteTarget",
+            mesh: Builtin("sphere"),
+            transform: (
+                translation: (1.2, 0.65, -1.4),
+                scale: (0.62, 0.62, 0.62),
+            ),
+            material: (
+                albedo: (0.92, 0.92, 0.92, 1.0),
+                roughness: 0.32,
+                metallic: 0.0,
+            ),
+        ),
+    ],
+)
