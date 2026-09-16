@@ -23,7 +23,8 @@ use crate::renderer::resource_table::ResourceTable;
 use crate::terrain::{ChunkInstanceData, TerrainGeometry};
 use glam::{Mat4, Vec4Swizzles};
 use std::sync::{Arc, RwLock};
-
+#[cfg(test)]
+mod math_tests;
 mod shaders;
 #[cfg(test)]
 mod tests;
@@ -32,7 +33,6 @@ mod tests;
 pub const CASCADE_COUNT: usize = 4;
 /// Fixed resolution for each cascade depth map.
 pub const SHADOW_MAP_SIZE: u32 = 4096;
-
 /// Per-cascade light-space matrix.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -40,7 +40,6 @@ pub struct CascadeUniform {
     /// Combined light view-projection matrix for this cascade.
     pub light_view_proj: [[f32; 4]; 4],
 }
-
 /// CPU-side cascade data.
 #[derive(Clone, Copy, Debug)]
 pub struct Cascade {
@@ -472,8 +471,6 @@ fn compute_cascade(
     // all potential occluders, even those far outside the cascade frustum.
     // This is critical for low-angle directional lights where shadows can
     // extend many times the cascade depth range.
-    // max_ls.z is extended by half the far plane to capture tall casters
-    // above the frustum that are closer to the light source.
     min_ls.z -= cam_far;
     max_ls.z += cam_far * 0.5;
 
@@ -489,8 +486,11 @@ fn compute_cascade(
     max_ls.x = snap(max_ls.x);
     min_ls.y = snap(min_ls.y);
     max_ls.y = snap(max_ls.y);
-
-    let proj = ortho_wgpu(min_ls.x, max_ls.x, min_ls.y, max_ls.y, min_ls.z, max_ls.z);
+    let near_plane = -max_ls.z;
+    let far_plane = -min_ls.z;
+    let proj = ortho_wgpu(
+        min_ls.x, max_ls.x, min_ls.y, max_ls.y, near_plane, far_plane,
+    );
 
     Cascade {
         view_proj: proj * light_view,
