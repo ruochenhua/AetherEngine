@@ -1,11 +1,14 @@
 //! Frame rendering for the launcher.
 
 use super::{App, LauncherState};
+#[path = "render_target.rs"]
+mod render_target;
 use aether_engine::renderer::{
     extract::{extract_optional_pass_data, extract_render_batches},
     frame::{FrameConfig, RenderFrame},
     gizmo::{build_transform_gizmo, selected_entity_transform},
 };
+use render_target::FrameTarget;
 use std::sync::Arc;
 use std::time::Instant;
 use tracing::{debug, error, info, trace};
@@ -77,35 +80,22 @@ pub(crate) fn frame(
         egui_renderer.update_texture(&ctx.device, &ctx.queue, *id, image_delta);
     }
 
-    // Acquire surface
     let t_acquire_0 = Instant::now();
-    let output = match ctx.get_current_texture() {
-        wgpu::CurrentSurfaceTexture::Success(o) => o,
-        wgpu::CurrentSurfaceTexture::Suboptimal(o) => o,
-        wgpu::CurrentSurfaceTexture::Lost => {
-            ctx.resize(ctx.config.width, ctx.config.height);
-            return;
-        }
-        wgpu::CurrentSurfaceTexture::Validation => {
-            event_loop.exit();
-            return;
-        }
-        wgpu::CurrentSurfaceTexture::Timeout
-        | wgpu::CurrentSurfaceTexture::Occluded
-        | wgpu::CurrentSurfaceTexture::Outdated => {
-            return;
-        }
+    let output = match FrameTarget::acquire(ctx, event_loop, should_screenshot) {
+        Some(output) => output,
+        None => return,
     };
     let acquire_ms = t_acquire_0.elapsed().as_secs_f64() * 1000.0;
+    let render_texture = output.texture();
 
     // The 3D pipeline renders to an sRGB view so hardware gamma encoding is
     // applied, while egui renders to the default non-sRGB view.
-    let target_view = output.texture.create_view(&wgpu::TextureViewDescriptor {
+    let target_view = render_texture.create_view(&wgpu::TextureViewDescriptor {
         label: Some("3D Render Target"),
         format: Some(ctx.render_target_format()),
         ..Default::default()
     });
-    let egui_view = output.texture.create_view(&wgpu::TextureViewDescriptor {
+    let egui_view = render_texture.create_view(&wgpu::TextureViewDescriptor {
         label: Some("egui Render Target"),
         ..Default::default()
     });
@@ -264,7 +254,7 @@ pub(crate) fn frame(
         });
         encoder.copy_texture_to_buffer(
             wgpu::TexelCopyTextureInfo {
-                texture: &output.texture,
+                texture: render_texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,

@@ -2,6 +2,9 @@
 
 use std::path::PathBuf;
 
+#[cfg(test)]
+mod tests;
+
 pub(crate) struct CliArgs {
     pub(crate) scene: Option<String>,
     pub(crate) screenshot: Option<PathBuf>,
@@ -9,6 +12,7 @@ pub(crate) struct CliArgs {
     pub(crate) no_gui_overlay: bool,
     pub(crate) debug_mode: Option<i32>,
     pub(crate) freeze_time: bool,
+    pub(crate) ssao_enabled: bool,
     pub(crate) ssr_enabled: bool,
     /// Physical pixel width for the window / screenshots.
     pub(crate) width: Option<u32>,
@@ -24,6 +28,7 @@ pub(crate) fn parse_args(args: &[String]) -> CliArgs {
         no_gui_overlay: false,
         debug_mode: None,
         freeze_time: false,
+        ssao_enabled: false,
         ssr_enabled: false,
         width: None,
         height: None,
@@ -61,6 +66,9 @@ pub(crate) fn parse_args(args: &[String]) -> CliArgs {
             "--freeze-time" => {
                 cli.freeze_time = true;
             }
+            "--ssao" => {
+                cli.ssao_enabled = true;
+            }
             "--ssr" => {
                 cli.ssr_enabled = true;
             }
@@ -81,39 +89,4 @@ pub(crate) fn parse_args(args: &[String]) -> CliArgs {
         i += 1;
     }
     cli
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn args(items: &[&str]) -> Vec<String> {
-        items.iter().map(|s| s.to_string()).collect()
-    }
-
-    #[test]
-    fn parses_width_and_height() {
-        let cli = parse_args(&args(&[
-            "aether-launcher",
-            "--width",
-            "1600",
-            "--height",
-            "900",
-        ]));
-        assert_eq!(cli.width, Some(1600));
-        assert_eq!(cli.height, Some(900));
-    }
-
-    #[test]
-    fn width_and_height_default_to_none() {
-        let cli = parse_args(&args(&["aether-launcher"]));
-        assert_eq!(cli.width, None);
-        assert_eq!(cli.height, None);
-    }
-
-    #[test]
-    fn invalid_width_is_ignored() {
-        let cli = parse_args(&args(&["aether-launcher", "--width", "not-a-number"]));
-        assert_eq!(cli.width, None);
-    }
 }
