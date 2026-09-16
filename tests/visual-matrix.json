@@ -125,7 +125,7 @@
     {
       "name": "14_god_rays",
       "scene": "scenes/14_god_rays.ron",
-      "frames": 120,
+      "frames": 1,
       "width": 2560,
       "height": 1440,
       "threshold": 0.99

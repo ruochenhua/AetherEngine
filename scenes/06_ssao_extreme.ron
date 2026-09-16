@@ -1,11 +1,12 @@
 SceneDescription(
     name: "06 SSAO Extreme",
     camera: (
-        position: (1.5, 0.5, 5.0),
-        yaw: 3.2,
-        pitch: -0.15,
+        // Frame the ground/wall/object junction instead of looking past it.
+        position: (2.0, 1.2, 5.5),
+        yaw: -1.92,
+        pitch: -0.18,
         speed: 3.0,
-        fov: 60.0,
+        fov: 50.0,
     ),
     lights: [
         (

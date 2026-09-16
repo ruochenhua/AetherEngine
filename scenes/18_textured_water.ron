@@ -1,9 +1,10 @@
 SceneDescription(
     name: "Textured Water",
     camera: (
-        position: (0.0, 12.0, 28.0),
-        yaw: 0.0,
-        pitch: -0.35,
+        position: (0.0, 5.0, 18.0),
+        // Face the water and the objects used to judge its reflection/distortion.
+        yaw: -1.57,
+        pitch: -0.20,
         fov: 60.0,
     ),
     ambient: 0.05,
@@ -19,18 +20,11 @@ SceneDescription(
         atmosphere_height: 100.0,
         rayleigh_scattering: (0.005802, 0.013558, 0.033100),
         mie_asymmetry: 0.758,
-        sun_intensity: 20.0,
+        sun_intensity: 8.0,
     )),
-    terrain: Some((
-        source: Procedural(seed: 42, frequency: 0.04, amplitude: 4.0),
-        geometry: (extent: 256.0, chunk_size: 64, max_lod: 4),
-        layers: [
-            (albedo: (0.35, 0.4, 0.2, 1.0), roughness: 0.9),
-            (albedo: (0.5, 0.45, 0.3, 1.0), roughness: 0.8),
-            (albedo: (0.6, 0.55, 0.4, 1.0), roughness: 0.7),
-            (albedo: (0.8, 0.8, 0.75, 1.0), roughness: 0.6),
-        ],
-    )),
+    // This fixture isolates the textured water surface. Shoreline/terrain
+    // interaction is covered by scenes/12_water.ron and 20_terrain_water_clouds.
+    terrain: None,
     water: Some((
         level: -0.5,
         wave_direction: (1.0, 0.5),
@@ -53,6 +47,36 @@ SceneDescription(
         secondary_scale: 0.7,
         flow_speed: (0.03, 0.01),
         flow_speed_2: (-0.02, 0.015),
+        reflection_enabled: true,
+        reflection_resolution_scale: 0.5,
     )),
-    objects: [],
+    objects: [
+        // Colored, above-water subjects make the planar reflection legible.
+        (
+            name: "RedMarker",
+            mesh: Builtin("cube"),
+            transform: (
+                translation: (-3.0, 2.5, -2.0),
+                scale: (1.3, 2.5, 1.3),
+            ),
+            material: (
+                albedo: (0.9, 0.08, 0.04, 1.0),
+                roughness: 0.28,
+                metallic: 0.1,
+            ),
+        ),
+        (
+            name: "BlueMarker",
+            mesh: Builtin("sphere"),
+            transform: (
+                translation: (3.0, 2.3, -4.0),
+                scale: (1.5, 1.5, 1.5),
+            ),
+            material: (
+                albedo: (0.03, 0.32, 0.9, 1.0),
+                roughness: 0.22,
+                metallic: 0.15,
+            ),
+        ),
+    ],
 )

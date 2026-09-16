@@ -2,24 +2,27 @@ SceneDescription(
     name: "God Rays",
     camera: (
         position: (0.0, 4.0, 18.0),
-        yaw: 0.0,
-        pitch: -0.15,
+        // Face the occluders and sunlit opening along -Z.
+        yaw: -1.57,
+        pitch: -0.08,
         fov: 60.0,
     ),
     ambient: 0.05,
     lights: [(
         light_type: Directional,
-        direction: (0.2, -0.6, -0.8),
+        // The sun must be in front of the camera so its screen-space shafts
+        // pass through the two pillars toward the viewer.
+        direction: (0.2, -0.6, 0.8),
         color: (1.0, 0.95, 0.85),
-        intensity: 2.5,
+        intensity: 1.5,
     )],
     atmosphere: Some((
-        sun_direction: (-0.2, 0.6, 0.8),
+        sun_direction: (-0.2, 0.6, -0.8),
         planet_radius: 6360.0,
         atmosphere_height: 100.0,
         rayleigh_scattering: (0.005802, 0.013558, 0.033100),
         mie_asymmetry: 0.758,
-        sun_intensity: 20.0,
+        sun_intensity: 2.0,
     )),
     terrain: Some((
         source: Procedural(seed: 123, frequency: 0.03, amplitude: 3.0),
@@ -31,19 +34,16 @@ SceneDescription(
             (albedo: (0.8, 0.8, 0.75, 1.0), roughness: 0.6),
         ],
     )),
-    clouds: Some((
-        bottom_altitude: 20.0,
-        top_altitude: 40.0,
-        coverage: 0.4,
-        wind_direction: (1.0, 0.3),
-        wind_speed: 1.0,
-    )),
+    // Keep this fixture static; temporal cloud behavior is covered by scene 13.
+    clouds: None,
     god_ray: Some((
         samples: 80,
-        density: 0.8,
+        density: 0.5,
         decay: 0.95,
-        weight: 0.6,
-        exposure: 0.5,
+        // The shader accumulates per-sample illumination; keep the overlay
+        // below the tone-mapper's saturation point so shafts remain visible.
+        weight: 0.1,
+        exposure: 0.1,
     )),
     objects: [
         (
