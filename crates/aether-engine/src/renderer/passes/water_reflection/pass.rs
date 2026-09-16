@@ -14,7 +14,6 @@ impl Pass for WaterReflectionPass {
     fn name(&self) -> &str {
         "WaterReflection"
     }
-
     fn signature(&self) -> PassSignature {
         PassSignature::new("WaterReflection")
             .write::<WaterReflectionColor>(wgpu::TextureFormat::Rgba16Float)
@@ -80,6 +79,7 @@ impl Pass for WaterReflectionPass {
             bytemuck::cast_slice(&[ReflectionUniform {
                 view: self.view.to_cols_array_2d(),
                 proj: self.proj.to_cols_array_2d(),
+                camera_pos: frame.camera.position.extend(0.0).to_array(),
                 light_dir: self.light_dir.extend(0.0).to_array(),
                 light_color: self.light_color.extend(0.0).to_array(),
                 ambient: self.ambient.extend(0.0).to_array(),

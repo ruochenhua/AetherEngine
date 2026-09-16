@@ -19,7 +19,6 @@ mod pass;
 mod pipeline;
 mod shaders;
 mod terrain;
-
 /// Planar reflection pass state.
 pub struct WaterReflectionPass {
     device: wgpu::Device,
@@ -64,6 +63,7 @@ pub struct WaterReflectionPass {
 struct ReflectionUniform {
     view: [[f32; 4]; 4],
     proj: [[f32; 4]; 4],
+    camera_pos: [f32; 4],
     light_dir: [f32; 4],
     light_color: [f32; 4],
     ambient: [f32; 4],

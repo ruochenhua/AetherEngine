@@ -1,5 +1,3 @@
-// WGSL shaders for planar water reflection.
-
 pub(super) const REFLECTION_SHADER_SRC: &str = r#"
 struct VertexInput {
     @location(0) position: vec3<f32>,
@@ -23,6 +21,7 @@ struct VertexOutput {
 struct ReflectionUniform {
     view: mat4x4<f32>,
     proj: mat4x4<f32>,
+    camera_pos: vec4<f32>,
     light_dir: vec4<f32>,
     light_color: vec4<f32>,
     ambient: vec4<f32>,
@@ -54,7 +53,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     let n = normalize(in.world_normal);
     let l = normalize(ru.light_dir.xyz);
-    let v = normalize(-in.world_pos);
+    let v = normalize(ru.camera_pos.xyz - in.world_pos);
     let h = normalize(l + v);
 
     let n_dot_l = max(dot(n, l), 0.0);
@@ -91,6 +90,7 @@ struct VertexOutput {
 struct ReflectionUniform {
     view: mat4x4<f32>,
     proj: mat4x4<f32>,
+    camera_pos: vec4<f32>,
     light_dir: vec4<f32>,
     light_color: vec4<f32>,
     ambient: vec4<f32>,
@@ -156,7 +156,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     let n = normalize(in.world_normal);
     let l = normalize(ru.light_dir.xyz);
-    let v = normalize(-in.world_pos);
+    let v = normalize(ru.camera_pos.xyz - in.world_pos);
     let h = normalize(l + v);
 
     let n_dot_l = max(dot(n, l), 0.0);
