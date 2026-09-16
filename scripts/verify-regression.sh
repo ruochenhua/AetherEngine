@@ -21,6 +21,11 @@ OUTPUT_DIR="tests/output"
 REFERENCE_DIR="tests/reference"
 REPORT_DIR="tests/reports"
 COMPARE_SCRIPT="${AETHER_COMPARE_SCRIPT:-.claude/skills/aether-visual-test/scripts/compare_images.py}"
+# Each matrix entry launches a fresh wgpu device. macOS Metal may finish
+# releasing the previous window/device asynchronously after the launcher exits;
+# a short settle period prevents that teardown from contaminating the next
+# process' first frames. Set to 0 only when intentionally bypassing the guard.
+REGRESSION_SETTLE_SECONDS="${AETHER_REGRESSION_SETTLE_SECONDS:-3}"
 
 FILTER=""
 UPDATE_REFS=false
@@ -208,6 +213,10 @@ while IFS=$'\t' read -r name scene frames width height debug_mode ssao ssr thres
         OVERALL_PASS=false
         FAILED=$((FAILED + 1))
         continue
+    fi
+
+    if [[ "$REGRESSION_SETTLE_SECONDS" != "0" ]]; then
+        sleep "$REGRESSION_SETTLE_SECONDS"
     fi
 
     if [[ ! -f "$OUT_IMAGE" ]]; then

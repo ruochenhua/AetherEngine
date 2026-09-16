@@ -72,6 +72,11 @@ images, and generates an HTML report under `tests/reports/`. Static debug scenes
 such as the SSAO mode 14 cases use one frozen frame; scenes with temporal effects
 retain longer frame windows in the matrix.
 
+The runner waits three seconds between successful launcher processes by default.
+This is required for reliable Metal teardown on macOS when many scenes are run
+back-to-back; override it with `AETHER_REGRESSION_SETTLE_SECONDS=0` only for
+diagnostic runs.
+
 For SSR effect verification, use the paired harness so the same scene is captured
 once with SSR disabled and once with SSR enabled. It compares the two real outputs
 and writes an HTML report; it does not promote either image to a baseline:
