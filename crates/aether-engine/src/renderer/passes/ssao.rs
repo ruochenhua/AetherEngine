@@ -7,7 +7,7 @@
 //! - Range falloff in view-space units (params.radius is view-space radius)
 //! - 16-sample kernel (const array + for loop)
 //! - Hash-based per-pixel rotation
-//! - No blur pass (planned as separate AOBlurPass)
+//! - Raw half-resolution output is denoised by the separate AOBlurPass
 //!
 //! Pipeline: GBufferPass → SSAOPass (→AOTexture) → LightingPass
 
@@ -18,10 +18,11 @@ use crate::renderer::resource_table::ResourceTable;
 use std::borrow::Cow;
 use wgpu::util::DeviceExt;
 
+#[cfg(test)]
+mod shader_tests;
 mod shaders;
 #[cfg(test)]
 mod tests;
-
 /// SSAO parameters (matches WGSL std140 layout).
 /// `radius` and `bias` are in world-space units. Because the view transform is
 /// rigid, these map 1:1 to view-space lengths used during hemisphere sampling.
@@ -35,7 +36,6 @@ struct SSAOParams {
     screen_size: [f32; 2],
     _pad1: [f32; 2],
 }
-
 /// Per-frame uniform data (SSAO params + projection + view), matches WGSL std140.
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]

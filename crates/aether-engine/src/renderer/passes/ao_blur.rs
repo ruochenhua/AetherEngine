@@ -1,6 +1,6 @@
 //! AO Blur Pass — Bilateral blur for SSAO
 //!
-//! Full-screen quad pass. Applies a 5×5 bilateral (depth-aware) gaussian blur
+//! Full-screen quad pass. Applies a 3×3 bilateral (depth-aware) gaussian blur
 //! to the raw SSAO output, preserving edges while smoothing noise from the
 //! 16-sample kernel.
 //!
@@ -13,15 +13,22 @@ use crate::renderer::resource_table::ResourceTable;
 use std::borrow::Cow;
 use wgpu::util::DeviceExt;
 
+#[path = "ao_blur_shader.rs"]
+mod shader;
+
 /// AO blur parameters (matches WGSL std140 layout, 48 bytes total).
-/// WGSL std140: depth_sigma@0 + pad@4 + texel_size(vec2)@8 + _pad0@16 + _pad1(vec3)@32 + _pad2@44 = 48.
+/// WGSL std140: depth_sigma@0 + texel_size(vec2)@8 + camera_pos(vec3)@16 +
+/// camera_forward(vec3)@32 = 48.
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct BlurParams {
     depth_sigma: f32,
     _pad0: f32,
     texel_size: [f32; 2],
-    _pad1: [f32; 8],
+    camera_pos: [f32; 3],
+    _pad1: f32,
+    camera_forward: [f32; 3],
+    _pad2: f32,
 }
 
 /// AO Blur pass state.
@@ -33,6 +40,7 @@ pub struct AOBlurPass {
     params_bind_group: wgpu::BindGroup,
     ao_handle: Option<ResHandle<AOTexture>>,
     pos_handle: Option<ResHandle<GPosition>>,
+    normal_handle: Option<ResHandle<GNormal>>,
     texture_bind_group: Option<wgpu::BindGroup>,
     #[allow(dead_code)]
     texture_bind_group_layout: wgpu::BindGroupLayout,
@@ -53,6 +61,7 @@ impl Pass for AOBlurPass {
         PassSignature::new("AOBlur")
             .read::<AOTexture>()
             .read::<GPosition>()
+            .read::<GNormal>()
             .write_sized::<AOTextureBlurred>(
                 wgpu::TextureFormat::R8Unorm,
                 self.half_width.max(1),
@@ -67,16 +76,24 @@ impl Pass for AOBlurPass {
     fn resolve(&mut self, device: &wgpu::Device, resources: &ResourceTable) {
         self.ao_handle = Some(resources.handle::<AOTexture>());
         self.pos_handle = Some(resources.handle::<GPosition>());
+        self.normal_handle = Some(resources.handle::<GNormal>());
 
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("AOBlur Sampler"),
+        let ao_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("AOBlur AO Sampler"),
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
+        let gbuffer_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("AOBlur GBuffer Sampler"),
+            mag_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Nearest,
             ..Default::default()
         });
 
         let ao_view = resources.get(self.ao_handle.unwrap());
         let pos_view = resources.get(self.pos_handle.unwrap());
+        let normal_view = resources.get(self.normal_handle.unwrap());
 
         self.texture_bind_group = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("AOBlur Texture Bind Group"),
@@ -92,7 +109,15 @@ impl Pass for AOBlurPass {
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
+                    resource: wgpu::BindingResource::TextureView(normal_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::Sampler(&ao_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: wgpu::BindingResource::Sampler(&gbuffer_sampler),
                 },
             ],
         }));
@@ -116,7 +141,10 @@ impl Pass for AOBlurPass {
             depth_sigma: 0.5,
             _pad0: 0.0,
             texel_size: [texel_w, texel_h],
-            _pad1: [0.0; 8],
+            camera_pos: frame.camera.position.to_array(),
+            _pad1: 0.0,
+            camera_forward: frame.camera.forward().to_array(),
+            _pad2: 0.0,
         };
         frame
             .queue
@@ -178,83 +206,7 @@ impl AOBlurPass {
 
     /// Create a new AO blur pass with all GPU resources.
     pub fn new(device: &wgpu::Device) -> Self {
-        let shader_source = r#"
-struct VertexOutput {
-    @builtin(position) clip_position: vec4<f32>,
-    @location(0) uv: vec2<f32>,
-};
-@vertex
-fn vs_main(@location(0) pos: vec2<f32>) -> VertexOutput {
-    var out: VertexOutput;
-    out.clip_position = vec4<f32>(pos, 0.0, 1.0);
-    out.uv = vec2<f32>(pos.x * 0.5 + 0.5, 0.5 - pos.y * 0.5);
-    return out;
-}
-
-struct BlurParams {
-    depth_sigma: f32,
-    texel_size: vec2<f32>,
-    _pad0: f32,
-    _pad1: vec3<f32>,
-    _pad2: f32,
-};
-
-@group(0) @binding(0) var ao_tex: texture_2d<f32>;
-@group(0) @binding(1) var gbuffer_position: texture_2d<f32>;
-@group(0) @binding(2) var tex_sampler: sampler;
-
-@group(1) @binding(0) var<uniform> params: BlurParams;
-
-// Precomputed 3x3 gaussian kernel weights (sigma = 0.85)
-const KERNEL_SIZE: i32 = 1;
-const KERNEL_WEIGHTS: array<f32, 9> = array<f32, 9>(
-    0.077847, 0.123317, 0.077847,
-    0.123317, 0.195346, 0.123317,
-    0.077847, 0.123317, 0.077847,
-);
-
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let uv = in.uv;
-
-    // Sky check: AO texture is R8Unorm, cleared to WHITE (1.0).
-    // GBuffer position alpha: 1.0 = geometry, 0.0 = sky.
-    let center_pos = textureSample(gbuffer_position, tex_sampler, uv);
-    if (center_pos.a < 0.5) {
-        return vec4<f32>(textureSample(ao_tex, tex_sampler, uv).r, 0.0, 0.0, 1.0);
-    }
-
-    let center_depth = length(center_pos.xyz);
-    let texel_x = params.texel_size.x;
-    let texel_y = params.texel_size.y;
-
-    var blurred_ao: f32 = 0.0;
-    var total_weight: f32 = 0.0;
-
-    for (var y: i32 = -KERNEL_SIZE; y <= KERNEL_SIZE; y = y + 1) {
-        for (var x: i32 = -KERNEL_SIZE; x <= KERNEL_SIZE; x = x + 1) {
-            let idx = (y + KERNEL_SIZE) * 3 + (x + KERNEL_SIZE);
-            let gaussian_w = KERNEL_WEIGHTS[idx];
-
-            let sample_uv = uv + vec2<f32>(f32(x) * texel_x, f32(y) * texel_y);
-            let sample_ao = textureSample(ao_tex, tex_sampler, sample_uv).r;
-
-            // Bilateral weight: reduce contribution across depth edges
-            let sample_pos = textureSample(gbuffer_position, tex_sampler, sample_uv);
-            let sample_depth = length(sample_pos.xyz);
-            let depth_diff = abs(center_depth - sample_depth);
-            let bilateral_w = exp(-depth_diff / params.depth_sigma);
-
-            let w = gaussian_w * bilateral_w;
-            blurred_ao = blurred_ao + sample_ao * w;
-            total_weight = total_weight + w;
-        }
-    }
-
-    let result = blurred_ao / max(total_weight, 0.0001);
-    return vec4<f32>(result, 0.0, 0.0, 1.0);
-}
-"#;
+        let shader_source = shader::AO_BLUR_SHADER_SRC;
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("AOBlur Shader"),
             source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(shader_source)),
@@ -286,7 +238,23 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                 wgpu::BindGroupLayoutEntry {
                     binding: 2,
                     visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 4,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
                     count: None,
                 },
             ],
@@ -392,6 +360,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             params_bind_group: params_bg,
             ao_handle: None,
             pos_handle: None,
+            normal_handle: None,
             texture_bind_group: None,
             texture_bind_group_layout: texture_bgl,
             params_bind_group_layout: params_bgl,
@@ -424,12 +393,17 @@ mod tests {
         let device = headless_device();
         let sig = AOBlurPass::new(&device).signature();
         assert_eq!(sig.name, "AOBlur");
-        assert_eq!(sig.reads.len(), 2);
+        assert_eq!(sig.reads.len(), 3);
         assert_eq!(sig.writes.len(), 1);
         assert!(
             sig.writes[0].type_id == TypeId::of::<AOTextureBlurred>()
                 && sig.writes[0].name == "ao_blurred"
         );
+    }
+
+    #[test]
+    fn blur_params_match_wgsl_layout() {
+        assert_eq!(std::mem::size_of::<BlurParams>(), 48);
     }
 
     #[test]

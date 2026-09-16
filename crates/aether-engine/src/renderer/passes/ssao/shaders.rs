@@ -50,30 +50,37 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         return vec4<f32>(1.0, 0.0, 0.0, 0.0);
     }
 
-    // Reconstruct view-space position from depth + UV
     let depth_sample = textureSample(gbuffer_depth, gbuffer_sampler, uv);
+    if (depth_sample >= 0.9999) {
+        return vec4<f32>(1.0, 0.0, 0.0, 0.0);
+    }
     let clip_uv = vec2<f32>(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
     let clip_pos = vec4<f32>(clip_uv.x, clip_uv.y, depth_sample, 1.0);
     let view_pos4 = frame.inv_proj_mat * clip_pos;
     let view_pos = view_pos4.xyz / view_pos4.w;
     let frag_view_z = view_pos.z;
 
-    // Normal: read from GBuffer, transform to view space
     let world_N = normalize(norm_sample.xyz * 2.0 - 1.0);
     let view_N4 = frame.view_mat * vec4<f32>(world_N, 0.0);
     let view_N = normalize(view_N4.xyz);
 
-    // Random rotation (hash-based)
     let rot = hash2(uv * 1024.0);
     let rvec = vec3<f32>(rot.x, rot.y, 0.0);
 
-    // TBN in VIEW space
-    let tangent = normalize(rvec - view_N * dot(rvec, view_N));
+    var tangent = rvec - view_N * dot(rvec, view_N);
+    if (dot(tangent, tangent) < 0.0001) {
+        let axis = select(
+            vec3<f32>(0.0, 1.0, 0.0),
+            vec3<f32>(1.0, 0.0, 0.0),
+            abs(view_N.y) > 0.9
+        );
+        tangent = cross(axis, view_N);
+    }
+    tangent = normalize(tangent);
     let bitangent = cross(view_N, tangent);
 
     var occlusion: f32 = 0.0;
 
-    // ── 16-sample hemisphere kernel ───
     const KERNEL: array<vec3<f32>, 16> = array<vec3<f32>, 16>(
         vec3<f32>( 0.5381,  0.1856,  0.4319),
         vec3<f32>( 0.1379,  0.1967,  0.8544),
@@ -109,9 +116,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             let occ_view_z = occ_view.z / occ_view.w;
             if (occ_view_z >= sv.z + view_bias) {
                 let z_delta = abs(frag_view_z - occ_view_z);
-                // Range falloff: attenuate occlusion when the occluder is farther
-                // than `radius` away in view-space Z. This prevents distant surfaces
-                // from casting dark halos.
                 let range_attenuation = 1.0 - smoothstep(0.0, view_radius, z_delta);
                 occlusion += range_attenuation;
             }
@@ -121,11 +125,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Final AO value (per LearnOpenGL: invert, power)
     occlusion = 1.0 - occlusion / 16.0;
     occlusion = pow(occlusion, frame.params.intensity);
-
-    // TODO: Add a separate AO blur pass. Inline bilateral blur was removed
-    // because a fragment shader cannot sample its own output texture.
-    // The previous code did `blurred += occlusion * w` which always evaluates
-    // to `occlusion` (center value only, no actual neighbor sampling).
 
     return vec4<f32>(occlusion, 0.0, 0.0, 1.0);
 }
