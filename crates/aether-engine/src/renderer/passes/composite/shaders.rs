@@ -64,11 +64,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         lit = mix(scene.rgb, refl.rgb, reflectance);
     }
 
-    // Volumetric clouds are integrated as background * transmittance + in-scattered light.
-    // cloud.rgb already contains the accumulated scattered light; cloud.a = 1 - transmittance.
+    // Volumetric clouds: background * transmittance + in-scattered light.
     let with_clouds = lit * (1.0 - cloud.a) + cloud.rgb;
     let with_god_rays = with_clouds + god_ray.rgb;
-    let final_color = mix(with_god_rays, water.rgb, water.a);
+    var final_color = with_god_rays;
+    if (water.a > 0.0001) { final_color = mix(with_god_rays, water.rgb, clamp(water.a, 0.0, 1.0)); }
     return vec4<f32>(final_color, 1.0);
 }
 "#;

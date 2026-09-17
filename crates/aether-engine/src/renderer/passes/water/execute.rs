@@ -12,16 +12,7 @@ pub(super) fn execute(
     resources: &ResourceTable,
     _surface_view: &wgpu::TextureView,
 ) {
-    if !pass.has_water {
-        return;
-    }
-
     let water_color_view = resources.get(pass.water_color_handle.unwrap());
-    let texture_bg = pass
-        .texture_bind_group
-        .as_ref()
-        .expect("WaterPass: resolve not called");
-
     let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
         label: Some("Water Pass"),
         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -38,6 +29,15 @@ pub(super) fn execute(
         occlusion_query_set: None,
         multiview_mask: None,
     });
+
+    if !pass.has_water {
+        return;
+    }
+
+    let texture_bg = pass
+        .texture_bind_group
+        .as_ref()
+        .expect("WaterPass: resolve not called");
 
     rpass.set_pipeline(&pass.pipeline);
     rpass.set_bind_group(0, &pass.uniform_bind_group, &[]);

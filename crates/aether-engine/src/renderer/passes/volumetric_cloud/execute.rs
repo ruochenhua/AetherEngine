@@ -11,16 +11,7 @@ impl VolumetricCloudPass {
         encoder: &mut wgpu::CommandEncoder,
         resources: &ResourceTable,
     ) {
-        if !self.has_clouds {
-            return;
-        }
-
         let cloud_color_view = resources.get(self.cloud_color_handle.unwrap());
-        let texture_bg = self
-            .texture_bind_group
-            .as_ref()
-            .expect("VolumetricCloudPass: resolve not called");
-
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Volumetric Cloud Pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -37,6 +28,15 @@ impl VolumetricCloudPass {
             occlusion_query_set: None,
             multiview_mask: None,
         });
+
+        if !self.has_clouds {
+            return;
+        }
+
+        let texture_bg = self
+            .texture_bind_group
+            .as_ref()
+            .expect("VolumetricCloudPass: resolve not called");
 
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &self.uniform_bind_group, &[]);

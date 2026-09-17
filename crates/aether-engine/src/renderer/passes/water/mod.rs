@@ -114,7 +114,7 @@ impl Pass for WaterPass {
     }
 
     fn should_run(&self, _frame: &RenderFrame) -> bool {
-        self.has_water
+        true
     }
 
     fn apply_frame(&mut self, frame: &RenderFrame) {
@@ -305,7 +305,7 @@ mod tests {
     }
 
     #[test]
-    fn water_pass_skipped_without_component() {
+    fn water_pass_clears_without_component() {
         let (device, queue) = headless_device();
         let ctx = init_ctx(&device, &queue);
         let pass = WaterPass::init(&ctx);
@@ -327,7 +327,7 @@ mod tests {
             texture_cache: ctx.texture_cache,
             asset_manager: &assets,
         };
-        assert!(!pass.should_run(&frame));
+        assert!(pass.should_run(&frame));
     }
 
     #[test]

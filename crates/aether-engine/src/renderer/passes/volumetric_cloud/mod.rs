@@ -84,7 +84,7 @@ impl Pass for VolumetricCloudPass {
     }
 
     fn should_run(&self, _frame: &RenderFrame) -> bool {
-        self.has_clouds
+        true
     }
 
     fn apply_frame(&mut self, frame: &RenderFrame) {

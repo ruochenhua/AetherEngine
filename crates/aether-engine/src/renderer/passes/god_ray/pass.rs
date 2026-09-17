@@ -39,7 +39,7 @@ impl Pass for GodRayPass {
     }
 
     fn should_run(&self, _frame: &RenderFrame) -> bool {
-        self.has_god_ray
+        true
     }
 
     fn apply_frame(&mut self, frame: &RenderFrame) {
@@ -50,7 +50,6 @@ impl Pass for GodRayPass {
             let view = frame.camera.view_matrix();
             let view_proj = proj * view;
             let inv_view_proj = view_proj.inverse();
-
             let sun_toward = sun_direction_from_lighting(frame.lighting);
 
             let cfg = &god_ray.config;
@@ -76,15 +75,7 @@ impl Pass for GodRayPass {
         resources: &ResourceTable,
         _surface_view: &wgpu::TextureView,
     ) {
-        if !self.has_god_ray {
-            return;
-        }
-
         let god_ray_color_view = resources.get(self.god_ray_color_handle.unwrap());
-        let texture_bg = self
-            .texture_bind_group
-            .as_ref()
-            .expect("GodRayPass: resolve not called");
 
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("God Ray Pass"),
@@ -102,6 +93,15 @@ impl Pass for GodRayPass {
             occlusion_query_set: None,
             multiview_mask: None,
         });
+
+        if !self.has_god_ray {
+            return;
+        }
+
+        let texture_bg = self
+            .texture_bind_group
+            .as_ref()
+            .expect("GodRayPass: resolve not called");
 
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &self.uniform_bind_group, &[]);
