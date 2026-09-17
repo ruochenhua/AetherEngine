@@ -47,6 +47,11 @@ if ! ./tests/report-format-test.sh; then
     fail "verification report format check failed"
 fi
 
+step "./tests/metal-regression-runner-test.sh"
+if ! ./tests/metal-regression-runner-test.sh; then
+    fail "Metal regression runner flow check failed"
+fi
+
 step "cargo test --workspace"
 if ! cargo test --workspace; then
     fail "cargo test failed"

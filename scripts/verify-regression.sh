@@ -64,6 +64,33 @@ else
     LAUNCHER_COMMAND=(cargo run --bin aether-launcher --quiet --)
 fi
 
+ACTIVE_LAUNCHER_PID=""
+
+cleanup_active_launcher() {
+    if [[ -n "$ACTIVE_LAUNCHER_PID" ]] && kill -0 "$ACTIVE_LAUNCHER_PID" 2>/dev/null; then
+        kill -TERM "$ACTIVE_LAUNCHER_PID" 2>/dev/null || true
+        wait "$ACTIVE_LAUNCHER_PID" 2>/dev/null || true
+    fi
+    ACTIVE_LAUNCHER_PID=""
+}
+
+abort_regression() {
+    cleanup_active_launcher
+    exit 130
+}
+
+trap cleanup_active_launcher EXIT
+trap abort_regression INT TERM
+
+run_launcher() {
+    local status=0
+    ("${LAUNCHER_COMMAND[@]}" "$@" >/dev/null 2>&1) &
+    ACTIVE_LAUNCHER_PID=$!
+    wait "$ACTIVE_LAUNCHER_PID" || status=$?
+    ACTIVE_LAUNCHER_PID=""
+    return "$status"
+}
+
 html_escape() {
     printf '%s' "$1" | sed \
         -e 's/&/\&amp;/g' \
@@ -207,7 +234,13 @@ while IFS=$'\t' read -r name scene frames width height debug_mode ssao ssr thres
     fi
     ARGS+=(--no-gui-overlay --freeze-time --width "$width" --height "$height")
 
-    if ! "${LAUNCHER_COMMAND[@]}" "${ARGS[@]}" >/dev/null 2>&1; then
+    launcher_status=0
+    if run_launcher "${ARGS[@]}"; then
+        launcher_status=0
+    else
+        launcher_status=$?
+    fi
+    if [[ "$launcher_status" -ne 0 ]]; then
         echo "  ❌ Launcher failed for $name"
         append_result_row "$name" "❌ CRASH" "N/A" "N/A" "N/A"
         OVERALL_PASS=false

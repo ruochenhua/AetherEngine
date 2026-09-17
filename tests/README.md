@@ -77,6 +77,19 @@ This is required for reliable Metal teardown on macOS when many scenes are run
 back-to-back; override it with `AETHER_REGRESSION_SETTLE_SECONDS=0` only for
 diagnostic runs.
 
+On macOS, use the single-session wrapper when Metal is required from an agent
+or another non-Terminal shell:
+
+```bash
+./scripts/verify-regression-metal.sh
+```
+
+It submits one command to the existing front Terminal window, runs all matrix
+scenes serially there, and cleans up the active launcher when interrupted. If
+it is already invoked from Terminal, it runs the matrix in that same session
+without opening another window. The wrapper is the only supported entry point
+for agent-driven Metal regression runs.
+
 For SSR effect verification, use the paired harness so the same scene is captured
 once with SSR disabled and once with SSR enabled. It compares the two real outputs
 and writes an HTML report; it does not promote either image to a baseline:
