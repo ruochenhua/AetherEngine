@@ -345,7 +345,10 @@ impl ReferenceConfig {
             return Err(invalid("reference hashes must be lowercase hexadecimal"));
         }
         for value in [&self.os, &self.driver, &self.adapter, &self.runner_version] {
-            if value.as_deref().is_none_or(|value| value.trim().is_empty()) {
+            if value
+                .as_deref()
+                .map_or(true, |value| value.trim().is_empty())
+            {
                 return Err(invalid("reference provenance strings must be non-empty"));
             }
         }
