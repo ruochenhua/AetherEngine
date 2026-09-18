@@ -1,9 +1,13 @@
 //! Launcher CLI argument parsing.
 
+use aether_engine::time::TimeControl;
 use std::path::PathBuf;
 
+mod parse;
 #[cfg(test)]
 mod tests;
+
+pub(crate) use parse::parse_args;
 
 pub(crate) struct CliArgs {
     pub(crate) scene: Option<String>,
@@ -18,75 +22,16 @@ pub(crate) struct CliArgs {
     pub(crate) width: Option<u32>,
     /// Physical pixel height for the window / screenshots.
     pub(crate) height: Option<u32>,
+    pub(crate) time: TimeControl,
 }
 
-pub(crate) fn parse_args(args: &[String]) -> CliArgs {
-    let mut cli = CliArgs {
-        scene: None,
-        screenshot: None,
-        exit_after_frames: None,
-        no_gui_overlay: false,
-        debug_mode: None,
-        freeze_time: false,
-        ssao_enabled: false,
-        ssr_enabled: false,
-        width: None,
-        height: None,
-    };
-    let mut i = 1;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--scene" => {
-                i += 1;
-                if i < args.len() {
-                    cli.scene = Some(args[i].clone());
-                }
-            }
-            "--screenshot" => {
-                i += 1;
-                if i < args.len() {
-                    cli.screenshot = Some(PathBuf::from(&args[i]));
-                }
-            }
-            "--exit-after-frames" => {
-                i += 1;
-                if i < args.len() {
-                    cli.exit_after_frames = args[i].parse().ok();
-                }
-            }
-            "--no-gui-overlay" => {
-                cli.no_gui_overlay = true;
-            }
-            "--debug-mode" => {
-                i += 1;
-                if i < args.len() {
-                    cli.debug_mode = args[i].parse().ok();
-                }
-            }
-            "--freeze-time" => {
-                cli.freeze_time = true;
-            }
-            "--ssao" => {
-                cli.ssao_enabled = true;
-            }
-            "--ssr" => {
-                cli.ssr_enabled = true;
-            }
-            "--width" => {
-                i += 1;
-                if i < args.len() {
-                    cli.width = args[i].parse().ok();
-                }
-            }
-            "--height" => {
-                i += 1;
-                if i < args.len() {
-                    cli.height = args[i].parse().ok();
-                }
-            }
-            _ => {}
+pub(crate) fn parse_env_or_exit() -> CliArgs {
+    let args: Vec<String> = std::env::args().collect();
+    match parse_args(&args) {
+        Ok(cli) => cli,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            std::process::exit(2);
         }
-        i += 1;
     }
-    cli
 }

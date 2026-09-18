@@ -319,8 +319,7 @@ pub fn run() {
         .init();
     info!("Aether Engine Launcher starting...");
 
-    let all_args: Vec<String> = std::env::args().collect();
-    let cli = cli::parse_args(&all_args);
+    let cli = cli::parse_env_or_exit();
 
     let event_loop = EventLoop::new().expect("Failed to create event loop");
     event_loop.set_control_flow(ControlFlow::Poll);
