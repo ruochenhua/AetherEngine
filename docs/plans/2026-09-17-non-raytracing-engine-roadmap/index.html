@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Aether Engine 非光追路线图 · 执行总览</title>
+  <style>
+    :root{--ink:#172033;--muted:#667085;--line:#e4e7ec;--panel:#fff;--canvas:#f6f8fb;--blue:#2563eb;--blue-soft:#eff6ff;--green:#15803d;--green-soft:#f0fdf4;--amber:#b45309;--amber-soft:#fffbeb}
+    *{box-sizing:border-box}body{margin:0;background:var(--canvas);color:var(--ink);font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}main{max-width:1180px;margin:auto;padding:34px 24px 68px}h1,h2,h3{letter-spacing:-.025em;line-height:1.25}h1{font-size:32px;margin:0 0 8px}h2{font-size:22px;margin:34px 0 14px;padding-bottom:9px;border-bottom:1px solid var(--line)}h3{font-size:17px;margin:0 0 8px}.sub{color:var(--muted);margin:0 0 20px}.meta,.callout,.card,table{background:var(--panel);border:1px solid var(--line);border-radius:12px}.meta{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;padding:16px}.meta strong{display:block;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.04em}.meta span{display:block;margin-top:3px;font-weight:600}.callout{padding:15px 17px;margin:16px 0}.callout.green{border-left:4px solid var(--green);background:var(--green-soft)}.callout.blue{border-left:4px solid var(--blue);background:var(--blue-soft)}.callout.amber{border-left:4px solid var(--amber);background:var(--amber-soft)}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.card{padding:17px 18px;transition:border-color .15s,box-shadow .15s}.card:hover{border-color:#b8c7e6;box-shadow:0 4px 16px #1720330d}.card p{margin:5px 0;color:var(--muted)}.card .tag{display:inline-block;color:var(--blue);font:12px ui-monospace,SFMono-Regular,Menlo,monospace;margin-bottom:7px}.card a,.callout a{color:var(--blue);text-decoration:none;font-weight:600}.card a:hover,.callout a:hover{text-decoration:underline}.status{float:right;color:var(--green);font-size:12px;font-weight:700}.checklist{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 20px;padding:0;margin:0;list-style:none}.checklist label{display:flex;align-items:flex-start;gap:8px}.checklist input{width:16px;height:16px;margin-top:4px;accent-color:var(--green)}table{width:100%;border-spacing:0;overflow:hidden}th,td{text-align:left;vertical-align:top;padding:10px 12px;border-bottom:1px solid var(--line)}th{background:#f2f4f7;color:#475467;font-size:13px}tr:last-child td{border-bottom:0}.small{color:var(--muted);font-size:13px}@media(max-width:760px){main{padding:24px 14px 48px}.meta,.grid,.checklist{grid-template-columns:1fr}h1{font-size:27px}}
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Aether Engine 非光追路线图</h1>
+    <p class="sub">执行总览 · 每个父任务都有独立 HTML 执行包，智能体只需加载当前任务包，不必携带整份大规范。</p>
+    <div class="meta">
+      <div><strong>状态</strong><span>Implementation Ready</span></div>
+      <div><strong>范围</strong><span>不包含光追</span></div>
+      <div><strong>交付</strong><span>192 人日 + 25% 缓冲</span></div>
+      <div><strong>最终门禁</strong><span>Round 13 · 全部 ≥ 9.5</span></div>
+    </div>
+  </header>
+
+  <div class="callout green">
+    <strong>使用方式：</strong>先在本页选择一个任务包，再把对应的独立 HTML 交给智能体执行；只有遇到跨层接口或评分证据问题，才回看<a href="../2026-09-17-non-raytracing-engine-roadmap.html">完整规范参考</a>。完成后在任务包中勾选 checklist，并把 HTML 报告路径写回任务包。
+  </div>
+
+  <h2>总 checklist</h2>
+  <ul class="checklist">
+    <li><label><input type="checkbox" data-check="overview-ready">已读取当前任务包，而不是整份完整规范</label></li>
+    <li><label><input type="checkbox" data-check="contract-frozen">已确认接口、所有权、错误和回退合同</label></li>
+    <li><label><input type="checkbox" data-check="tests-planned">已确认本任务的单测、集成测试和专项 HTML case</label></li>
+    <li><label><input type="checkbox" data-check="runtime-safe">已确认不会打开多个 launcher/Terminal 或启动未授权的全量矩阵</label></li>
+    <li><label><input type="checkbox" data-check="report-written">已写入 HTML 测试报告、截图/差异和日志路径</label></li>
+    <li><label><input type="checkbox" data-check="slice-released">该任务所有 slice 达到 released，且没有 needs-review/残留进程</label></li>
+  </ul>
+
+  <h2>执行顺序</h2>
+  <table>
+    <thead><tr><th>窗口</th><th>阶段</th><th>任务包</th><th>依赖</th><th>交付重点</th></tr></thead>
+    <tbody>
+      <tr><td>W0–W2</td><td>T0 + T1</td><td>T0 基础验证、T1 编辑器</td><td>无</td><td>先把测试/时间控制/编辑事务闭合</td></tr>
+      <tr><td>W3–W8</td><td>T2 + T3</td><td>光照、材质</td><td>T0；T1 UI</td><td>复用现有数据模型，补齐消费链</td></tr>
+      <tr><td>W9–W13</td><td>T4 + T5</td><td>透明、粒子</td><td>T2/T3；T4.1</td><td>共享透明资源，但保留 Water 专用 pass</td></tr>
+      <tr><td>W14–W22</td><td>T6</td><td>物理</td><td>T0、T5</td><td>生命周期、seek、debug/picking</td></tr>
+      <tr><td>W23–W34</td><td>T7</td><td>glTF、动画</td><td>T0、T6、T8.1</td><td>owned document、skin、确定性 seek</td></tr>
+      <tr><td>W14–W40</td><td>T8</td><td>资产、Prefab、热重载</td><td>T0、T1、T3</td><td>generation、GPU boundary、LKG fallback</td></tr>
+      <tr><td>W0/W23–W40</td><td>T9</td><td>性能、可见性、instancing</td><td>T0/T9.1</td><td>paired baseline、MetricGuard、自动回退</td></tr>
+    </tbody>
+  </table>
+
+  <h2>独立任务包</h2>
+  <div class="grid">
+    <article class="card"><span class="tag">T0 · W0–W2 · 4d</span><span class="status">ready</span><h3>验证基础与确定性时间</h3><p>VisualCase v2、单 runner、进程租约、HTML comparator、TimeControl。</p><a href="t0-foundation.html">打开 T0 执行包 →</a></article>
+    <article class="card"><span class="tag">T1 · W0–W2 · 8d</span><span class="status">ready</span><h3>编辑器事务与快照</h3><p>封闭 ComponentRecord、复制/重命名、atomic apply、command replay。</p><a href="t1-editor.html">打开 T1 执行包 →</a></article>
+    <article class="card"><span class="tag">T2 · W3–W6 · 12d</span><span class="status">ready</span><h3>多光源</h3><p>LightingFrame、local-light ABI、32 光源上限和消费者接线。</p><a href="t2-lighting.html">打开 T2 执行包 →</a></article>
+    <article class="card"><span class="tag">T3 · W3–W8 · 14d</span><span class="status">ready</span><h3>材质解析与 PBR 消费链</h3><p>ResolvedMaterial、Normal/ORM/Emissive、TBN、Inspector 原子编辑。</p><a href="t3-material.html">打开 T3 执行包 →</a></article>
+    <article class="card"><span class="tag">T4 · W9–W11 · 12d</span><span class="status">ready</span><h3>透明与 Composite</h3><p>TransparentColor、排序/blend/depth、Water graph、四格 sentinel。</p><a href="t4-transparent.html">打开 T4 执行包 →</a></article>
+    <article class="card"><span class="tag">T5 · W9–W13 · 12d</span><span class="status">ready</span><h3>CPU 粒子</h3><p>确定性 simulation、64B GPU item、billboard、Inspector controls。</p><a href="t5-particles.html">打开 T5 执行包 →</a></article>
+    <article class="card"><span class="tag">T6 · W14–W22 · 26d</span><span class="status">ready</span><h3>物理生命周期</h3><p>Rapier adapter、typed physics API、seek、debug frame、picking。</p><a href="t6-physics.html">打开 T6 执行包 →</a></article>
+    <article class="card"><span class="tag">T7 · W23–W34 · 29d</span><span class="status">ready</span><h3>glTF 与动画</h3><p>owned document、128-joint skinning、typed channels、pose hash。</p><a href="t7-animation.html">打开 T7 执行包 →</a></article>
+    <article class="card"><span class="tag">T8 · W14–W40 · 45d</span><span class="status">ready</span><h3>资产、Prefab 与热重载</h3><p>typed AssetStore、owned downcast、generation、GPU commit、LKG。</p><a href="t8-assets.html">打开 T8 执行包 →</a></article>
+    <article class="card"><span class="tag">T9 · W0/W23–W40 · 30d</span><span class="status">ready</span><h3>性能与可见性</h3><p>BenchmarkCase、LOD、paired instancing、MetricGuard、研究 RFC。</p><a href="t9-performance.html">打开 T9 执行包 →</a></article>
+  </div>
+
+  <h2>统一交付规则</h2>
+  <ul>
+    <li>每个任务包只运行自己的专项测试和 primary case；共享 RenderGraph、资源生命周期或 pipeline ABI 改动才扩大矩阵。</li>
+    <li>所有报告使用 HTML；需要截图时报告必须同时保留 reference、output、diff、graph/metrics dump 和日志。</li>
+    <li>失败必须进入 blocked/needs-review 并保留产物，禁止通过改阈值、删除 case 或覆盖 reference 来制造通过。</li>
+    <li>进入编码前仍以完整规范中的 SliceExitContract 为最终字段合同。</li>
+  </ul>
+</main>
+<script>
+  document.querySelectorAll('input[data-check]').forEach((box)=>{
+    const key='aether-roadmap:'+box.dataset.check;
+    box.checked=localStorage.getItem(key)==='1';
+    box.addEventListener('change',()=>localStorage.setItem(key,box.checked?'1':'0'));
+  });
+</script>
+</body>
+</html>
