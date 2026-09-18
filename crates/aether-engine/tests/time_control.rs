@@ -1,5 +1,5 @@
 use aether_engine::time::{
-    DeterministicSystem, SimulationStage, TimeControl, TimeMode, TimeSample,
+    DeterministicSystem, SimulationStage, TimeControl, TimeError, TimeMode, TimeSample,
 };
 
 fn control(mode: TimeMode, target: f32, fixed_dt: f32, max_seek_steps: u32) -> TimeControl {
@@ -39,6 +39,61 @@ fn wall_clock_caps_catch_up_and_discards_excess_steps() {
     assert_eq!(frame.samples.len(), 4);
     assert!((time.accumulator - 0.005).abs() < 1e-6);
     assert_eq!(time.advance_frame(0.005).unwrap().samples.len(), 1);
+}
+
+#[test]
+fn wall_clock_extreme_finite_deltas_leave_only_a_bounded_remainder() {
+    for dt in [0.1, 0.01, f32::MIN_POSITIVE, f32::from_bits(1)] {
+        for cap in [1, 3, 8] {
+            let mut time = TimeControl::new(TimeMode::WallClock, 0.0, dt, cap, 8).unwrap();
+            for delta in [f32::MAX, f32::MAX, 1e30] {
+                assert_eq!(
+                    time.advance_frame(delta).unwrap().samples.len(),
+                    cap.min(4) as usize
+                );
+                assert!(time.accumulator.is_finite());
+                assert!((0.0..dt).contains(&time.accumulator));
+                let remainder = time.accumulator;
+                let frame = time.advance_frame(0.0).unwrap();
+                assert!(frame.samples.is_empty());
+                assert_eq!(frame.now, 0.0);
+                assert_eq!(time.accumulator, remainder);
+            }
+        }
+    }
+}
+
+#[test]
+fn seek_construction_normalizes_targets_at_the_tolerance_boundary() {
+    let target = 0.5_f32 + 0.00000095;
+    assert_ne!(target, 0.5);
+    let time = control(TimeMode::Seek, target, 0.1, 16);
+    assert_eq!(time.simulation_time, 0.5);
+    assert_eq!(time.frame_index, 5);
+    assert_eq!(time.published_frame().now, 0.0);
+    assert!(matches!(
+        TimeControl::new(TimeMode::Seek, 0.5 + 0.0000011, 0.1, 4, 16),
+        Err(TimeError::NotOnStep { .. })
+    ));
+}
+
+#[test]
+fn seek_accepts_exactly_4096_steps_and_rejects_the_next_without_mutation() {
+    let mut time = control(TimeMode::Seek, 0.0, 0.1, 4096);
+    let frame = time.seek_frame(4096.0 * 0.1).unwrap();
+    assert_eq!(frame.samples.len(), 4096);
+    assert_eq!(frame.samples.last().unwrap().step_index, 4096);
+    assert_eq!(frame.now, 4096.0 * 0.1);
+    let before = time.clone();
+    assert!(matches!(
+        time.seek_frame(4097.0 * 0.1),
+        Err(TimeError::SeekLimitExceeded {
+            max_seek_steps: 4096,
+            ..
+        })
+    ));
+    assert_eq!(time, before);
+    assert!(TimeControl::new(TimeMode::Seek, 0.0, 0.1, 4, 4097).is_err());
 }
 
 #[test]
@@ -131,6 +186,47 @@ fn repeated_seek_has_identical_frame_and_state_hash() {
 }
 
 #[test]
+fn advance_failures_and_rejected_deltas_preserve_state_and_error_details() {
+    for mode in [TimeMode::FixedStep, TimeMode::WallClock] {
+        let mut time = control(mode, 0.0, 0.1, 16);
+        let mut system = TinySystem::healthy();
+        time.advance_and_step(0.1, &mut system).unwrap();
+        for delta in [f32::NAN, f32::INFINITY, -1.0] {
+            let before_time = time.clone();
+            let before_system = system.clone();
+            assert!(matches!(
+                time.advance_and_step(delta, &mut system),
+                Err(TimeError::InvalidWallDelta(_))
+            ));
+            assert_eq!(time, before_time);
+            assert_eq!(system, before_system);
+        }
+        for stage in [SimulationStage::Step, SimulationStage::Dispatch] {
+            system.fail_step = (stage == SimulationStage::Step).then_some(2);
+            system.fail_dispatch = stage == SimulationStage::Dispatch;
+            let before_time = time.clone();
+            let before_system = system.clone();
+            let TimeError::Simulation(error) = time.advance_and_step(0.1, &mut system).unwrap_err()
+            else {
+                panic!("expected typed simulation error");
+            };
+            assert_eq!(error.stage, stage);
+            assert_eq!(error.step_index, 2);
+            assert_eq!(
+                error.cause,
+                if stage == SimulationStage::Step {
+                    "injected step failure"
+                } else {
+                    "injected dispatch failure"
+                }
+            );
+            assert_eq!(time, before_time);
+            assert_eq!(system, before_system);
+        }
+    }
+}
+
+#[test]
 fn rejected_seek_and_each_failure_stage_roll_back_all_state() {
     let mut time = control(TimeMode::Seek, 0.0, 0.1, 16);
     let mut system = TinySystem::healthy();
@@ -154,6 +250,17 @@ fn rejected_seek_and_each_failure_stage_roll_back_all_state() {
         let before_system = system.clone();
         let error = time.seek_and_step(0.5, &mut system).unwrap_err();
         assert_eq!(error.stage(), Some(stage));
+        let TimeError::Simulation(details) = error else {
+            panic!("expected typed simulation error")
+        };
+        let (index, cause) = match stage {
+            SimulationStage::Reset => (0, "injected reset failure"),
+            SimulationStage::Step => (2, "injected step failure"),
+            SimulationStage::Dispatch => (5, "injected dispatch failure"),
+        };
+        assert_eq!(details.step_index, index);
+        assert_eq!(details.cause, cause);
+        assert_eq!(system.state_hash(), before_system.state_hash());
         assert_eq!(time, before_time);
         assert_eq!(system, before_system);
     }

@@ -1,52 +1,9 @@
 use aether_engine::visual_case::{ReferenceState, VisualManifest};
 use serde_json::{json, Value};
 
-fn case(id: &str) -> Value {
-    json!({
-        "manifest_version": 2,
-        "id": id,
-        "scene": "scenes/01_deferred.ron",
-        "launcher_args": ["--ssao"],
-        "render": {
-            "width": 1280,
-            "height": 720,
-            "frames": 1,
-            "no_gui_overlay": true,
-            "png": "rgba8"
-        },
-        "time": {
-            "mode": "seek",
-            "simulation_time": 0.5,
-            "fixed_dt": 0.1,
-            "max_substeps": 4,
-            "max_seek_steps": 4096
-        },
-        "camera": {"source": "scene", "override": null},
-        "reference": {
-            "path": "tests/reference/01_deferred.png",
-            "sha256": null,
-            "source_commit": null,
-            "os": null,
-            "driver": null,
-            "adapter": null,
-            "runner_version": null,
-            "width": null,
-            "height": null,
-            "format": null
-        },
-        "compare": {
-            "algorithm": "rgba8_normalized",
-            "exact_hash": false,
-            "allow_degraded_compare": false,
-            "ssim_min": 0.99,
-            "mae_max": 0.01,
-            "diff_percent_max": 0.01
-        },
-        "criteria": ["the scene is visible"],
-        "benchmark": null,
-        "variants": null
-    })
-}
+#[path = "support/visual_case.rs"]
+mod fixtures;
+use fixtures::{case, variant};
 
 fn parse(cases: Vec<Value>) -> Result<VisualManifest, aether_engine::visual_case::VisualCaseError> {
     VisualManifest::from_json(&serde_json::to_string(&cases).unwrap())
@@ -144,8 +101,10 @@ fn variants_materialize_to_independent_validated_case_ids() {
                 "max_substeps": 4, "max_seek_steps": 4096
             },
             "camera_override": null,
+            "benchmark_override": null,
             "expected_result": {
-                "kind": "render", "diagnostics": [], "fallbacks": [], "metrics": {}
+                "kind": "Render", "diagnostics": [], "fallbacks": [], "metrics": [],
+                "hashes": [], "probes": [], "graph": null
             }
         },
         {
@@ -156,8 +115,9 @@ fn variants_materialize_to_independent_validated_case_ids() {
                 "max_substeps": 4, "max_seek_steps": 4096
             },
             "camera_override": null,
+            "benchmark_override": null,
             "expected_result": {
-                "kind": "expected_error", "code": "E_TEST", "diagnostics": ["expected"]
+                "kind": "ExpectedError", "code": "E_TEST", "diagnostics": [{"code": "E_TEST", "severity": "error"}]
             }
         }
     ]);
@@ -174,16 +134,4 @@ fn variants_materialize_to_independent_validated_case_ids() {
     let mut invalid = case("base");
     invalid["variants"] = json!([variant("bad/id")]);
     assert!(parse(vec![invalid]).is_err());
-}
-
-fn variant(id: &str) -> Value {
-    json!({
-        "id": id,
-        "launcher_args_append": [],
-        "time_override": null,
-        "camera_override": null,
-        "expected_result": {
-            "kind": "render", "diagnostics": [], "fallbacks": [], "metrics": {}
-        }
-    })
 }

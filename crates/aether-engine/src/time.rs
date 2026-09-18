@@ -77,7 +77,7 @@ impl TimeControl {
         max_seek_steps: u32,
     ) -> Result<Self, TimeError> {
         validate_config(simulation_time, fixed_dt, max_substeps, max_seek_steps)?;
-        let control = Self {
+        let mut control = Self {
             mode,
             simulation_time,
             fixed_dt,
@@ -88,7 +88,9 @@ impl TimeControl {
             published: FrameTime::default(),
         };
         if mode == TimeMode::Seek {
-            control.normalize_seek(simulation_time)?;
+            let (step_index, normalized) = control.normalize_seek(simulation_time)?;
+            control.frame_index = step_index;
+            control.simulation_time = normalized;
         }
         Ok(control)
     }
@@ -200,10 +202,22 @@ impl TimeControl {
         let steps = match self.mode {
             TimeMode::FixedStep => 1,
             TimeMode::WallClock => {
-                let total = self.accumulator + wall_dt;
-                let available = ((total / self.fixed_dt) + 1e-6).floor() as u32;
-                self.accumulator = total - (available as f32 * self.fixed_dt);
-                available.min(self.max_substeps.min(4))
+                // f64 represents the sum and quotient for every accepted f32
+                // delta/dt pair, including MAX / the smallest subnormal dt.
+                // Reduce modulo dt before narrowing; never cast the unbounded
+                // catch-up count to an integer or subtract its rounded product.
+                let total = f64::from(self.accumulator) + f64::from(wall_dt);
+                let dt = f64::from(self.fixed_dt);
+                let cap = self.max_substeps.min(4);
+                let mut steps = (total / dt).floor().min(f64::from(cap)) as u32;
+                let remainder = total % dt;
+                self.accumulator = if dt - remainder <= dt * 1e-6 {
+                    steps = (steps + 1).min(cap);
+                    0.0
+                } else {
+                    remainder as f32
+                };
+                steps
             }
             TimeMode::Seek => unreachable!(),
         };
