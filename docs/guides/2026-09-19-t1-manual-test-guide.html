@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Aether Engine · T1 人工跑测指南</title>
+  <style>
+    :root{color-scheme:light;--ink:#172033;--muted:#667085;--line:#d0d5dd;--blue:#2563eb;--green:#15803d;--amber:#b54708;--red:#b42318;--panel:#f8fafc}
+    *{box-sizing:border-box}
+    body{font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:1060px;margin:0 auto;padding:32px;color:var(--ink);background:#fff}
+    h1{font-size:30px;line-height:1.2;margin:0 0 8px}h2{margin-top:34px;padding-top:12px;border-top:1px solid var(--line)}h3{margin-bottom:6px}
+    .meta{color:var(--muted);margin:0 0 24px}.callout,.warning{padding:14px 16px;border-left:4px solid var(--blue);background:#eff6ff;margin:16px 0}.warning{border-color:var(--amber);background:#fffaeb}
+    code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:#f2f4f7;padding:2px 5px;border-radius:4px}pre{background:#101828;color:#f2f4f7;padding:15px;overflow:auto;border-radius:8px;white-space:pre-wrap}
+    table{border-collapse:collapse;width:100%;margin:12px 0 20px}th,td{border:1px solid var(--line);padding:9px;vertical-align:top;text-align:left}th{background:var(--panel)}
+    .checklist{display:grid;gap:9px;margin:12px 0}.check{display:flex;gap:9px;align-items:flex-start;padding:9px 10px;border:1px solid var(--line);border-radius:7px}.check input{margin-top:5px;accent-color:var(--green)}
+    .pass{color:var(--green);font-weight:600}.fail{color:var(--red);font-weight:600}.muted{color:var(--muted)}.small{font-size:13px;color:var(--muted)}
+    .step{counter-increment:step}.step::before{content:counter(step);display:inline-grid;place-items:center;width:24px;height:24px;margin-right:7px;border-radius:50%;background:var(--blue);color:#fff;font-weight:700}
+    ol.steps{counter-reset:step;list-style:none;padding:0}ol.steps li{margin:12px 0;padding-left:0}footer{margin-top:36px;padding-top:16px;border-top:1px solid var(--line);color:var(--muted)}
+  </style>
+</head>
+<body>
+  <h1>T1 · 编辑器事务与快照：人工跑测指南</h1>
+  <p class="meta">版本：2026-09-19 · 目标：低成本验证 T1，不启动全量渲染回归，不开多个命令行窗口。</p>
+
+  <div class="callout">
+    <strong>先看结论：</strong> T1 的核心验收是“事务、快照、回滚、JSONL replay”的定向测试，不是截图测试。
+    当前启动器的 Inspector 仍使用旧的编辑命令路径，所以 UI 冒烟只能证明编辑器还能启动、编辑、撤销、保存，不能单独证明新 <code>EditorHistory</code> API 已经接入 UI。
+  </div>
+
+  <h2>0. 测试范围</h2>
+  <table>
+    <tr><th>项目</th><th>本次是否覆盖</th><th>说明</th></tr>
+    <tr><td>Apply / Undo / Redo 失败回滚</td><td class="pass">是</td><td>包括文件保存失败时 world 与 history 不被破坏。</td></tr>
+    <tr><td>Snapshot schema v2</td><td class="pass">是</td><td>白名单组件序列化，并排除运行时 Entity bits。</td></tr>
+    <tr><td>Copy / Delete / Rename / AddComponent</td><td class="pass">是</td><td>通过稳定名称和 JSONL 操作重放验证。</td></tr>
+    <tr><td>Metal / 光照 / 阴影 / SSAO / SSR 截图</td><td>否</td><td>T1 不改渲染管线；不要为 T1 跑全量截图矩阵。</td></tr>
+    <tr><td>启动器 Inspector UI</td><td>人工冒烟</td><td>验证当前 UI 可启动、编辑、撤销、保存、重开。</td></tr>
+  </table>
+
+  <h2>1. 推荐跑法：一次命令完成 T1 定向验收</h2>
+  <p>只需要一个终端窗口，在项目根目录执行：</p>
+  <pre>cd /Users/ruochenhua/AetherEngine
+./scripts/verify-editor-t1.sh 20260919-t1-manual</pre>
+  <p>预期输出：</p>
+  <pre>T1 report: tests/reports/20260919-t1-manual.html</pre>
+  <p>然后打开报告：</p>
+  <pre>open /Users/ruochenhua/AetherEngine/tests/reports/20260919-t1-manual.html</pre>
+  <p>报告中的三个 primary case 都应为 <span class="pass">PASS</span>：</p>
+  <table>
+    <tr><th>Case</th><th>验证内容</th><th>通过标准</th></tr>
+    <tr><td><code>t1_editor_transaction</code></td><td>保存失败、Undo/Redo 保存失败时的原子回滚</td><td>测试进程退出码为 0；报告显示 PASS。</td></tr>
+    <tr><td><code>t1_snapshot_whitelist</code></td><td>schema v2 快照与运行时字段隔离</td><td>快照只包含白名单组件，不包含 Entity bits。</td></tr>
+    <tr><td><code>t1_editor_command_replay</code></td><td>命令序列、Undo/Redo、JSONL replay 的确定性</td><td>replay 后 state hash 与原状态一致。</td></tr>
+  </table>
+
+  <div class="checklist" data-checklist="t1-core">
+    <label class="check"><input type="checkbox"><span>定向脚本一次通过，生成了 HTML 报告</span></label>
+    <label class="check"><input type="checkbox"><span>三个 primary case 均显示 PASS</span></label>
+    <label class="check"><input type="checkbox"><span>没有启动额外 launcher 或多个命令行窗口</span></label>
+  </div>
+
+  <h2>2. 想看完整 Rust 测试输出时</h2>
+  <p>仍然在同一个终端执行：</p>
+  <pre>cargo test -p aether-engine editor::tests -- --nocapture</pre>
+  <p>当前应有 7 个 editor 测试通过。若某个测试失败，先保留终端输出和上一步生成的 HTML，不要立即重跑全量 CI。</p>
+
+  <h2>3. 人工启动器冒烟（可选）</h2>
+  <p>这一节验证当前编辑器 UI 的基本可用性。它不是 T1 核心事务 API 的完整 UI 验收。</p>
+  <ol class="steps">
+    <li class="step">构建一次 release launcher（如果最近已经构建过，可跳过）：<pre>cargo build --workspace --release</pre></li>
+    <li class="step">用一个终端启动编辑器，建议先使用编辑器综合场景：<pre>target/release/aether-launcher --scene scenes/15_editor_terrain_water.ron</pre></li>
+    <li class="step">在层级面板选择一个对象，修改 Transform 或材质参数，确认画面和 Inspector 会更新。</li>
+    <li class="step">按 <code>Cmd+Z</code>（Windows/Linux 使用 <code>Ctrl+Z</code>），确认修改撤销；再按 <code>Cmd+Y</code>/<code>Ctrl+Y</code>，确认修改恢复。</li>
+    <li class="step">使用 File → Save Scene 保存到一个临时路径，例如 <code>/tmp/aether-t1-manual.ron</code>；关闭后用该文件重新打开，确认修改仍在。</li>
+    <li class="step">结束时只关闭这一个 launcher 窗口；终端回到 shell 后，用下面命令确认没有残留进程：<pre>pgrep -fl 'aether-launcher|cargo test|verify-editor-t1' || true</pre></li>
+  </ol>
+
+  <div class="warning">
+    <strong>如果启动器没有到第一帧：</strong> 不要连续开多个窗口，也不要继续启动全量场景。记录终端最后 30～50 行，关闭窗口或在同一终端按 <code>Ctrl+C</code>，再把输出和场景名发回来。这属于 launcher/runtime 启动问题，不要归因给 T1 事务逻辑。
+  </div>
+
+  <h2>4. 可选截图冒烟</h2>
+  <p>T1 本身不要求截图对比；如果你想顺手确认启动器能自动退出并生成一张截图，只跑一个场景：</p>
+  <pre>target/release/aether-launcher \
+  --scene scenes/15_editor_terrain_water.ron \
+  --screenshot /tmp/aether-t1-manual.png \
+  --exit-after-frames 60 \
+  --no-gui-overlay \
+  --freeze-time</pre>
+  <p>通过标准：进程自行退出、<code>/tmp/aether-t1-manual.png</code> 存在且能打开。截图只作为启动器冒烟证据，不更新任何视觉 reference。</p>
+
+  <h2>5. 结果记录模板</h2>
+  <table>
+    <tr><th>字段</th><th>填写</th></tr>
+    <tr><td>测试时间</td><td>____________________________</td></tr>
+    <tr><td>机器 / macOS</td><td>____________________________</td></tr>
+    <tr><td>定向报告</td><td><code>tests/reports/20260919-t1-manual.html</code></td></tr>
+    <tr><td>三个 primary case</td><td>□ 全部 PASS　□ 有 FAIL</td></tr>
+    <tr><td>启动器冒烟</td><td>□ 通过　□ 未启动到第一帧　□ 未执行</td></tr>
+    <tr><td>截图冒烟</td><td>□ 通过　□ 失败　□ 未执行</td></tr>
+    <tr><td>异常输出 / 截图路径</td><td>____________________________</td></tr>
+  </table>
+
+  <h2>6. 失败时只需要反馈什么</h2>
+  <ul>
+    <li>失败的命令。</li>
+    <li>HTML 报告路径，或终端最后 30～50 行。</li>
+    <li>如果是启动器问题：使用的场景名、是否显示窗口、是否到达第一帧。</li>
+    <li>如果是截图问题：PNG 的绝对路径和打开后的现象。</li>
+  </ul>
+
+  <footer>本指南只针对 T1。渲染管线、SSAO、SSR、阴影等后续任务应各自建立专门场景、专门截图和专门回归记录。</footer>
+  <script>
+    for (const group of document.querySelectorAll('[data-checklist]')) {
+      const key = 'aether:' + group.dataset.checklist;
+      const saved = JSON.parse(localStorage.getItem(key) || '[]');
+      group.querySelectorAll('input').forEach((box, index) => {
+        box.checked = Boolean(saved[index]);
+        box.addEventListener('change', () => {
+          localStorage.setItem(key, JSON.stringify([...group.querySelectorAll('input')].map(item => item.checked)));
+        });
+      });
+    }
+  </script>
+</body>
+</html>
