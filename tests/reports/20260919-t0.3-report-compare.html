@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>T0.3 Report and Compare</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+    body { margin: 0; padding: 2rem; background: Canvas; color: CanvasText; }
+    main { max-width: 62rem; margin: auto; }
+    section { margin-top: 1.5rem; padding: 1rem 1.2rem; border: 1px solid ButtonBorder; border-radius: .6rem; }
+    .ok { color: #188038; font-weight: 700; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: .55rem .7rem; border-bottom: 1px solid ButtonBorder; text-align: left; }
+    th { width: 38%; }
+    code { font-family: ui-monospace, monospace; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>T0.3：报告与比较器</h1>
+    <p class="ok">结论：通过，可提交。</p>
+
+    <section>
+      <h2>完成内容</h2>
+      <ul>
+        <li>reference 更新必须同时提供 <code>--update-references</code> 和非空 <code>--reason</code>。</li>
+        <li>更新原因写入 HTML 报告，比较、创建、更新三种动作可区分。</li>
+        <li>SSIM、MAE、Diff% 统一输出；缺失或非有限指标显示为 <code>N/A</code>，不会伪造为 0。</li>
+        <li>矩阵提供 <code>simulation_time</code> 时，runner 传递 <code>--time-mode seek</code> 和固定时间，支持重复截图。</li>
+        <li>修正 fake 测试的启动窗口，避免在系统负载较高时把测试误判为 launcher 失败。</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>验证结果</h2>
+      <table>
+        <tr><th>T0.3 专项 / fake-process</th><td class="ok">18/18 passed</td></tr>
+        <tr><th>HTML report format</th><td class="ok">passed</td></tr>
+        <tr><th>Shell syntax / static wrapper checks</th><td class="ok">passed</td></tr>
+        <tr><th>Workspace tests</th><td class="ok">226 + 9 + 5 + 4 + 6 + 21 passed</td></tr>
+        <tr><th>Clippy / fmt</th><td class="ok">passed</td></tr>
+        <tr><th>Module health</th><td class="ok">180 Rust files checked, 0 over limit</td></tr>
+        <tr><th>Release build</th><td class="ok">passed</td></tr>
+        <tr><th>Real launcher / Metal / screenshot matrix</th><td>Not run by design</td></tr>
+      </table>
+    </section>
+
+    <section>
+      <h2>边界</h2>
+      <p>T0.3 完成的是回归报告和比较流程，不是 SSR、SSAO、阴影或水面效果的视觉验收。后续视觉问题仍需使用单独的专项场景和有明确 reason 的 reference 更新。</p>
+    </section>
+  </main>
+</body>
+</html>

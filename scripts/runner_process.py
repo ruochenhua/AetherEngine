@@ -139,7 +139,13 @@ def load_cases(args):
             for flag in ('ssao', 'ssr'):
                 if item.get(flag, False):
                     argv += ['--' + flag]
-            argv += ['--freeze-time', '--width', str(item.get('width', defaults.get('width', 1280))),
+            simulation_time = item.get('simulation_time', defaults.get('simulation_time'))
+            if simulation_time is not None:
+                argv += ['--time-mode', item.get('time_mode', defaults.get('time_mode', 'seek')),
+                         '--simulation-time', str(simulation_time)]
+            elif item.get('freeze_time', defaults.get('freeze_time', True)):
+                argv += ['--freeze-time']
+            argv += ['--width', str(item.get('width', defaults.get('width', 1280))),
                      '--height', str(item.get('height', defaults.get('height', 720)))]
             cases.append({'id': name, 'scene': item['scene'], 'launcher_args': argv, 'output': output})
     ids = [case['id'] for case in cases]

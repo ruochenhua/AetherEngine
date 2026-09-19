@@ -45,8 +45,9 @@ cargo run --bin aether-launcher -- \
   --width 2560 \
   --height 1440
 
-# Promote to reference
-cp tests/output/XX_name.png tests/reference/XX_name.png
+# Promote to reference after reviewing the HTML report
+./scripts/verify-regression.sh --scene XX_name \
+  --update-references --reason "approved new scene baseline"
 git add tests/reference/XX_name.png
 ```
 
@@ -63,14 +64,22 @@ Use `scripts/verify-regression.sh` to run the whole matrix or a single scene:
 ./scripts/verify-regression.sh --scene 13_clouds
 
 # Generate or update golden references (only after reviewing the new screenshots)
-./scripts/verify-regression.sh --update-references
+./scripts/verify-regression.sh --update-references --reason "approved baseline refresh"
 ```
 
-The runner captures deterministic screenshots (`--freeze-time`, `--no-gui-overlay`,
-fixed physical size), compares them with `tests/reference/*.png`, writes diff
-images, and generates an HTML report under `tests/reports/`. Static debug scenes
-such as the SSAO mode 14 cases use one frozen frame; scenes with temporal effects
-retain longer frame windows in the matrix.
+The runner captures deterministic screenshots (`--freeze-time` or an explicit
+`--simulation-time`, always with `--no-gui-overlay` and fixed physical size),
+compares them with `tests/reference/*.png`, writes diff images, and generates an
+HTML report under `tests/reports/`. Static debug scenes such as the SSAO mode 14
+cases use one frozen frame; scenes with temporal effects retain longer frame
+windows in the matrix. When `simulation_time` is present in a matrix default or
+scene, the runner passes `--time-mode seek --simulation-time <seconds>` so
+repeated captures use the same deterministic sample.
+
+Reference promotion is deliberately separate from comparison. It requires both
+`--update-references` and a non-empty `--reason TEXT`; the reason is recorded in
+the HTML report. A launcher, screenshot, or comparator failure never updates a
+reference.
 
 The runner waits three seconds between successful launcher processes by default.
 This is required for reliable Metal teardown on macOS when many scenes are run

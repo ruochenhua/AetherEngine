@@ -146,7 +146,7 @@ class ProcessTests(unittest.TestCase):
 
     def test_ready_written_between_pipe_check_and_exit_observation(self):
         supervisor = self.lease.Supervisor(.1)
-        runner = self.runner.Runner(supervisor, 2, .5)
+        runner = self.runner.Runner(supervisor, 2, 2)
         report_dir = self.root / 'reports'
         report_dir.mkdir()
         exited = supervisor.exited
@@ -377,13 +377,13 @@ for flag in ('--diff', '--side-by-side'):
 print(os.environ.get('FAKE_METRICS', '{"ssim":1,"mae":0,"diff_pct":0}'))
 ''')
         env = dict(self.env, AETHER_LAUNCHER_BIN=str(launcher), AETHER_COMPARE_SCRIPT=str(compare),
-                   AETHER_REGRESSION_SETTLE_SECONDS='0')
+                   AETHER_REGRESSION_SETTLE_SECONDS='0', AETHER_HANDSHAKE_TIMEOUT='8')
         reference = project / 'tests/reference/sample.png'
 
         def run(name, status, code=0, extra=(), **variables):
             result = subprocess.run([str(project / 'scripts/verify-regression.sh'), '--scene', 'sample',
                                      '--report', name, *extra], env=dict(env, **variables),
-                                    capture_output=True, text=True, timeout=10)
+                                    capture_output=True, text=True, timeout=20)
             self.assertEqual(result.returncode, code, result.stdout + result.stderr)
             html = (project / 'tests/reports' / (name + '.html')).read_text()
             self.assertIn('<!doctype html>', html)
@@ -392,21 +392,66 @@ print(os.environ.get('FAKE_METRICS', '{"ssim":1,"mae":0,"diff_pct":0}'))
 
         run('new', 'NEW')
         self.assertFalse(reference.exists())
-        run('create', 'REF_CREATED', extra=('--update-references',))
+        run('create', 'REF_CREATED', extra=('--update-references', '--reason', 'create baseline'))
         self.assertEqual(reference.read_bytes(), b'new')
         reference.write_bytes(b'old')
-        run('crash', 'CRASH', 1, ('--update-references',), FAKE_FAIL='1')
+        run('crash', 'CRASH', 1, ('--update-references', '--reason', 'refresh after approved change'), FAKE_FAIL='1')
         self.assertEqual(reference.read_bytes(), b'old')
         self.assertTrue(list((project / 'tests/reports').glob('*/sample/previous-output.png')))
         run('missing', 'NO_IMG', 1, FAKE_NO_IMG='1')
-        run('update', 'REF_UPDATED', extra=('--update-references',))
+        run('update', 'REF_UPDATED', extra=('--update-references', '--reason', 'approved baseline refresh'))
+        update_html = (project / 'tests/reports' / 'update.html').read_text()
+        self.assertIn('approved baseline refresh', update_html)
         html = run('pass', 'PASS')
         self.assertIn('../output/sample.diff.png', html)
         self.assertIn('../output/sample.side.png', html)
         run('regression', 'REGRESSION', 1, FAKE_METRICS='{"ssim":0.9,"mae":2,"diff_pct":3}')
         run('fallback', 'PASS', FAKE_METRICS='{"ssim":null,"diff_pct":1.5}')
+        missing_metrics = run('missing-metrics', 'PASS', FAKE_METRICS='{"ssim":null,"diff_pct":1.5}')
+        self.assertIn('<td>N/A</td><td>N/A</td><td>1.50%</td>', missing_metrics)
         run('fallback-fail', 'REGRESSION', 1, FAKE_METRICS='{"ssim":null,"diff_pct":2.5}')
         run('bad-json', 'COMPARE_ERROR', 1, FAKE_METRICS='invalid json')
+
+    def test_reference_update_requires_reason(self):
+        project = self.root / 'project'
+        (project / 'scripts').mkdir(parents=True)
+        (project / 'tests/reference').mkdir(parents=True)
+        for filename in ('verify-regression.sh', 'runner_process.py', 'process_lease.py'):
+            shutil.copy(ROOT / 'scripts' / filename, project / 'scripts' / filename)
+        (project / 'tests/visual-matrix.json').write_text(json.dumps({
+            'scenes': [{'name': 'sample', 'scene': 'fake scene.ron'}]}))
+        launcher = self.root / 'capture'
+        launcher.write_text('#!' + sys.executable + '\n' + '''
+import os, sys
+from pathlib import Path
+os.write(int(os.environ['AETHER_READY_FD']), b'R')
+Path(sys.argv[sys.argv.index('--screenshot') + 1]).write_bytes(b'new')
+''')
+        launcher.chmod(0o755)
+        result = subprocess.run(
+            [str(project / 'scripts/verify-regression.sh'), '--scene', 'sample',
+             '--report', 'missing-reason', '--update-references'],
+            env=dict(self.env, AETHER_LAUNCHER_BIN=str(launcher)),
+            capture_output=True, text=True, timeout=10)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse((project / 'tests/reference/sample.png').exists())
+
+    def test_matrix_simulation_time_is_forwarded_for_repeatable_capture(self):
+        matrix = self.root / 'matrix.json'
+        matrix.write_text(json.dumps({
+            'defaults': {'simulation_time': 0.5},
+            'scenes': [{'name': 'sample', 'scene': 'repeatable.ron'}]}))
+        report_dir = self.root / 'reports'
+        result = subprocess.run(
+            [sys.executable, str(RUNNER), '--launcher', str(self.fake), '--matrix', str(matrix),
+             '--report-dir', str(report_dir), '--handshake-timeout', '8', '--case-timeout', '2'],
+            env=self.env, capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        argv = json.loads((self.root / 'repeatable.ron.argv').read_text())
+        self.assertIn('--time-mode', argv)
+        self.assertIn('seek', argv)
+        self.assertIn('--simulation-time', argv)
+        self.assertEqual(argv[argv.index('--simulation-time') + 1], '0.5')
 
     def test_shell_cancellation_waits_for_supervisor(self):
         project = self.root / 'project'

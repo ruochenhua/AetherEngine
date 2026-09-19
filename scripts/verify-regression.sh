@@ -4,7 +4,7 @@
 # Usage:
 #   ./scripts/verify-regression.sh                 # run all scenes in tests/visual-matrix.json
 #   ./scripts/verify-regression.sh --scene 13_clouds
-#   ./scripts/verify-regression.sh --update-references
+#   ./scripts/verify-regression.sh --update-references --reason "approved baseline refresh"
 #
 # The script captures screenshots from the launcher, compares them with
 # tests/reference/*.png when available, and writes an HTML report to
@@ -29,6 +29,7 @@ REGRESSION_SETTLE_SECONDS="${AETHER_REGRESSION_SETTLE_SECONDS:-3}"
 
 FILTER=""
 UPDATE_REFS=false
+REFERENCE_REASON=""
 REPORT_NAME=""
 
 while [[ $# -gt 0 ]]; do
@@ -41,17 +42,31 @@ while [[ $# -gt 0 ]]; do
             UPDATE_REFS=true
             shift
             ;;
+        --reason|--reference-reason)
+            [[ $# -ge 2 ]] || { echo "Missing value for $1" >&2; exit 2; }
+            REFERENCE_REASON="$2"
+            shift 2
+            ;;
         --report)
             REPORT_NAME="$2"
             shift 2
             ;;
         *)
             echo "Unknown argument: $1" >&2
-            echo "Usage: $0 [--scene NAME] [--update-references] [--report NAME]" >&2
+            echo "Usage: $0 [--scene NAME] [--update-references --reason TEXT] [--report NAME]" >&2
             exit 2
             ;;
     esac
 done
+
+if [[ "$UPDATE_REFS" == "true" && -z "$REFERENCE_REASON" ]]; then
+    echo "--update-references requires --reason TEXT" >&2
+    exit 2
+fi
+if [[ "$UPDATE_REFS" != "true" && -n "$REFERENCE_REASON" ]]; then
+    echo "--reason is only valid with --update-references" >&2
+    exit 2
+fi
 
 mkdir -p "$OUTPUT_DIR" "$REFERENCE_DIR" "$REPORT_DIR"
 
@@ -168,6 +183,11 @@ if [[ -z "$MATRIX_ROWS" ]]; then
 fi
 
 REPORT_TIMESTAMP="$(date +%Y-%m-%d\ %H:%M:%S)"
+REFERENCE_ACTION="compare"
+if [[ "$UPDATE_REFS" == "true" ]]; then
+    REFERENCE_ACTION="update"
+fi
+ESCAPED_REFERENCE_REASON="$(html_escape "${REFERENCE_REASON:-not requested}")"
 cat > "$REPORT_FILE" <<EOF
 <!doctype html>
 <html lang="en">
@@ -193,6 +213,7 @@ cat > "$REPORT_FILE" <<EOF
   <main>
     <h1>Visual Regression Report</h1>
     <p class="meta">Generated: $REPORT_TIMESTAMP</p>
+    <p class="meta">Reference action: $REFERENCE_ACTION · Reason: $ESCAPED_REFERENCE_REASON</p>
     <table>
       <thead>
         <tr><th scope="col">Scene</th><th scope="col">Status</th><th scope="col">SSIM</th><th scope="col">MAE</th><th scope="col">Diff%</th><th scope="col">Images</th></tr>
@@ -297,9 +318,11 @@ PY
         continue
     fi
 
-    # Parse metrics from JSON in Python; missing/NaN values become N/A.
+# Parse metrics from JSON in Python; missing/non-finite values become N/A.
+# At least one decision metric (SSIM or Diff%) must be present.
     if ! parsed="$(python3 - "$METRICS" <<'PY'
 import json
+import math
 import sys
 
 raw = sys.argv[1] if len(sys.argv) > 1 else ""
@@ -308,14 +331,18 @@ try:
 except Exception:
     raise SystemExit(1)
 
-ssim = data.get("ssim")
-if ssim is None:
-    ssim = "N/A"
-else:
-    ssim = f"{ssim:.4f}"
-mae = data.get("mae", 0)
-diff_pct = data.get("diff_pct", 0)
-print(f"{ssim}\t{mae:.2f}\t{diff_pct:.2f}")
+def finite_number(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+ssim_value = data.get("ssim")
+mae_value = data.get("mae")
+diff_value = data.get("diff_pct")
+if not finite_number(ssim_value) and not finite_number(diff_value):
+    raise SystemExit(1)
+ssim = f"{ssim_value:.4f}" if finite_number(ssim_value) else "N/A"
+mae = f"{mae_value:.2f}" if finite_number(mae_value) else "N/A"
+diff_pct = f"{diff_value:.2f}" if finite_number(diff_value) else "N/A"
+print(f"{ssim}\t{mae}\t{diff_pct}")
 PY
     )"; then
         echo "  ❌ COMPARE_ERROR for $name (invalid metrics)"
@@ -346,7 +373,7 @@ PY
         else
             status_metric="❌ REGRESSION"
         fi
-    elif python3 - "$diff_metric" <<'PY'
+    elif [[ "$diff_metric" != "N/A" ]] && python3 - "$diff_metric" <<'PY'
 import sys
 # Without scikit-image we use a looser fallback because identical-looking
 # screenshots can still have ~1% pixels with small numeric differences.
