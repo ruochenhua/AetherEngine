@@ -39,6 +39,7 @@ tests/output/
 tests/reports/
 PixPin_2026-06-06_14-45-29.png
 .worktrees/
+.reasonix/
 
 # Issue feature output (screenshots, comparison images, etc.)
 output/
