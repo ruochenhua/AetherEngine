@@ -195,6 +195,14 @@
       "height": 720,
       "ssr": true,
       "threshold": 0.99
+    },
+    {
+      "name": "t2_three_local_lights",
+      "scene": "scenes/23_three_local_lights.ron",
+      "frames": 60,
+      "width": 1280,
+      "height": 720,
+      "threshold": 0.99
     }
   ]
 }
