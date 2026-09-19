@@ -45,6 +45,18 @@ struct LightingUniforms {
     _pad4: u32,
 };
 
+struct GpuLocalLight {
+    position_range: vec4<f32>,
+    color_intensity: vec4<f32>,
+    direction_inner_cos: vec4<f32>,
+    outer_cos_type_pad: vec4<u32>,
+};
+
+struct LocalLightParams {
+    count: u32,
+    _pad: vec3<u32>,
+};
+
 @group(0) @binding(0) var gbuffer_position: texture_2d<f32>;
 @group(0) @binding(1) var gbuffer_normal: texture_2d<f32>;
 @group(0) @binding(2) var gbuffer_albedo: texture_2d<f32>;
@@ -64,6 +76,9 @@ struct LightingUniforms {
 @group(3) @binding(4) var env_map: texture_cube<f32>;
 
 @group(0) @binding(5) var ao_texture: texture_2d<f32>;
+
+@group(3) @binding(5) var<storage, read> local_lights: array<GpuLocalLight>;
+@group(3) @binding(6) var<uniform> local_light_params: LocalLightParams;
 
 // ── Cook-Torrance BRDF ──────────────────────────────────────────────
 
@@ -90,6 +105,34 @@ fn geometry_smith(NdotV: f32, NdotL: f32, roughness: f32) -> f32 {
 
 fn fresnel_schlick(cos_theta: f32, F0: vec3<f32>) -> vec3<f32> {
     return F0 + (vec3<f32>(1.0) - F0) * pow(clamp(1.0 - cos_theta, 0.0, 1.0), 5.0);
+}
+
+fn evaluate_direct_light(
+    N: vec3<f32>,
+    V: vec3<f32>,
+    albedo: vec3<f32>,
+    roughness: f32,
+    metallic: f32,
+    L: vec3<f32>,
+    radiance: vec3<f32>,
+) -> vec3<f32> {
+    let F0 = mix(vec3<f32>(0.04), albedo, metallic);
+    let H = normalize(L + V);
+    let NdotL = max(dot(N, L), 0.0);
+    let NdotV = max(dot(N, V), 0.0);
+    let NdotH = max(dot(N, H), 0.0);
+    let VdotH = max(dot(V, H), 0.0);
+    let NDF = distribution_ggx(NdotH, roughness);
+    let G = geometry_smith(NdotV, NdotL, roughness);
+    let F = fresnel_schlick(VdotH, F0);
+    let numerator = NDF * G * F;
+    let denominator = 4.0 * NdotV * NdotL + 0.0001;
+    let specular = numerator / denominator;
+    let kS = F;
+    let kD = (vec3<f32>(1.0) - kS) * (1.0 - metallic);
+    let diffuse = kD * albedo / PI * NdotL * radiance;
+    let specular_direct = specular * NdotL * radiance;
+    return diffuse + specular_direct;
 }
 
 @fragment
@@ -219,6 +262,33 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
     let direct_light = lit_color * shadow_factor;
 
+    // Local point/spot lights are evaluated without shadowing in T2. Their
+    // deterministic order and count are supplied by the extract phase.
+    var local_direct = vec3<f32>(0.0);
+    for (var local_index: u32 = 0u; local_index < local_light_params.count; local_index = local_index + 1u) {
+        let local = local_lights[local_index];
+        let to_light = local.position_range.xyz - world_pos;
+        let distance_squared = max(dot(to_light, to_light), 0.0001);
+        let distance_to_light = sqrt(distance_squared);
+        if (distance_to_light < local.position_range.w) {
+            let L_local = to_light / distance_to_light;
+            let range_weight = 1.0 - distance_to_light / local.position_range.w;
+            var cone_weight = 1.0;
+            if (local.outer_cos_type_pad.y == 1u) {
+                let surface_direction = normalize(world_pos - local.position_range.xyz);
+                let cos_theta = dot(normalize(local.direction_inner_cos.xyz), surface_direction);
+                let outer_cos = bitcast<f32>(local.outer_cos_type_pad.x);
+                cone_weight = smoothstep(outer_cos, local.direction_inner_cos.w, cos_theta);
+            }
+            let attenuation = range_weight * range_weight / distance_squared;
+            let radiance_local = local.color_intensity.rgb * local.color_intensity.w * attenuation * cone_weight;
+            local_direct = local_direct + evaluate_direct_light(
+                N, V, albedo, roughness, metallic, L_local, radiance_local
+            );
+        }
+    }
+    let direct_with_locals = direct_light + local_direct;
+
     // IBL (Image-Based Lighting) — uses same F (Fresnel) and kD as direct light
     let R = reflect(-V, N);
 
@@ -235,7 +305,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         ibl_light = diffuse_ibl + specular_ibl;
     }
 
-    let final_color = direct_light + ibl_light * ao;
+    let final_color = direct_with_locals + ibl_light * ao;
 
     if (uniforms.debug_mode == 1u) {
         output_color = ambient;
@@ -253,7 +323,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         output_color = vec3<f32>(d);
     } else if (uniforms.debug_mode == 7u) {
         // Direct lighting only (no IBL)
-        output_color = direct_light;
+        output_color = direct_with_locals;
     } else if (uniforms.debug_mode == 8u) {
         // IBL only (no direct)
         output_color = ibl_light;

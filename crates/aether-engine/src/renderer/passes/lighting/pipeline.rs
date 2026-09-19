@@ -1,11 +1,14 @@
 //! Lighting pass pipeline creation.
 //!
 //! Builds the 8-variant lighting pipeline (combinations of SSAO/shadow/IBL),
-//! bind group layouts, and the IBL bind group.
+//! bind group layouts, local-light storage, and the IBL bind group.
 
 use wgpu::util::DeviceExt;
 
 mod shaders;
+
+#[cfg(test)]
+mod shader_tests;
 
 /// Create placeholder IBL resources (white environment) when no HDR is loaded.
 pub(super) fn create_placeholder_ibl(device: &wgpu::Device) -> crate::renderer::ibl::IblResources {
@@ -183,6 +186,26 @@ pub(super) fn build_lighting_pipeline(
                 },
                 count: None,
             },
+            wgpu::BindGroupLayoutEntry {
+                binding: 5,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 6,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
         ],
     });
 
@@ -268,6 +291,22 @@ pub(super) fn build_lighting_pipeline(
         mapped_at_creation: false,
     });
 
+    let local_lights_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("Local Lights Storage Buffer"),
+        size: (std::mem::size_of::<crate::renderer::light::GpuLocalLight>()
+            * crate::renderer::light::MAX_LOCAL_LIGHTS) as wgpu::BufferAddress,
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+
+    let local_light_params_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("Local Light Params Buffer"),
+        size: std::mem::size_of::<crate::renderer::light::GpuLocalLightParams>()
+            as wgpu::BufferAddress,
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+
     let uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("Lighting Uniform Bind Group"),
         layout: &uniform_bind_group_layout,
@@ -317,6 +356,14 @@ pub(super) fn build_lighting_pipeline(
                 binding: 4,
                 resource: wgpu::BindingResource::TextureView(&ibl.env_view),
             },
+            wgpu::BindGroupEntry {
+                binding: 5,
+                resource: local_lights_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 6,
+                resource: local_light_params_buffer.as_entire_binding(),
+            },
         ],
     });
 
@@ -324,6 +371,8 @@ pub(super) fn build_lighting_pipeline(
         pipelines,
         uniform_buffer,
         uniform_bind_group,
+        local_lights_buffer,
+        local_light_params_buffer,
         quad_vertex_buffer,
         quad_vertex_count: 6,
         texture_bind_group_layout,
@@ -338,6 +387,8 @@ pub(super) struct LightingPipelineObjects {
     pub pipelines: [wgpu::RenderPipeline; 8],
     pub uniform_buffer: wgpu::Buffer,
     pub uniform_bind_group: wgpu::BindGroup,
+    pub local_lights_buffer: wgpu::Buffer,
+    pub local_light_params_buffer: wgpu::Buffer,
     pub quad_vertex_buffer: wgpu::Buffer,
     pub quad_vertex_count: u32,
     pub texture_bind_group_layout: wgpu::BindGroupLayout,

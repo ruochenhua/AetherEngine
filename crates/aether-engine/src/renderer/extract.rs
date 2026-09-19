@@ -16,6 +16,7 @@ use crate::ecs::components::{
 };
 use crate::ecs::World;
 use crate::math::{CullingVisibility, Frustum, Mat4};
+use crate::renderer::lighting::LightingFrame;
 use crate::renderer::renderable::MaterialUniform;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -71,6 +72,8 @@ pub struct RenderBatch {
 /// struct in `apply_frame` instead of querying the ECS World directly.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct OptionalPassData {
+    /// Unified extracted lighting frame shared by lighting and volumetric consumers.
+    pub lighting: LightingFrame,
     /// Terrain component for `TerrainPass`.
     pub terrain: Option<Terrain>,
     /// Water component for `WaterPass`.
@@ -168,6 +171,7 @@ pub fn extract_render_batches_with_frustum_culling(
 /// `should_run`.
 pub fn extract_optional_pass_data(world: &World) -> OptionalPassData {
     OptionalPassData {
+        lighting: crate::renderer::lighting::extract_lighting_frame(world, 0.0),
         terrain: world.query::<&Terrain>().iter().next().cloned(),
         water: world.query::<&Water>().iter().next().cloned(),
         atmosphere: world.query::<&Atmosphere>().iter().next().cloned(),

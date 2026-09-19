@@ -87,6 +87,43 @@ fn parse_multiple_objects_with_light() {
 }
 
 #[test]
+fn scene_description_supports_three_distinct_local_lights() {
+    let scene = SceneDescription::from_ron(
+        r#"SceneDescription(
+            name: "T2 Three Local Lights",
+            camera: (position: (0.0, 2.0, 8.0)),
+            lights: [
+                (light_type: Point, position: (-2.0, 2.0, 0.0), color: (1.0, 0.0, 0.0), intensity: 3.0, range: 6.0),
+                (light_type: Point, position: (0.0, 2.0, 0.0), color: (0.0, 1.0, 0.0), intensity: 3.0, range: 6.0),
+                (light_type: Point, position: (2.0, 2.0, 0.0), color: (0.0, 0.0, 1.0), intensity: 3.0, range: 6.0),
+            ],
+            objects: [],
+        )"#,
+    )
+    .expect("T2 local-light scene should parse");
+
+    assert_eq!(scene.lights.len(), 3);
+    assert_eq!(scene.lights[0].color, [1.0, 0.0, 0.0]);
+    assert_eq!(scene.lights[1].color, [0.0, 1.0, 0.0]);
+    assert_eq!(scene.lights[2].color, [0.0, 0.0, 1.0]);
+}
+
+#[test]
+fn local_light_validation_rejects_non_finite_or_non_positive_range() {
+    let mut light = LightConfig {
+        light_type: LightType::Point,
+        range: 0.0,
+        ..LightConfig::default()
+    };
+    let error = light.validate(2).expect_err("zero range must fail");
+    assert!(error.to_string().contains("lights[2].range"));
+
+    light.range = f32::NAN;
+    let error = light.validate(2).expect_err("NaN range must fail");
+    assert!(error.to_string().contains("lights[2].range"));
+}
+
+#[test]
 fn parse_with_file_mesh_reference() {
     let ron = r#"
             SceneDescription(

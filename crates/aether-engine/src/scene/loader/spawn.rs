@@ -36,18 +36,39 @@ pub(super) fn spawn_camera(world: &mut World, camera: &crate::scene::CameraConfi
 ///
 /// If `light_cfg` is `None`, a default directional light is spawned so that
 /// every loaded scene has a valid light source.
-pub(super) fn spawn_light(world: &mut World, light_cfg: Option<&crate::scene::LightConfig>) {
-    let (light_type, color, intensity, direction) = match light_cfg {
+pub(super) fn spawn_light(
+    world: &mut World,
+    light_cfg: Option<&crate::scene::LightConfig>,
+    name: impl Into<String>,
+) {
+    let (
+        light_type,
+        color,
+        intensity,
+        range,
+        inner_cone_angle,
+        outer_cone_angle,
+        position,
+        direction,
+    ) = match light_cfg {
         Some(c) => (
             c.light_type,
             c.color,
             c.intensity,
+            c.range,
+            c.inner_cone_angle,
+            c.outer_cone_angle,
+            Vec3::from_array(c.position),
             Vec3::from_array(c.direction),
         ),
         None => (
             crate::renderer::light::LightType::Directional,
             [1.0, 1.0, 1.0],
             1.0,
+            10.0,
+            0.35,
+            0.7,
+            Vec3::ZERO,
             Vec3::NEG_Y,
         ),
     };
@@ -61,7 +82,7 @@ pub(super) fn spawn_light(world: &mut World, light_cfg: Option<&crate::scene::Li
     };
     world.spawn((
         Transform {
-            translation: Vec3::ZERO,
+            translation: position,
             rotation,
             scale: Vec3::ONE,
         },
@@ -69,9 +90,12 @@ pub(super) fn spawn_light(world: &mut World, light_cfg: Option<&crate::scene::Li
             light_type,
             color,
             intensity,
-            cast_shadow: true,
+            range,
+            inner_cone_angle,
+            outer_cone_angle,
+            cast_shadow: light_type == crate::renderer::light::LightType::Directional,
         },
-        Name("DirectionalLight".into()),
+        Name(name.into()),
     ));
 }
 

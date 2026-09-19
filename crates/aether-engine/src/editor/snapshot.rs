@@ -155,8 +155,16 @@ pub fn capture_snapshot(
             config: LightConfig {
                 light_type: light.light_type,
                 direction,
+                position: world
+                    .query_one::<&Transform>(entity)
+                    .get()
+                    .map(|transform| transform.translation.to_array())
+                    .unwrap_or([0.0; 3]),
                 color: light.color,
                 intensity: light.intensity,
+                range: light.range,
+                inner_cone_angle: light.inner_cone_angle,
+                outer_cone_angle: light.outer_cone_angle,
             },
         });
     }

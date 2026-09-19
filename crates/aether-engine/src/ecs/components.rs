@@ -135,6 +135,12 @@ pub struct Light {
     pub color: [f32; 3],
     /// Light intensity.
     pub intensity: f32,
+    /// Maximum influence distance for local lights.
+    pub range: f32,
+    /// Inner cone angle in radians for spot lights.
+    pub inner_cone_angle: f32,
+    /// Outer cone angle in radians for spot lights.
+    pub outer_cone_angle: f32,
     /// Whether this light casts shadows.
     pub cast_shadow: bool,
 }
@@ -145,6 +151,9 @@ impl Default for Light {
             light_type: LightType::Directional,
             color: [1.0, 1.0, 1.0],
             intensity: 1.0,
+            range: 10.0,
+            inner_cone_angle: 0.35,
+            outer_cone_angle: 0.7,
             cast_shadow: true,
         }
     }
@@ -157,6 +166,9 @@ impl Light {
             light_type: LightType::Directional,
             color,
             intensity,
+            range: 10.0,
+            inner_cone_angle: 0.35,
+            outer_cone_angle: 0.7,
             cast_shadow: true,
         }
     }
@@ -167,6 +179,9 @@ impl Light {
             light_type: LightType::Point,
             color,
             intensity,
+            range: 10.0,
+            inner_cone_angle: 0.35,
+            outer_cone_angle: 0.7,
             cast_shadow: false,
         }
     }
@@ -177,6 +192,9 @@ impl Light {
             light_type: LightType::Spot,
             color,
             intensity,
+            range: 10.0,
+            inner_cone_angle: 0.35,
+            outer_cone_angle: 0.7,
             cast_shadow: true,
         }
     }
@@ -269,6 +287,9 @@ mod tests {
             light_type: LightType::Directional,
             color: [1.0, 0.8, 0.6],
             intensity: 2.5,
+            range: 10.0,
+            inner_cone_angle: 0.35,
+            outer_cone_angle: 0.7,
             cast_shadow: true,
         };
         world.spawn((Transform::default(), light.clone()));
@@ -304,6 +325,9 @@ mod tests {
             light_type: LightType::Point,
             color: [0.5, 0.5, 1.0],
             intensity: 1.0,
+            range: 10.0,
+            inner_cone_angle: 0.35,
+            outer_cone_angle: 0.7,
             cast_shadow: false,
         };
         let ron = ron::ser::to_string(&light).expect("should serialize");

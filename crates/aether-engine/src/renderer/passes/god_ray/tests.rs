@@ -316,6 +316,9 @@ fn vs_main(@location(0) pos: vec2<f32>) -> @builtin(position) vec4<f32> {
             light_type: crate::renderer::light::LightType::Directional,
             color: [1.0, 0.95, 0.8],
             intensity: 1.0,
+            range: 10.0,
+            inner_cone_angle: 0.35,
+            outer_cone_angle: 0.7,
             cast_shadow: false,
         },
     ));

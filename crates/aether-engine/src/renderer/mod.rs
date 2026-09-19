@@ -24,6 +24,8 @@ pub mod gpu_timer;
 pub mod ibl;
 /// Light component definitions.
 pub mod light;
+/// Scene-to-GPU lighting extraction and deterministic local-light selection.
+pub mod lighting;
 /// Pass trait and type-safe resource handles.
 pub mod pass;
 /// Render pass implementations.

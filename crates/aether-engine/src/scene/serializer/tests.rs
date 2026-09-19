@@ -45,6 +45,9 @@ fn spawn_light_entity(world: &mut World, color: [f32; 3], intensity: f32) {
             light_type: LightType::Directional,
             color,
             intensity,
+            range: 10.0,
+            inner_cone_angle: 0.35,
+            outer_cone_angle: 0.7,
             cast_shadow: true,
         },
     ));
@@ -224,8 +227,12 @@ fn serialize_to_ron_roundtrips() {
         lights: vec![LightConfig {
             light_type: LightType::Directional,
             direction: [0.0, -1.0, 0.0],
+            position: [0.0; 3],
             color: [1.0, 1.0, 1.0],
             intensity: 1.0,
+            range: 10.0,
+            inner_cone_angle: 0.35,
+            outer_cone_angle: 0.7,
         }],
         ambient: 0.05,
         terrain: None,

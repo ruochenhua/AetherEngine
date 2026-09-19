@@ -100,8 +100,12 @@ fn extract_lights(world: &World) -> Vec<LightConfig> {
         lights.push(LightConfig {
             light_type: light.light_type,
             direction,
+            position: transform.translation.to_array(),
             color: light.color,
             intensity: light.intensity,
+            range: light.range,
+            inner_cone_angle: light.inner_cone_angle,
+            outer_cone_angle: light.outer_cone_angle,
         });
     }
 

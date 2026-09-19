@@ -142,25 +142,17 @@ pub(crate) fn frame(
 
             // Update lighting from ECS (camera position + light data)
             lighting.camera_pos = app.camera.position.to_array();
-            if let Some((transform, light)) = world
-                .query::<(
-                    &aether_engine::ecs::components::Transform,
-                    &aether_engine::ecs::components::Light,
-                )>()
-                .iter()
-                .next()
-            {
-                lighting.light.direction = (transform.rotation * glam::Vec3::NEG_Y)
-                    .normalize()
-                    .to_array();
-                lighting.light.color = light.color;
-                lighting.light.intensity = light.intensity;
-            }
+            let lighting_frame = aether_engine::renderer::lighting::extract_lighting_frame(
+                world,
+                lighting.ambient_intensity,
+            );
+            lighting.light = lighting_frame.sun;
 
             // Extract phase: ECS World → GPU-ready batches and optional pass data
             let t_extract_0 = Instant::now();
             let batches = extract_render_batches(world);
-            let optional = extract_optional_pass_data(world);
+            let mut optional = extract_optional_pass_data(world);
+            optional.lighting = lighting_frame;
             extract_ms = t_extract_0.elapsed().as_secs_f64() * 1000.0;
 
             // Update shared terrain geometry cache when the scene contains terrain.

@@ -4,7 +4,7 @@
 
 /// Directional light uniform data.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct DirectionalLight {
     /// Light direction (pointing FROM the light).
     pub direction: [f32; 3],
@@ -128,6 +128,114 @@ pub enum LightType {
     Point,
     /// Spot light (cone).
     Spot,
+}
+
+/// Maximum number of local lights consumed by the forward lighting loop.
+pub const MAX_LOCAL_LIGHTS: usize = 32;
+
+/// CPU-side local light selected during the extract phase.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LocalLight {
+    /// Stable ECS identity used for deterministic ordering.
+    pub entity_bits: u64,
+    /// Point or spot light position in world space.
+    pub position: [f32; 3],
+    /// Maximum influence distance.
+    pub range: f32,
+    /// RGB light color.
+    pub color: [f32; 3],
+    /// Radiometric intensity multiplier.
+    pub intensity: f32,
+    /// Spot light direction; ignored for point lights.
+    pub direction: [f32; 3],
+    /// Cosine of the inner cone angle.
+    pub inner_cos: f32,
+    /// Cosine of the outer cone angle.
+    pub outer_cos: f32,
+    /// Point or spot type.
+    pub light_type: LightType,
+}
+
+/// Storage-buffer item shared by Rust and WGSL.
+///
+/// The layout is intentionally fixed at 64 bytes: four 16-byte slots keep
+/// the CPU representation and WGSL storage layout identical.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct GpuLocalLight {
+    /// Position and range.
+    pub position_range: [f32; 4],
+    /// Color and intensity.
+    pub color_intensity: [f32; 4],
+    /// Direction and inner cone cosine.
+    pub direction_inner_cos: [f32; 4],
+    /// Outer cone cosine, type tag, and padding.
+    pub outer_cos_type_pad: [u32; 4],
+}
+
+/// Per-frame count for the local-light storage buffer.
+///
+/// WGSL places the trailing vec3 at the next 16-byte boundary, so the
+/// uniform must occupy 32 bytes even though only `count` is read.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct GpuLocalLightParams {
+    /// Number of valid entries in the storage buffer.
+    pub count: u32,
+    /// Uniform-buffer padding.
+    pub _pad: [u32; 7],
+}
+
+impl GpuLocalLight {
+    /// Convert an extracted local light to the GPU ABI representation.
+    pub fn from_local(light: LocalLight) -> Self {
+        Self {
+            position_range: [
+                light.position[0],
+                light.position[1],
+                light.position[2],
+                light.range,
+            ],
+            color_intensity: [
+                light.color[0],
+                light.color[1],
+                light.color[2],
+                light.intensity,
+            ],
+            direction_inner_cos: [
+                light.direction[0],
+                light.direction[1],
+                light.direction[2],
+                light.inner_cos,
+            ],
+            outer_cos_type_pad: [
+                light.outer_cos.to_bits(),
+                light_type_tag(light.light_type),
+                0,
+                0,
+            ],
+        }
+    }
+}
+
+fn light_type_tag(light_type: LightType) -> u32 {
+    match light_type {
+        LightType::Point => 0,
+        LightType::Spot => 1,
+        LightType::Directional => 2,
+    }
+}
+
+#[cfg(test)]
+mod t2_abi_tests {
+    use super::*;
+
+    #[test]
+    fn gpu_local_light_has_stable_64_byte_layout() {
+        assert_eq!(std::mem::size_of::<GpuLocalLight>(), 64);
+        assert_eq!(std::mem::align_of::<GpuLocalLight>(), 4);
+        assert_eq!(std::mem::size_of::<GpuLocalLightParams>(), 32);
+    }
 }
 
 #[cfg(test)]

@@ -166,6 +166,52 @@ fn build_world_spawns_light_entity() {
 }
 
 #[test]
+fn build_world_spawns_all_configured_local_lights() {
+    let device = headless_device();
+    let registry = test_registry();
+    let mut desc = test_scene_desc();
+    desc.lights = vec![
+        LightConfig::default(),
+        LightConfig {
+            light_type: crate::renderer::light::LightType::Point,
+            position: [-2.0, 2.0, 0.0],
+            color: [1.0, 0.0, 0.0],
+            range: 6.0,
+            ..LightConfig::default()
+        },
+        LightConfig {
+            light_type: crate::renderer::light::LightType::Point,
+            position: [0.0, 2.0, 0.0],
+            color: [0.0, 1.0, 0.0],
+            range: 6.0,
+            ..LightConfig::default()
+        },
+        LightConfig {
+            light_type: crate::renderer::light::LightType::Point,
+            position: [2.0, 2.0, 0.0],
+            color: [0.0, 0.0, 1.0],
+            range: 6.0,
+            ..LightConfig::default()
+        },
+    ];
+    let mut world = World::new();
+    let mut assets = test_assets();
+
+    SceneLoader::build_world(&desc, &device, &registry, &mut assets, &mut world)
+        .expect("all configured lights should load");
+
+    let colors: Vec<_> = world
+        .query::<&Light>()
+        .iter()
+        .map(|light| light.color)
+        .collect();
+    assert_eq!(colors.len(), 4);
+    assert!(colors.contains(&[1.0, 0.0, 0.0]));
+    assert!(colors.contains(&[0.0, 1.0, 0.0]));
+    assert!(colors.contains(&[0.0, 0.0, 1.0]));
+}
+
+#[test]
 fn build_world_attaches_name_to_objects() {
     let device = headless_device();
     let registry = test_registry();

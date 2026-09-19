@@ -11,7 +11,6 @@ use crate::{
 };
 use glam::{Quat, Vec3};
 use std::path::Path;
-use tracing::warn;
 
 mod lighting;
 mod objects;
@@ -61,7 +60,7 @@ impl SceneLoader {
     /// Build scene entities into an ECS World.
     ///
     /// - Spawns one `(Transform, Camera)` entity from `desc.camera`.
-    /// - Spawns one `(Transform, Light)` entity from `desc.lights[0]`.
+    /// - Spawns one `(Transform, Light)` entity for each configured light.
     /// - Spawns one entity per object with `(Transform, MeshHandle, MaterialUniform, Visibility, Name)`.
     /// - `Builtin` mesh references are resolved via the registry.
     /// - `File` mesh references return an error.
@@ -73,14 +72,27 @@ impl SceneLoader {
         assets: &mut AssetManager,
         world: &mut World,
     ) -> anyhow::Result<LightingUniforms> {
-        if desc.lights.len() > 1 {
-            warn!(
-                "Scene contains {} lights; only the first light is currently supported and will be loaded",
-                desc.lights.len()
-            );
+        for (index, light) in desc.lights.iter().enumerate() {
+            light.validate(index)?;
         }
         spawn::spawn_camera(world, &desc.camera);
-        spawn::spawn_light(world, desc.lights.first());
+        if desc.lights.is_empty() {
+            spawn::spawn_light(world, None, "DirectionalLight");
+        } else {
+            for (index, light) in desc.lights.iter().enumerate() {
+                let name = match light.light_type {
+                    crate::renderer::light::LightType::Directional if index == 0 => {
+                        "DirectionalLight".to_string()
+                    }
+                    crate::renderer::light::LightType::Directional => {
+                        format!("DirectionalLight{index}")
+                    }
+                    crate::renderer::light::LightType::Point => format!("PointLight{index}"),
+                    crate::renderer::light::LightType::Spot => format!("SpotLight{index}"),
+                };
+                spawn::spawn_light(world, Some(light), name);
+            }
+        }
         spawn::spawn_atmosphere(world, desc.atmosphere.as_ref());
         spawn::spawn_water(world, desc.water.as_ref(), assets);
         spawn::spawn_clouds(world, desc.clouds.as_ref());

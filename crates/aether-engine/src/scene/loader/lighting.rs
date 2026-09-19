@@ -5,20 +5,24 @@ use crate::scene::SceneDescription;
 
 /// Construct lighting uniforms from scene lights and ambient.
 pub(super) fn build_lighting_uniforms(desc: &SceneDescription) -> LightingUniforms {
-    let light = desc.lights.first().map_or_else(
-        || DirectionalLight {
-            direction: [0.0, -1.0, 0.0],
-            _pad: 0.0,
-            color: [1.0, 1.0, 1.0],
-            intensity: 1.0,
-        },
-        |cfg| DirectionalLight {
-            direction: cfg.direction,
-            _pad: 0.0,
-            color: cfg.color,
-            intensity: cfg.intensity,
-        },
-    );
+    let light = desc
+        .lights
+        .iter()
+        .find(|cfg| cfg.light_type == crate::renderer::light::LightType::Directional)
+        .map_or_else(
+            || DirectionalLight {
+                direction: [0.0, -1.0, 0.0],
+                _pad: 0.0,
+                color: [1.0, 1.0, 1.0],
+                intensity: 1.0,
+            },
+            |cfg| DirectionalLight {
+                direction: cfg.direction,
+                _pad: 0.0,
+                color: cfg.color,
+                intensity: cfg.intensity,
+            },
+        );
 
     LightingUniforms {
         camera_pos: desc.camera.position,

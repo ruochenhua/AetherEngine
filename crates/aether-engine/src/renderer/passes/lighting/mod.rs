@@ -18,6 +18,10 @@ pub struct LightingPass {
     /// 8 pipeline variants indexed by bitmask: bit0=ssao, bit1=shadow, bit2=ibl.
     pipelines: [wgpu::RenderPipeline; 8],
     uniform_buffer: wgpu::Buffer,
+    /// Storage buffer for the extracted local-light array.
+    local_lights_buffer: wgpu::Buffer,
+    /// Uniform buffer carrying the valid local-light count.
+    local_light_params_buffer: wgpu::Buffer,
     quad_vertex_buffer: wgpu::Buffer,
     quad_vertex_count: u32,
     /// G-Buffer texture handles (populated by resolve).
@@ -201,6 +205,31 @@ impl Pass for LightingPass {
         frame
             .queue
             .write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
+
+        let gpu_lights: Vec<_> = frame
+            .optional
+            .lighting
+            .locals
+            .iter()
+            .copied()
+            .map(crate::renderer::light::GpuLocalLight::from_local)
+            .collect();
+        if !gpu_lights.is_empty() {
+            frame.queue.write_buffer(
+                &self.local_lights_buffer,
+                0,
+                bytemuck::cast_slice(&gpu_lights),
+            );
+        }
+        let params = crate::renderer::light::GpuLocalLightParams {
+            count: gpu_lights.len() as u32,
+            _pad: [0; 7],
+        };
+        frame.queue.write_buffer(
+            &self.local_light_params_buffer,
+            0,
+            bytemuck::bytes_of(&params),
+        );
     }
 
     fn execute(
@@ -278,6 +307,8 @@ impl LightingPass {
         Self {
             pipelines: objects.pipelines,
             uniform_buffer: objects.uniform_buffer,
+            local_lights_buffer: objects.local_lights_buffer,
+            local_light_params_buffer: objects.local_light_params_buffer,
             quad_vertex_buffer: objects.quad_vertex_buffer,
             quad_vertex_count: objects.quad_vertex_count,
             pos_handle: None,
