@@ -52,6 +52,11 @@ if ! ./tests/metal-regression-runner-test.sh; then
     fail "Metal regression runner flow check failed"
 fi
 
+step "./tests/runner-process-test.sh"
+if ! ./tests/runner-process-test.sh; then
+    fail "runner process contract check failed"
+fi
+
 step "cargo test --workspace"
 if ! cargo test --workspace; then
     fail "cargo test failed"

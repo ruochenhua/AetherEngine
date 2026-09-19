@@ -16,10 +16,12 @@ test "$(rg -c 'do script' "$RUNNER")" -eq 1
 rg -q 'tell front window to do script' "$RUNNER"
 
 # Both layers must own cancellation: the wrapper owns the remote shell tree,
-# while the matrix runner owns the currently active launcher child.
+# while the matrix runner delegates all launcher ownership to one supervisor.
 rg -q 'trap .*cleanup' "$RUNNER"
 rg -q 'terminate_process_tree' "$RUNNER"
-rg -q 'ACTIVE_LAUNCHER_PID' "$REGRESSION_RUNNER"
+rg -q 'ACTIVE_RUNNER_PID' "$REGRESSION_RUNNER"
+test "$(rg -c 'python3 .*runner_process.py' "$REGRESSION_RUNNER")" -eq 1
+! rg -q 'osascript|tell application' "$REGRESSION_RUNNER" "$PROJECT_ROOT/scripts/runner_process.py" "$PROJECT_ROOT/scripts/process_lease.py"
 rg -q 'trap .*cleanup' "$REGRESSION_RUNNER"
 
 # The in-terminal handoff must not recursively open another Terminal session.

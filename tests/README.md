@@ -77,6 +77,43 @@ This is required for reliable Metal teardown on macOS when many scenes are run
 back-to-back; override it with `AETHER_REGRESSION_SETTLE_SECONDS=0` only for
 diagnostic runs.
 
+The shell starts one standard-library Python coordinator for the selected v1
+matrix. It executes one launcher at a time, then compares the captures using
+the existing thresholds and HTML statuses. Set `AETHER_LAUNCHER_BIN` to use an
+existing executable; otherwise the shell builds the debug launcher once.
+Each case keeps `stdout`, `stderr`, and JSON `launcher.log` in
+`tests/reports/<run-id>/<case-id>/`. The log includes argv, nonce, OS process
+identity, state transitions, timing, signals, exit status, and CPU/OS metadata;
+the coordinator never queries a GPU. A prior screenshot is retained as
+`previous-output.png` in that directory before a new capture is attempted.
+
+The launcher writes one byte to an inherited `AETHER_READY_FD` after its first
+successful frame presentation (or submission for a screenshot-only frame).
+Without that environment variable, launcher behavior is unchanged. Production
+timeouts are 2 seconds for readiness, 120 seconds **from readiness** for a case,
+and 5 seconds between TERM and KILL. Override them with
+`AETHER_HANDSHAKE_TIMEOUT`, `AETHER_CASE_TIMEOUT`, and
+`AETHER_TERMINATION_GRACE`, or the coordinator's `--handshake-timeout`,
+`--case-timeout`, and `--grace-period` options.
+
+For explicit case lists, invoke `python3 scripts/runner_process.py --launcher
+<binary> --cases <json-file> --report-dir tests/reports/<unique-run-id>`. The
+JSON list contains `{ "id": "case-id", "scene": "scene-path", "launcher_args":
+["--freeze-time"] }` objects. Repeat `--case <id>` to select entries; execution
+always follows manifest order. This is a coordinator input adapter, not a
+VisualCase schema migration.
+
+Process isolation currently supports macOS and Linux with `/bin/ps` and
+`/dev/fd`; other platforms fail before launching. The direct child stays
+unreaped through group signalling so its PID/PGID cannot be reused. Descendants
+must remain in the group (daemonizing with `setsid` is outside this contract).
+If group identity cannot be verified or the group cannot be emptied, the run
+stops without launching another case. SIGINT, SIGTERM, and normal/error exits
+clean up; SIGKILL cannot be intercepted.
+
+Run `./tests/runner-process-test.sh` for bounded fake-process tests and static
+wrapper checks, with no engine, window, or GPU. It is included in `verify-ci.sh`.
+
 On macOS, use the single-session wrapper when Metal is required from an agent
 or another non-Terminal shell:
 

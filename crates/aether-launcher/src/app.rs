@@ -6,6 +6,7 @@
 mod cli;
 mod handler;
 mod input;
+mod ready;
 mod render;
 mod scene;
 mod ui;
@@ -50,6 +51,7 @@ pub(crate) struct SceneEntry {
 // ── App ─────────────────────────────────────────────────────────────
 
 pub(crate) struct App {
+    ready_signal: ready::ReadySignal,
     pub(crate) window: Option<Arc<winit::window::Window>>,
     pub(crate) ctx: Option<RenderContext>,
     pub(crate) egui_ctx: egui::Context,
@@ -125,16 +127,14 @@ pub(crate) struct App {
 
 impl App {
     fn new(cli: CliArgs) -> Self {
-        let mut debug_mode = 0;
-        if let Some(dm) = cli.debug_mode {
-            debug_mode = dm;
-        }
+        let debug_mode = cli.debug_mode.unwrap_or_default();
 
         let no_gui_overlay = cli.no_gui_overlay;
         let exit_after_frames = cli.exit_after_frames;
         let freeze_time = cli.freeze_time;
 
         Self {
+            ready_signal: ready::ReadySignal::from_env(),
             window: None,
             ctx: None,
             egui_ctx: egui::Context::default(),

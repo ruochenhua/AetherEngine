@@ -29,12 +29,8 @@ terminate_process_tree() {
     local root="$1"
     [[ "$root" =~ ^[0-9]+$ ]] || return 0
 
-    local child
-    while read -r child; do
-        [[ -n "$child" ]] || continue
-        terminate_process_tree "$child"
-    done < <(pgrep -P "$root" 2>/dev/null || true)
-
+    # Ask the matrix shell to cancel its coordinator. Only the supervisor
+    # may signal a launcher group; recursively killing descendants races it.
     kill -TERM "$root" 2>/dev/null || true
 }
 
@@ -58,17 +54,19 @@ shell_quote() {
 }
 
 LAUNCHER_BIN="${AETHER_LAUNCHER_BIN:-$PROJECT_ROOT/target/release/aether-launcher}"
-RUNNER_COMMAND="cd $(shell_quote "$PROJECT_ROOT")"
-RUNNER_COMMAND+=" && echo \$\$ > $(shell_quote "$PID_FILE")"
-RUNNER_COMMAND+=" && AETHER_METAL_SESSION=1"
+RUNNER_COMMAND="cd $(shell_quote "$PROJECT_ROOT") && (export AETHER_METAL_SESSION=1"
 if [[ -x "$LAUNCHER_BIN" ]]; then
     RUNNER_COMMAND+=" AETHER_LAUNCHER_BIN=$(shell_quote "$LAUNCHER_BIN")"
 fi
-RUNNER_COMMAND+=" $(shell_quote "$MATRIX_RUNNER")"
+# Record the matrix shell itself, whose traps forward cancellation to the
+# supervisor, while the surrounding shell waits to collect its status.
+RUNNER_COMMAND+="; $(shell_quote "$MATRIX_RUNNER")"
 for arg in "$@"; do
     RUNNER_COMMAND+=" $(shell_quote "$arg")"
 done
-RUNNER_COMMAND+=" > $(shell_quote "$LOG_FILE") 2>&1; rc=\$?; echo \$rc > $(shell_quote "$STATUS_FILE")"
+RUNNER_COMMAND+=" > $(shell_quote "$LOG_FILE") 2>&1 & runner_pid=\$!"
+RUNNER_COMMAND+="; echo \$runner_pid > $(shell_quote "$PID_FILE")"
+RUNNER_COMMAND+="; wait \$runner_pid; rc=\$?; echo \$rc > $(shell_quote "$STATUS_FILE"))"
 
 # Use exactly one Terminal command. `reopen` creates a window only when none
 # exists; otherwise the command is submitted to the current front window.

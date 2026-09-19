@@ -308,6 +308,9 @@ pub(crate) fn frame(
     ctx.queue.submit(std::iter::once(encoder.finish()));
     let post_submit_time = frame_start.elapsed();
     output.present();
+    if let Err(error) = app.ready_signal.presented() {
+        tracing::warn!("Ready pipe notification failed: {error}");
+    }
     let frame_time = frame_start.elapsed();
     app.input.end_frame();
 

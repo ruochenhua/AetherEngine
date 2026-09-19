@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>T0.2 Process Supervisor Report</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+    body { margin: 0; padding: 2rem; background: Canvas; color: CanvasText; }
+    main { max-width: 60rem; margin: auto; }
+    .ok { color: #188038; font-weight: 700; }
+    .warn { color: #b06000; }
+    section { margin-top: 1.5rem; padding: 1rem 1.2rem; border: 1px solid ButtonBorder; border-radius: .6rem; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: .55rem .7rem; border-bottom: 1px solid ButtonBorder; text-align: left; }
+    th { width: 34%; }
+    code { font-family: ui-monospace, monospace; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>T0.2：串行进程监管与回归测试流程</h1>
+    <p class="ok">结论：通过。没有引擎/Metal 崩溃；已修复测试自身触发的 Python SIGABRT。</p>
+
+    <section>
+      <h2>这次报错的根因</h2>
+      <p>fake launcher 测试曾执行 <code>os.kill(os.getpid(), SIGABRT)</code>，这是主动让 Python 子进程崩溃来模拟异常退出。macOS 因此生成了崩溃报告；报告中的 <code>os_kill_impl → os_kill</code> 栈与该代码吻合。</p>
+      <p>已改为普通的 <code>sys.exit(134)</code>。仍覆盖非零退出，但不会再弹系统 crash reporter。</p>
+    </section>
+
+    <section>
+      <h2>已完成内容</h2>
+      <ul>
+        <li>一个 coordinator 串行执行场景，一次只启动一个 launcher。</li>
+        <li>ready handshake、握手/案例超时、stdout/stderr/launcher.log 记录。</li>
+        <li>绑定 PID、启动时间、PGID 和 nonce；TERM → KILL 清理子进程组。</li>
+        <li>取消/退出时统一清理，不创建 Terminal，不启动真实 Metal。</li>
+        <li>保留现有截图比较、阈值、reference 路径和 HTML 状态语义。</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>验证结果</h2>
+      <table>
+        <tr><th>fake-process tests</th><td class="ok">16/16 passed</td></tr>
+        <tr><th>workspace tests</th><td class="ok">全部通过：226 + 9 + 5 + 4 + 6 + 21</td></tr>
+        <tr><th>fmt / clippy</th><td class="ok">通过</td></tr>
+        <tr><th>report/static wrapper checks</th><td class="ok">通过</td></tr>
+        <tr><th>module health</th><td class="ok">180 Rust files checked, 0 over limit</td></tr>
+        <tr><th>release build</th><td class="ok">通过</td></tr>
+        <tr><th>真实 launcher / Metal / 截图矩阵</th><td class="warn">本任务明确未运行</td></tr>
+      </table>
+    </section>
+
+    <section>
+      <h2>关联文件</h2>
+      <p><code>scripts/process_lease.py</code>、<code>scripts/runner_process.py</code>、<code>tests/runner_process_test.py</code>、<code>crates/aether-launcher/src/app/ready.rs</code></p>
+    </section>
+  </main>
+</body>
+</html>

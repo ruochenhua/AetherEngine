@@ -59,37 +59,32 @@ REPORT_NAME="${REPORT_NAME:-$(date +%Y%m%d-%H%M%S)-visual-regression}"
 REPORT_FILE="$REPORT_DIR/$REPORT_NAME.html"
 
 if [[ -n "${AETHER_LAUNCHER_BIN:-}" ]]; then
-    LAUNCHER_COMMAND=("$AETHER_LAUNCHER_BIN")
+    LAUNCHER_BIN="$AETHER_LAUNCHER_BIN"
 else
-    LAUNCHER_COMMAND=(cargo run --bin aether-launcher --quiet --)
+    cargo build --bin aether-launcher --quiet
+    TARGET_DIR="$(cargo metadata --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')"
+    LAUNCHER_BIN="$TARGET_DIR/debug/aether-launcher"
 fi
 
-ACTIVE_LAUNCHER_PID=""
+ACTIVE_RUNNER_PID=""
 
-cleanup_active_launcher() {
-    if [[ -n "$ACTIVE_LAUNCHER_PID" ]] && kill -0 "$ACTIVE_LAUNCHER_PID" 2>/dev/null; then
-        kill -TERM "$ACTIVE_LAUNCHER_PID" 2>/dev/null || true
-        wait "$ACTIVE_LAUNCHER_PID" 2>/dev/null || true
+cleanup_active_runner() {
+    if [[ -n "$ACTIVE_RUNNER_PID" ]]; then
+        kill -TERM "$ACTIVE_RUNNER_PID" 2>/dev/null || true
+        wait "$ACTIVE_RUNNER_PID" 2>/dev/null || true
     fi
-    ACTIVE_LAUNCHER_PID=""
+    ACTIVE_RUNNER_PID=""
 }
 
 abort_regression() {
-    cleanup_active_launcher
-    exit 130
+    trap '' INT TERM
+    cleanup_active_runner
+    exit "$1"
 }
 
-trap cleanup_active_launcher EXIT
-trap abort_regression INT TERM
-
-run_launcher() {
-    local status=0
-    ("${LAUNCHER_COMMAND[@]}" "$@" >/dev/null 2>&1) &
-    ACTIVE_LAUNCHER_PID=$!
-    wait "$ACTIVE_LAUNCHER_PID" || status=$?
-    ACTIVE_LAUNCHER_PID=""
-    return "$status"
-}
+trap cleanup_active_runner EXIT
+trap 'abort_regression 130' INT
+trap 'abort_regression 143' TERM
 
 html_escape() {
     printf '%s' "$1" | sed \
@@ -211,6 +206,25 @@ PASSED=0
 FAILED=0
 NEW=0
 
+# One coordinator owns every launcher lease for this invocation. Comparisons
+# below retain the v1 HTML/status/threshold behavior and output paths.
+RUN_ID="$(date +%Y%m%d-%H%M%S)-$$-$RANDOM"
+RUN_REPORT_DIR="$REPORT_DIR/$RUN_ID"
+RUNNER_ARGS=(--launcher "$LAUNCHER_BIN" --matrix "$MATRIX"
+    --report-dir "$RUN_REPORT_DIR" --output-dir "$OUTPUT_DIR"
+    --settle-seconds "$REGRESSION_SETTLE_SECONDS")
+if [[ -n "$FILTER" ]]; then
+    RUNNER_ARGS+=(--case "$FILTER")
+fi
+python3 "$SCRIPT_DIR/runner_process.py" "${RUNNER_ARGS[@]}" &
+ACTIVE_RUNNER_PID=$!
+runner_status=0
+wait "$ACTIVE_RUNNER_PID" || runner_status=$?
+ACTIVE_RUNNER_PID=""
+if [[ "$runner_status" -ge 128 ]]; then
+    exit "$runner_status"
+fi
+
 while IFS=$'\t' read -r name scene frames width height debug_mode ssao ssr threshold; do
     TOTAL=$((TOTAL + 1))
     echo ""
@@ -219,37 +233,23 @@ while IFS=$'\t' read -r name scene frames width height debug_mode ssao ssr thres
     OUT_IMAGE="$OUTPUT_DIR/$name.png"
     REF_IMAGE="$REFERENCE_DIR/$name.png"
 
-    # Clean old output before capturing, so a missing screenshot is detected.
-    rm -f "$OUT_IMAGE"
-
-    ARGS=(--scene "$scene" --screenshot "$OUT_IMAGE" --exit-after-frames "$frames")
-    if [[ "$debug_mode" != "none" ]]; then
-        ARGS+=(--debug-mode "$debug_mode")
-    fi
-    if [[ "$ssao" == "1" ]]; then
-        ARGS+=(--ssao)
-    fi
-    if [[ "$ssr" == "1" ]]; then
-        ARGS+=(--ssr)
-    fi
-    ARGS+=(--no-gui-overlay --freeze-time --width "$width" --height "$height")
-
-    launcher_status=0
-    if run_launcher "${ARGS[@]}"; then
-        launcher_status=0
-    else
-        launcher_status=$?
-    fi
-    if [[ "$launcher_status" -ne 0 ]]; then
+    if ! python3 - "$RUN_REPORT_DIR/$name/launcher.log" <<'PY'
+import json
+import sys
+try:
+    with open(sys.argv[1]) as stream:
+        record = json.load(stream)
+    ok = record['diagnostic'] is None and record['group_empty'] and record['exit_code'] == 0
+except (OSError, ValueError, KeyError):
+    ok = False
+raise SystemExit(0 if ok else 1)
+PY
+    then
         echo "  ❌ Launcher failed for $name"
         append_result_row "$name" "❌ CRASH" "N/A" "N/A" "N/A"
         OVERALL_PASS=false
         FAILED=$((FAILED + 1))
         continue
-    fi
-
-    if [[ "$REGRESSION_SETTLE_SECONDS" != "0" ]]; then
-        sleep "$REGRESSION_SETTLE_SECONDS"
     fi
 
     if [[ ! -f "$OUT_IMAGE" ]]; then
