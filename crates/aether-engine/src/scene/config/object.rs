@@ -11,21 +11,9 @@ pub enum MeshRef {
     File(String),
 }
 
-/// Object (renderable entity) configuration.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct ObjectConfig {
-    /// Human-readable name for debugging.
-    #[serde(default)]
-    pub name: String,
-    /// Mesh reference.
-    pub mesh: MeshRef,
-    /// Transform.
-    #[serde(default)]
-    pub transform: TransformConfig,
-    /// PBR material parameters.
-    #[serde(default)]
-    pub material: MaterialConfig,
-}
+/// Object entity configuration kept separate from the mesh/transform types.
+pub mod object_config;
+pub use object_config::ObjectConfig;
 
 /// Transform data for an object.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

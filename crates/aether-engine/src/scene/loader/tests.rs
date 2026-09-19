@@ -6,7 +6,6 @@ use crate::scene::{
     AtmosphereConfig, CameraConfig, LightConfig, MeshRef, ObjectConfig, TerrainConfig,
     TerrainGeometry, TerrainLayerConfig, TerrainSource, WaterConfig,
 };
-
 fn headless_device() -> wgpu::Device {
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
     let adapter =
@@ -25,7 +24,6 @@ fn test_registry() -> BuiltinMeshRegistry {
 fn test_assets() -> AssetManager {
     AssetManager::new()
 }
-
 fn test_scene_desc() -> SceneDescription {
     SceneDescription {
         name: "Test".into(),
@@ -51,6 +49,7 @@ fn test_scene_desc() -> SceneDescription {
                     metallic: 0.0,
                     albedo_texture: None,
                 },
+                visible: true,
             },
             ObjectConfig {
                 name: "sphere_right".into(),
@@ -65,6 +64,7 @@ fn test_scene_desc() -> SceneDescription {
                     metallic: 0.0,
                     albedo_texture: None,
                 },
+                visible: true,
             },
         ],
     }

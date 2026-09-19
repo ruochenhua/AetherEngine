@@ -164,8 +164,7 @@ fn extract_god_ray(world: &World) -> Option<GodRayConfig> {
 
 fn extract_objects(world: &World) -> Vec<ObjectConfig> {
     let mut objects = Vec::new();
-
-    for (transform, mesh_handle, material, _visibility, name) in world
+    for (transform, mesh_handle, material, visibility, name) in world
         .query::<(
             &Transform,
             &MeshHandle,
@@ -194,6 +193,7 @@ fn extract_objects(world: &World) -> Vec<ObjectConfig> {
                 metallic: material.metallic,
                 albedo_texture: None,
             },
+            visible: visibility.0,
         };
         objects.push(obj);
     }

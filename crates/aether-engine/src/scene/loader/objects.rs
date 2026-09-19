@@ -111,7 +111,7 @@ pub(super) fn build_objects(
                             format!("{}::{}", mesh_name, submesh.name),
                         ),
                         material,
-                        Visibility::default(),
+                        Visibility(obj.visible),
                         Name(format!("{}::{}", obj.name, submesh.name)),
                     ));
                 }
@@ -142,7 +142,7 @@ pub(super) fn build_objects(
             transform,
             MeshHandle::new(base_gpu_mesh, mesh_source, mesh_name),
             material,
-            Visibility::default(),
+            Visibility(obj.visible),
             Name(obj.name.clone()),
         ));
     }

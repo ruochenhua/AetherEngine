@@ -10,7 +10,6 @@ use crate::scene::{
 };
 use glam::{Quat, Vec3};
 use std::sync::Arc;
-
 fn headless_device() -> wgpu::Device {
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
     let adapter =
@@ -35,7 +34,6 @@ fn spawn_camera_entity(world: &mut World, pos: [f32; 3], yaw: f32, pitch: f32, f
         },
     ));
 }
-
 fn spawn_light_entity(world: &mut World, color: [f32; 3], intensity: f32) {
     world.spawn((
         Transform {
@@ -51,7 +49,6 @@ fn spawn_light_entity(world: &mut World, color: [f32; 3], intensity: f32) {
         },
     ));
 }
-
 fn spawn_object_entity(
     world: &mut World,
     device: &wgpu::Device,
@@ -209,6 +206,8 @@ fn extract_object_spawned_with_selected_directly() {
     assert_eq!(objects[0].name, "DefaultCube");
 }
 
+mod visibility;
+
 #[test]
 fn serialize_to_ron_roundtrips() {
     let desc = SceneDescription {
@@ -239,6 +238,7 @@ fn serialize_to_ron_roundtrips() {
             mesh: MeshRef::Builtin("cube".into()),
             transform: TransformConfig::default(),
             material: MaterialConfig::default(),
+            visible: true,
         }],
     };
 
