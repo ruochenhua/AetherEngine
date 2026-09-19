@@ -12,7 +12,7 @@ SceneDescription(
             light_type: Directional,
             direction: (0.0, -1.0, 0.0),
             color: (1.0, 1.0, 1.0),
-            intensity: 0.12,
+            intensity: 0.0,
         ),
         (
             light_type: Point,
@@ -36,7 +36,7 @@ SceneDescription(
             range: 7.0,
         ),
     ],
-    ambient: 0.015,
+    ambient: 0.0,
     objects: [
         (
             name: "Ground",
@@ -68,6 +68,24 @@ SceneDescription(
             mesh: Builtin("sphere"),
             transform: (translation: (2.4, 0.0, 0.0), scale: (1.1, 1.1, 1.1)),
             material: (albedo: (0.75, 0.75, 0.75, 1.0), roughness: 0.38, metallic: 0.0),
+        ),
+        (
+            name: "RedPointLightMarker",
+            mesh: Builtin("sphere"),
+            transform: (translation: (-3.0, 2.0, 1.0), scale: (0.28, 0.28, 0.28)),
+            material: (albedo: (1.0, 0.04, 0.04, 1.0), roughness: 0.22, metallic: 0.0, unlit: true),
+        ),
+        (
+            name: "GreenPointLightMarker",
+            mesh: Builtin("sphere"),
+            transform: (translation: (0.0, 2.0, -1.0), scale: (0.28, 0.28, 0.28)),
+            material: (albedo: (0.04, 1.0, 0.04, 1.0), roughness: 0.22, metallic: 0.0, unlit: true),
+        ),
+        (
+            name: "BluePointLightMarker",
+            mesh: Builtin("sphere"),
+            transform: (translation: (3.0, 2.0, 1.0), scale: (0.28, 0.28, 0.28)),
+            material: (albedo: (0.04, 0.04, 1.0, 1.0), roughness: 0.22, metallic: 0.0, unlit: true),
         ),
         (
             name: "CenterMetal",

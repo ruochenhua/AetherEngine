@@ -7,4 +7,5 @@ fn lighting_shader_parses_and_declares_local_light_storage() {
     assert!(LIGHTING_SHADER_SRC.contains("@group(3) @binding(5) var<storage, read> local_lights"));
     assert!(LIGHTING_SHADER_SRC.contains("local_light_params.count"));
     assert!(LIGHTING_SHADER_SRC.contains("evaluate_direct_light"));
+    assert!(LIGHTING_SHADER_SRC.contains("albedo_sample.a > 0.5"));
 }

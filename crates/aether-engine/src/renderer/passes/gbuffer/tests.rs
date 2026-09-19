@@ -90,3 +90,10 @@ fn resolve_ok() {
     pass.resolve(&device, &table);
     assert!(pass.pos_handle.is_some());
 }
+
+#[test]
+fn shader_preserves_unlit_marker_flag_in_albedo_alpha() {
+    naga::front::wgsl::parse_str(shaders::GBUFFER_SHADER_SRC)
+        .expect("G-buffer shader should remain valid WGSL");
+    assert!(shaders::GBUFFER_SHADER_SRC.contains("f32(obj.unlit)"));
+}

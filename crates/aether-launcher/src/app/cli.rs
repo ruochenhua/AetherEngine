@@ -17,6 +17,7 @@ pub(crate) struct CliArgs {
     pub(crate) debug_mode: Option<i32>,
     pub(crate) freeze_time: bool,
     pub(crate) ssao_enabled: bool,
+    pub(crate) no_ibl: bool,
     pub(crate) ssr_enabled: bool,
     /// Physical pixel width for the window / screenshots.
     pub(crate) width: Option<u32>,

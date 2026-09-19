@@ -99,7 +99,8 @@ pub(super) fn build_objects(
                         albedo: submesh.material.base_color,
                         roughness: submesh.material.roughness,
                         metallic: submesh.material.metallic,
-                        _pad: [0.0, 0.0],
+                        unlit: 0,
+                        _pad: 0,
                         albedo_texture_id,
                     };
 
@@ -134,7 +135,8 @@ pub(super) fn build_objects(
             albedo: obj.material.albedo,
             roughness: obj.material.roughness,
             metallic: obj.material.metallic,
-            _pad: [0.0, 0.0],
+            unlit: u32::from(obj.material.unlit),
+            _pad: 0,
             albedo_texture_id,
         };
 

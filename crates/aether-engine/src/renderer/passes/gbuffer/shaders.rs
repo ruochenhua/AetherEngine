@@ -13,7 +13,7 @@ struct VertexOutput { @builtin(position) clip_position: vec4<f32>, @location(0) 
 struct ViewProjUniform { view: mat4x4<f32>, proj: mat4x4<f32>, };
 @group(0) @binding(0) var<uniform> vp: ViewProjUniform;
 
-struct ObjectData { albedo: vec4<f32>, roughness: f32, metallic: f32, };
+struct ObjectData { albedo: vec4<f32>, roughness: f32, metallic: f32, unlit: u32, };
 @group(1) @binding(0) var<uniform> obj: ObjectData;
 @group(2) @binding(0) var albedo_texture: texture_2d<f32>;
 @group(2) @binding(1) var albedo_sampler: sampler;
@@ -38,7 +38,9 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
     out.position = vec4<f32>(in.world_pos, 1.0);
     out.normal = vec4<f32>(in.world_normal * 0.5 + 0.5, 1.0);
     let tex_color = textureSample(albedo_texture, albedo_sampler, in.uv);
-    out.albedo = obj.albedo * tex_color;
+    // Alpha is reserved as a compact deferred flag; regular materials write 0,
+    // while unlit markers write 1 and bypass the lighting pass.
+    out.albedo = vec4<f32>((obj.albedo * tex_color).rgb, f32(obj.unlit));
     out.material = vec2<f32>(obj.roughness, obj.metallic);
     return out;
 }

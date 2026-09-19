@@ -116,6 +116,7 @@ impl Pass for WaterReflectionPass {
                 albedo: batch.material.albedo,
                 roughness: batch.material.roughness,
                 metallic: batch.material.metallic,
+                unlit: batch.material.unlit,
             };
             obj_data.extend_from_slice(bytemuck::cast_slice(&[obj]));
         }

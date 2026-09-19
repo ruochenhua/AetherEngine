@@ -58,6 +58,9 @@ pub struct MaterialConfig {
     /// Metalness (0 = dielectric, 1 = metal).
     #[serde(default)]
     pub metallic: f32,
+    /// Render the object as a solid albedo color without lighting or shadows.
+    #[serde(default)]
+    pub unlit: bool,
     /// Optional albedo texture path.
     #[serde(default)]
     pub albedo_texture: Option<String>,
@@ -73,6 +76,7 @@ impl Default for MaterialConfig {
             albedo: default_albedo(),
             roughness: 0.5,
             metallic: 0.0,
+            unlit: false,
             albedo_texture: None,
         }
     }

@@ -16,6 +16,7 @@ cases=(
   "t2_three_local_lights|renderer::lighting::tests"
   "t2_light_validation|local_light_validation_rejects_non_finite_or_non_positive_range"
   "t2_scene_parse|scene_description_supports_three_distinct_local_lights"
+  "t2_unlit_marker|parse_unlit_material_marker"
   "t2_scene_spawn|build_world_spawns_all_configured_local_lights"
 )
 

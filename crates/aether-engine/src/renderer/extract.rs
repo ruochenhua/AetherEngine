@@ -35,6 +35,7 @@ struct MaterialBits {
     albedo: [u32; 4],
     roughness: u32,
     metallic: u32,
+    unlit: u32,
 }
 
 impl From<MaterialUniform> for MaterialBits {
@@ -48,6 +49,7 @@ impl From<MaterialUniform> for MaterialBits {
             ],
             roughness: m.roughness.to_bits(),
             metallic: m.metallic.to_bits(),
+            unlit: m.unlit,
         }
     }
 }

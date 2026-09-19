@@ -49,6 +49,26 @@ fn parse_single_object_with_builtin_mesh() {
 }
 
 #[test]
+fn parse_unlit_material_marker() {
+    let scene = SceneDescription::from_ron(
+        r#"SceneDescription(
+            name: "Unlit Marker",
+            camera: (position: (0.0, 0.0, 2.0)),
+            objects: [
+                (
+                    name: "LightMarker",
+                    mesh: Builtin("sphere"),
+                    material: (albedo: (1.0, 0.0, 0.0, 1.0), unlit: true),
+                ),
+            ],
+        )"#,
+    )
+    .expect("unlit marker material should parse");
+
+    assert!(scene.objects[0].material.unlit);
+}
+
+#[test]
 fn parse_multiple_objects_with_light() {
     let ron = r#"
             SceneDescription(

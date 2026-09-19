@@ -172,7 +172,7 @@ impl App {
             debug_mode,
             ssao_enabled: cli.ssao_enabled,
             shadow_enabled: true,
-            ibl_enabled: true,
+            ibl_enabled: !cli.no_ibl,
             ssr_enabled: cli.ssr_enabled,
             tone_mapping_mode: ToneMappingMode::ACES,
             bloom_enabled: true,

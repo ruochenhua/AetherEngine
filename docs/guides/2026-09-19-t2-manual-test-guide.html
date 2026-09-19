@@ -13,7 +13,7 @@
   <h1>T2 · 多光源：人工跑测指南</h1>
   <p class="meta">版本：2026-09-19 · 场景：<code>scenes/23_three_local_lights.ron</code> · 只跑一个场景、一个 launcher。</p>
 
-  <div class="callout"><strong>本次要看什么：</strong>画面中应出现三个不同颜色的局部光照区域：左侧偏红、中部偏绿、右侧偏蓝。方向光只保留很低强度用于补光，局部光源第一版不参与阴影。</div>
+  <div class="callout"><strong>本次要看什么：</strong>画面中应出现三个不同颜色的局部光照区域：左侧偏红、中部偏绿、右侧偏蓝；同时在场景后方能看到三个对应颜色的小球，它们是光源位置标记。这个 T2 验收场景把方向光能量和场景 ambient 设为 0，并用 <code>--no-ibl</code> 隔绝 IBL，避免把局部光照和环境光混在一起。</div>
 
   <h2>1. 先跑定向自动验证</h2>
   <p>在一个终端窗口执行：</p>
@@ -21,23 +21,27 @@
 ./scripts/verify-lighting-t2.sh 20260919-t2-manual</pre>
   <p>打开结果：</p>
   <pre>open /Users/ruochenhua/AetherEngine/tests/reports/20260919-t2-manual.html</pre>
-  <p>预期 5 个 case 全部为 <span class="pass">PASS</span>：</p>
+  <p>预期 7 个 case 全部为 <span class="pass">PASS</span>：</p>
   <ul>
     <li>64B <code>GpuLocalLight</code> ABI</li>
     <li>红/绿/蓝局部光源提取、稳定排序、32 光源上限</li>
     <li>非法 range 被拒绝并包含 <code>lights[i]</code> 路径</li>
     <li>三光源 RON 场景解析与 ECS spawn</li>
+    <li>unlit 光源标记材质解析</li>
   </ul>
 
   <h2>2. 打开专用场景</h2>
   <p>如果 release launcher 已经构建过，可直接执行：</p>
-  <pre>target/release/aether-launcher --scene scenes/23_three_local_lights.ron</pre>
+  <pre>target/release/aether-launcher \
+  --scene scenes/23_three_local_lights.ron \
+  --no-ibl</pre>
   <p>如果需要先构建：</p>
   <pre>cargo build -p aether-launcher --release</pre>
   <ol>
     <li>只保留这一个 launcher 窗口。</li>
-    <li>确认场景中有一个低强度方向光，以及三个局部 Point light。</li>
-    <li>观察三个球体和地面：左边应偏红，中间应偏绿，右边应偏蓝。</li>
+    <li>确认场景中保留一个能量为 0 的方向光兼容实体，以及三个局部 Point light。</li>
+    <li>确认场景后方有红、绿、蓝三个小球，分别对应三个 Point light 的位置。</li>
+    <li>观察三个接收球体和地面：左边应偏红，中间应偏绿，右边应偏蓝。</li>
     <li>观察中心金属方块：应同时看到三个局部光源产生的彩色高光变化。</li>
     <li>移动相机到不同角度，确认局部光照随距离衰减，而不是整屏统一染色。</li>
     <li>关闭窗口后确认终端返回 shell。</li>
@@ -47,6 +51,8 @@
   <p>这不是全量截图回归，只用于确认视觉结果：</p>
   <pre>target/release/aether-launcher \
   --scene scenes/23_three_local_lights.ron \
+  --debug-mode 7 \
+  --no-ibl \
   --screenshot /tmp/aether-t2-three-local-lights.png \
   --exit-after-frames 60 \
   --no-gui-overlay \
@@ -58,7 +64,7 @@
   <table>
     <tr><th>检查项</th><th>通过表现</th></tr>
     <tr><td>场景加载</td><td>不 panic；四个光源都能加载。</td></tr>
-    <tr><td>颜色</td><td>左红、中绿、右蓝，颜色能在接收物体上区分开。</td></tr>
+    <tr><td>颜色</td><td>左红、中绿、右蓝，颜色能在接收物体上区分开，且三个光源标记保持对应纯色。</td></tr>
     <tr><td>距离</td><td>光照在影响范围内明显，远处平滑衰减。</td></tr>
     <tr><td>稳定性</td><td>窗口关闭后没有残留 launcher。</td></tr>
     <tr><td>截图</td><td>可选 PNG 存在且能打开；不更新 reference。</td></tr>
@@ -74,7 +80,7 @@
     <label class="check"><input type="checkbox"><span>可选截图已打开并确认结果</span></label>
   </div>
 
-  <footer>本阶段不验局部光源阴影；阴影属于后续单独的专用场景与专门回归。</footer>
+  <footer>本阶段不验局部光源阴影；阴影属于后续单独的专用场景与专门回归。截图使用 direct-light debug mode 7，不把 IBL 当作局部光照结果。</footer>
   <script>
     const key='aether:t2-manual';
     const boxes=[...document.querySelectorAll('[data-checklist="t2-manual"] input')];

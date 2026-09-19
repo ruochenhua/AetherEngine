@@ -15,6 +15,8 @@ pub struct ObjectUniform {
     pub roughness: f32,
     /// Metalness (0 = dielectric, 1 = metal).
     pub metallic: f32,
+    /// Whether the object bypasses deferred lighting.
+    pub unlit: u32,
 }
 
 // Safety: ObjectUniform is #[repr(C, align(256))] with no invalid bit patterns
@@ -41,8 +43,10 @@ pub struct MaterialUniform {
     pub roughness: f32,
     /// Metalness (0 = dielectric, 1 = metal).
     pub metallic: f32,
+    /// Whether the object bypasses deferred lighting.
+    pub unlit: u32,
     /// Padding to 16-byte alignment.
-    pub _pad: [f32; 2],
+    pub _pad: u32,
     /// Optional albedo texture handle ID (0 = none).
     pub albedo_texture_id: u64,
 }
@@ -53,7 +57,8 @@ impl Default for MaterialUniform {
             albedo: [0.8, 0.3, 0.2, 1.0],
             roughness: 0.5,
             metallic: 0.0,
-            _pad: [0.0, 0.0],
+            unlit: 0,
+            _pad: 0,
             albedo_texture_id: 0,
         }
     }

@@ -332,7 +332,8 @@ fn insert_component(
                     albedo: config.albedo,
                     roughness: config.roughness,
                     metallic: config.metallic,
-                    _pad: [0.0, 0.0],
+                    unlit: u32::from(config.unlit),
+                    _pad: 0,
                     albedo_texture_id: 0,
                 },),
             )

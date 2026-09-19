@@ -172,6 +172,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var output_color: vec3<f32>;
     if (normal_sample.r == 0.0 && normal_sample.g == 0.0 && normal_sample.b == 0.0) {
         output_color = textureSampleLevel(env_map, ibl_sampler, view_dir, 0.0).rgb;
+    } else if (albedo_sample.a > 0.5) {
+        // Unlit scene markers are encoded in GBuffer albedo alpha. They are
+        // intentionally unaffected by IBL, direct light, SSAO, or shadows.
+        output_color = albedo_sample.rgb;
     } else {
     let N = normalize(normal_sample.xyz * 2.0 - 1.0);
     let albedo = albedo_sample.rgb;

@@ -39,6 +39,12 @@ fn parses_ssao_flag() {
 }
 
 #[test]
+fn parses_no_ibl_flag() {
+    let cli = parse_args(&args(&["aether-launcher", "--no-ibl"])).unwrap();
+    assert!(cli.no_ibl);
+}
+
+#[test]
 fn app_honors_ssr_cli_flag() {
     let cli = CliArgs {
         scene: None,
@@ -48,6 +54,7 @@ fn app_honors_ssr_cli_flag() {
         debug_mode: None,
         freeze_time: false,
         ssao_enabled: false,
+        no_ibl: false,
         ssr_enabled: true,
         width: None,
         height: None,

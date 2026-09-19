@@ -25,6 +25,7 @@ pub(crate) fn parse_args(args: &[String]) -> Result<CliArgs, CliError> {
         debug_mode: None,
         freeze_time: false,
         ssao_enabled: false,
+        no_ibl: false,
         ssr_enabled: false,
         width: None,
         height: None,
@@ -96,6 +97,7 @@ pub(crate) fn parse_args(args: &[String]) -> Result<CliArgs, CliError> {
                 max_seek_steps = Some(parse_value(args, &mut i, "--max-seek-steps")?);
             }
             "--ssao" => cli.ssao_enabled = true,
+            "--no-ibl" => cli.no_ibl = true,
             "--ssr" => cli.ssr_enabled = true,
             "--width" => {
                 i += 1;
