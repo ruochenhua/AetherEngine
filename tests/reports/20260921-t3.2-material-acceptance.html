@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>T3.2 材质管线专用验收报告</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+    body { margin: 0; padding: 2rem; background: Canvas; color: CanvasText; }
+    main { max-width: 76rem; margin: auto; }
+    .meta { color: GrayText; }
+    .status { padding: 1rem; border: 1px solid #b06000; border-radius: .6rem; }
+    .status strong { color: #b06000; }
+    table { width: 100%; border-collapse: collapse; margin: 1.2rem 0 2rem; }
+    th, td { padding: .65rem .8rem; border-bottom: 1px solid ButtonBorder; text-align: left; vertical-align: top; }
+    th { background: color-mix(in srgb, CanvasText 10%, Canvas); }
+    .pass { color: #188038; }
+    .warn { color: #b06000; }
+    .images { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+    figure { margin: 0; }
+    figure img { width: 100%; border: 1px solid ButtonBorder; border-radius: .4rem; }
+    figcaption { margin-top: .4rem; color: GrayText; }
+    code { word-break: break-word; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>T3.2 材质管线专用验收报告</h1>
+  <p class="meta">生成日期：2026-09-21 · 场景：<code>scenes/24_t3_pbr_material_grid.ron</code></p>
+
+  <section class="status">
+    <strong>当前结论：实现链路和专用视觉回归均通过。</strong>
+    <p>这不是旧场景兼容性回归，而是专门证明 T3.2 材质差异的场景。人工查看截图后已批准，并已固化为 reference；再次回归结果为 PASS，MAE=0.00、Diff=0.00%。</p>
+  </section>
+
+  <h2>本次验收覆盖</h2>
+  <table>
+    <tr><th>检查点</th><th>结果</th><th>证据</th></tr>
+    <tr><td>MaterialConfig → ResolvedMaterial → RenderBatch</td><td class="pass">PASS</td><td>已有 T3.1 resolver 测试与当前场景加载</td></tr>
+    <tr><td>GBuffer 写入 emissive 目标</td><td class="pass">PASS</td><td>新增 WGSL 测试；GBuffer signature / resolve 测试通过</td></tr>
+    <tr><td>Lighting 消费 emissive 目标</td><td class="pass">PASS</td><td>新增 WGSL 测试；全管线初始化测试通过</td></tr>
+    <tr><td>粗糙度 / 金属度差异</td><td class="pass">PASS</td><td>红色粗糙介质与镜面金属球可直接对比</td></tr>
+    <tr><td>法线贴图与 ORM 通道映射</td><td class="pass">PASS</td><td>蓝色法线球与金色 ORM 方块可直接对比</td></tr>
+    <tr><td>发光材质最终画面贡献</td><td class="pass">PASS</td><td>顶部橙色 EmissiveMarker 可见</td></tr>
+    <tr><td>专用场景视觉回归</td><td class="pass">PASS</td><td><a href="20260921-t3.2-material-acceptance-final.html">最终回归 HTML</a>；MAE=0.00、Diff=0.00%</td></tr>
+  </table>
+
+  <h2>截图证据</h2>
+  <div class="images">
+    <figure>
+      <a href="../output/t3_pbr_material_grid_no_ibl.png"><img src="../output/t3_pbr_material_grid_no_ibl.png" alt="T3.2 材质网格，关闭 IBL"></a>
+      <figcaption>关闭 IBL：主要观察直射光、粗糙度、金属度、法线与 ORM。</figcaption>
+    </figure>
+    <figure>
+      <a href="../output/t3_pbr_material_grid.png"><img src="../output/t3_pbr_material_grid.png" alt="T3.2 材质网格，默认 IBL"></a>
+      <figcaption>默认 IBL：镜面金属球反射环境，便于观察材质响应差异。</figcaption>
+    </figure>
+  </div>
+
+  <h2>实现边界</h2>
+  <ul>
+    <li>新增的 emissive MRT 使用 RGBA8Uint 打包，以满足当前 Metal 设备 32-byte color-attachment budget；因此当前是可见的 LDR 发光贡献，不宣称已经完成 HDR emissive / bloom 质量。</li>
+    <li>截图中的世界网格与坐标轴属于现有 DebugLinePass，不是材质结果；后续若需要更干净的人工验收图，应单独增加 debug overlay 开关。</li>
+    <li>截图已人工确认后固化为 <code>tests/reference/t3_pbr_material_grid.png</code>，后续变更会与该基线比较。</li>
+</main>
+</body>
+</html>

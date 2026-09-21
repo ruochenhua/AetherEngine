@@ -49,6 +49,10 @@ impl_resource_tag!(GAlbedo, "gbuffer_albedo");
 pub enum GMaterial {}
 impl_resource_tag!(GMaterial, "gbuffer_material");
 
+/// G-Buffer emissive contribution. Stored as packed RGBA8 uints to stay within the MRT budget.
+pub enum GEmissive {}
+impl_resource_tag!(GEmissive, "gbuffer_emissive");
+
 /// G-Buffer depth texture (Depth32Float).
 pub enum GDepth {}
 impl_resource_tag!(GDepth, "gbuffer_depth");
@@ -199,6 +203,7 @@ mod tests {
         assert_eq!(GNormal::NAME, "gbuffer_normal");
         assert_eq!(GAlbedo::NAME, "gbuffer_albedo");
         assert_eq!(GMaterial::NAME, "gbuffer_material");
+        assert_eq!(GEmissive::NAME, "gbuffer_emissive");
         assert_eq!(GDepth::NAME, "gbuffer_depth");
         assert_eq!(Swapchain::NAME, "swapchain");
         assert_eq!(AOTexture::NAME, "ao");
@@ -214,6 +219,7 @@ mod tests {
             GNormal::NAME,
             GAlbedo::NAME,
             GMaterial::NAME,
+            GEmissive::NAME,
             GDepth::NAME,
             Swapchain::NAME,
             AOTexture::NAME,

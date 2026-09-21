@@ -197,6 +197,7 @@ fn extract_objects(world: &World) -> Vec<ObjectConfig> {
                 metallic: material.metallic,
                 unlit: material.unlit != 0,
                 albedo_texture: None,
+                ..MaterialConfig::default()
             },
             visible: visibility.0,
         };

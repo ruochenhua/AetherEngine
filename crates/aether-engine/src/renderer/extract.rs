@@ -26,7 +26,6 @@ use std::sync::Arc;
 struct BatchKey {
     mesh: *const GpuMesh,
     material: MaterialBits,
-    albedo_texture: u64,
 }
 
 /// Bit-level representation of `MaterialUniform` so it can be hashed.
@@ -36,6 +35,14 @@ struct MaterialBits {
     roughness: u32,
     metallic: u32,
     unlit: u32,
+    normal_scale: u32,
+    occlusion_strength: u32,
+    emissive: [u32; 3],
+    emissive_intensity: u32,
+    albedo_texture_id: u64,
+    normal_texture_id: u64,
+    orm_texture_id: u64,
+    emissive_texture_id: u64,
 }
 
 impl From<MaterialUniform> for MaterialBits {
@@ -50,6 +57,14 @@ impl From<MaterialUniform> for MaterialBits {
             roughness: m.roughness.to_bits(),
             metallic: m.metallic.to_bits(),
             unlit: m.unlit,
+            normal_scale: m.normal_scale.to_bits(),
+            occlusion_strength: m.occlusion_strength.to_bits(),
+            emissive: m.emissive.map(f32::to_bits),
+            emissive_intensity: m.emissive_intensity.to_bits(),
+            albedo_texture_id: m.albedo_texture_id,
+            normal_texture_id: m.normal_texture_id,
+            orm_texture_id: m.orm_texture_id,
+            emissive_texture_id: m.emissive_texture_id,
         }
     }
 }
@@ -63,6 +78,12 @@ pub struct RenderBatch {
     pub material: MaterialUniform,
     /// Optional albedo texture handle shared by all instances.
     pub albedo_texture: Option<Handle<CpuTexture>>,
+    /// Optional normal texture handle shared by all instances.
+    pub normal_texture: Option<Handle<CpuTexture>>,
+    /// Optional ORM texture handle shared by all instances.
+    pub orm_texture: Option<Handle<CpuTexture>>,
+    /// Optional emissive texture handle shared by all instances.
+    pub emissive_texture: Option<Handle<CpuTexture>>,
     /// Instances to draw.
     pub instances: Vec<InstanceData>,
 }
@@ -144,19 +165,20 @@ pub fn extract_render_batches_with_frustum_culling(
         let key = BatchKey {
             mesh: Arc::as_ptr(&mesh_handle.mesh),
             material: MaterialBits::from(*material),
-            albedo_texture: material.albedo_texture_id,
         };
-        let albedo_texture = if material.albedo_texture_id == 0 {
-            None
-        } else {
-            Some(Handle::<CpuTexture>::new(material.albedo_texture_id))
-        };
+        let albedo_texture = texture_handle(material.albedo_texture_id);
+        let normal_texture = texture_handle(material.normal_texture_id);
+        let orm_texture = texture_handle(material.orm_texture_id);
+        let emissive_texture = texture_handle(material.emissive_texture_id);
         batches
             .entry(key)
             .or_insert_with(|| RenderBatch {
                 mesh: mesh_handle.mesh.clone(),
                 material: *material,
                 albedo_texture,
+                normal_texture,
+                orm_texture,
+                emissive_texture,
                 instances: Vec::new(),
             })
             .instances
@@ -164,6 +186,10 @@ pub fn extract_render_batches_with_frustum_culling(
     }
 
     batches.into_values().collect()
+}
+
+fn texture_handle(id: u64) -> Option<Handle<CpuTexture>> {
+    (id != 0).then(|| Handle::<CpuTexture>::new(id))
 }
 
 /// Extract optional pass data from the ECS World.
@@ -311,6 +337,41 @@ mod tests {
 
         let batches = extract_render_batches(&world);
         assert!(batches.is_empty());
+    }
+
+    #[test]
+    fn extract_does_not_instance_batch_different_extended_materials() {
+        let device = headless_device();
+        let registry = BuiltinMeshRegistry::new();
+        let cube_cpu = registry.get("cube").unwrap();
+        let cube_gpu = Arc::new(GpuMesh::from_cpu(&device, &cube_cpu));
+
+        let normal_mapped = MaterialUniform {
+            normal_scale: 0.5,
+            normal_texture_id: 11,
+            ..MaterialUniform::default()
+        };
+
+        let mut world = World::new();
+        for (name, material) in [
+            ("plain", MaterialUniform::default()),
+            ("normal", normal_mapped),
+        ] {
+            world.spawn((
+                Transform::default(),
+                MeshHandle::new(
+                    cube_gpu.clone(),
+                    crate::ecs::components::MeshSource::Builtin("cube".into()),
+                    "cube",
+                ),
+                material,
+                Visibility::default(),
+                Name(name.into()),
+            ));
+        }
+
+        let batches = extract_render_batches(&world);
+        assert_eq!(batches.len(), 2);
     }
 
     #[test]

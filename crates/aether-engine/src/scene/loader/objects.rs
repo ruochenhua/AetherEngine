@@ -4,13 +4,12 @@ use crate::{
     asset::{
         mesh::{CpuMesh, GpuMesh},
         registry::BuiltinMeshRegistry,
-        texture::CpuTexture,
         AssetManager,
     },
     ecs::components::{MeshHandle, MeshSource, Name, Transform, Visibility},
     ecs::World,
     renderer::renderable::MaterialUniform,
-    scene::{MeshRef, SceneDescription},
+    scene::{material::MaterialResolver, MaterialConfig, MeshRef, SceneDescription},
 };
 use glam::{Quat, Vec3};
 use std::collections::HashMap;
@@ -25,6 +24,7 @@ pub(super) fn build_objects(
     world: &mut World,
 ) -> anyhow::Result<()> {
     let mut mesh_cache: HashMap<String, Arc<GpuMesh>> = HashMap::new();
+    let material_resolver = MaterialResolver::new(".");
 
     for obj in &desc.objects {
         let mesh_source = match &obj.mesh {
@@ -84,25 +84,15 @@ pub(super) fn build_objects(
                         submesh.index_count as u32,
                     ));
 
-                    let albedo_texture_id = match &submesh.material.albedo_texture {
-                        Some(path) => match assets.load::<CpuTexture>(path) {
-                            Ok(handle) => handle.id(),
-                            Err(e) => {
-                                tracing::warn!("Failed to load albedo texture '{}': {}", path, e);
-                                0
-                            }
-                        },
-                        None => 0,
-                    };
-
-                    let material = MaterialUniform {
+                    let material_config = MaterialConfig {
                         albedo: submesh.material.base_color,
                         roughness: submesh.material.roughness,
                         metallic: submesh.material.metallic,
-                        unlit: 0,
-                        _pad: 0,
-                        albedo_texture_id,
+                        albedo_texture: submesh.material.albedo_texture.clone(),
+                        ..MaterialConfig::default()
                     };
+                    let resolution = material_resolver.resolve(&material_config, assets)?;
+                    let material = MaterialUniform::from_resolution(&resolution);
 
                     world.spawn((
                         transform.clone(),
@@ -120,25 +110,8 @@ pub(super) fn build_objects(
             }
         }
 
-        let albedo_texture_id = match &obj.material.albedo_texture {
-            Some(path) => match assets.load::<CpuTexture>(path) {
-                Ok(handle) => handle.id(),
-                Err(e) => {
-                    tracing::warn!("Failed to load albedo texture '{}': {}", path, e);
-                    0
-                }
-            },
-            None => 0,
-        };
-
-        let material = MaterialUniform {
-            albedo: obj.material.albedo,
-            roughness: obj.material.roughness,
-            metallic: obj.material.metallic,
-            unlit: u32::from(obj.material.unlit),
-            _pad: 0,
-            albedo_texture_id,
-        };
+        let resolution = material_resolver.resolve(&obj.material, assets)?;
+        let material = MaterialUniform::from_resolution(&resolution);
 
         world.spawn((
             transform,

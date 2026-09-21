@@ -133,6 +133,7 @@ pub fn capture_snapshot(
                 metallic: material.metallic,
                 unlit: material.unlit != 0,
                 albedo_texture: None,
+                ..MaterialConfig::default()
             },
         });
     }

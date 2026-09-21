@@ -27,6 +27,7 @@ pub(crate) fn process_post_ui_ops(app: &mut App) {
                         unlit: 0,
                         _pad: 0,
                         albedo_texture_id: 0,
+                        ..Default::default()
                     },
                     Visibility::default(),
                     Name("DefaultCube".into()),
@@ -177,6 +178,7 @@ pub(crate) fn process_post_ui_ops(app: &mut App) {
                         unlit: 0,
                         _pad: 0,
                         albedo_texture_id: 0,
+                        ..Default::default()
                     },
                     Visibility::default(),
                     Name("Cube".into()),
@@ -203,6 +205,7 @@ pub(crate) fn process_post_ui_ops(app: &mut App) {
                         unlit: 0,
                         _pad: 0,
                         albedo_texture_id: 0,
+                        ..Default::default()
                     },
                     Visibility::default(),
                     Name("Sphere".into()),

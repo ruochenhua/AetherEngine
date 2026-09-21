@@ -112,12 +112,7 @@ impl Pass for WaterReflectionPass {
         }
         let mut obj_data: Vec<u8> = Vec::with_capacity(batch_count * obj_size as usize);
         for batch in self.batches.iter() {
-            let obj = ObjectUniform {
-                albedo: batch.material.albedo,
-                roughness: batch.material.roughness,
-                metallic: batch.material.metallic,
-                unlit: batch.material.unlit,
-            };
+            let obj = ObjectUniform::from_material(&batch.material);
             obj_data.extend_from_slice(bytemuck::cast_slice(&[obj]));
         }
         if !obj_data.is_empty() {

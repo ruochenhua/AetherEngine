@@ -70,6 +70,54 @@ impl GBufferPass {
                         ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                         count: None,
                     },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 3,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 4,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 5,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 6,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 7,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
                 ],
             });
 
@@ -114,6 +162,11 @@ impl GBufferPass {
                     }),
                     Some(wgpu::ColorTargetState {
                         format: wgpu::TextureFormat::Rg8Unorm,
+                        blend: None,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    }),
+                    Some(wgpu::ColorTargetState {
+                        format: wgpu::TextureFormat::Rgba8Uint,
                         blend: None,
                         write_mask: wgpu::ColorWrites::ALL,
                     }),
@@ -189,6 +242,12 @@ impl GBufferPass {
             &crate::asset::texture::CpuTexture::from_color(255, 255, 255, 255),
             Some("gbuffer_fallback_white"),
         ));
+        let fallback_normal = Arc::new(crate::asset::texture::GpuTexture::from_cpu(
+            device,
+            queue,
+            &crate::asset::texture::CpuTexture::from_color(128, 128, 255, 255),
+            Some("gbuffer_fallback_flat_normal"),
+        ));
 
         Self {
             device: device.clone(),
@@ -202,12 +261,14 @@ impl GBufferPass {
             texture_bind_group_layout,
             texture_bind_groups: Vec::new(),
             fallback_white,
+            fallback_normal,
             instance_buffer,
             instance_buffer_capacity: initial_instance_capacity,
             pos_handle: None,
             normal_handle: None,
             albedo_handle: None,
             material_handle: None,
+            emissive_handle: None,
             depth_handle: None,
             batches: Arc::from([]),
             view: Mat4::IDENTITY,

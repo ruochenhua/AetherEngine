@@ -1,5 +1,6 @@
 //! Object, transform, and material configuration.
 
+pub use super::material::MaterialConfig;
 use serde::{Deserialize, Serialize};
 
 /// Mesh reference — either a built-in shape or an external file.
@@ -42,42 +43,6 @@ impl Default for TransformConfig {
             translation: [0.0; 3],
             rotation: default_rotation(),
             scale: default_scale(),
-        }
-    }
-}
-
-/// PBR material parameters.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct MaterialConfig {
-    /// Albedo color [r, g, b, a].
-    #[serde(default = "default_albedo")]
-    pub albedo: [f32; 4],
-    /// Surface roughness (0 = mirror, 1 = matte).
-    #[serde(default)]
-    pub roughness: f32,
-    /// Metalness (0 = dielectric, 1 = metal).
-    #[serde(default)]
-    pub metallic: f32,
-    /// Render the object as a solid albedo color without lighting or shadows.
-    #[serde(default)]
-    pub unlit: bool,
-    /// Optional albedo texture path.
-    #[serde(default)]
-    pub albedo_texture: Option<String>,
-}
-
-fn default_albedo() -> [f32; 4] {
-    [0.8, 0.8, 0.8, 1.0]
-}
-
-impl Default for MaterialConfig {
-    fn default() -> Self {
-        Self {
-            albedo: default_albedo(),
-            roughness: 0.5,
-            metallic: 0.0,
-            unlit: false,
-            albedo_texture: None,
         }
     }
 }

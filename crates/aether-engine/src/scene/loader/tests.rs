@@ -49,6 +49,7 @@ fn test_scene_desc() -> SceneDescription {
                     metallic: 0.0,
                     unlit: false,
                     albedo_texture: None,
+                    ..Default::default()
                 },
                 visible: true,
             },
@@ -65,6 +66,7 @@ fn test_scene_desc() -> SceneDescription {
                     metallic: 0.0,
                     unlit: false,
                     albedo_texture: None,
+                    ..Default::default()
                 },
                 visible: true,
             },
@@ -91,7 +93,12 @@ fn build_world_creates_correct_number_of_entities() {
 fn build_world_sets_correct_material() {
     let device = headless_device();
     let registry = test_registry();
-    let desc = test_scene_desc();
+    let mut desc = test_scene_desc();
+    desc.objects[0].material.normal_scale = 1.5;
+    desc.objects[0].material.occlusion_strength = 0.4;
+    desc.objects[0].material.emissive = [0.2, 0.3, 0.4];
+    desc.objects[0].material.emissive_intensity = 2.0;
+    desc.objects[0].material.unlit = true;
     let mut world = World::new();
 
     let mut assets = test_assets();
@@ -102,6 +109,11 @@ fn build_world_sets_correct_material() {
         if material.albedo == [0.8, 0.3, 0.2, 1.0] {
             found = true;
             assert_eq!(material.roughness, 0.5);
+            assert_eq!(material.normal_scale, 1.5);
+            assert_eq!(material.occlusion_strength, 0.4);
+            assert_eq!(material.emissive, [0.2, 0.3, 0.4]);
+            assert_eq!(material.emissive_intensity, 2.0);
+            assert_eq!(material.unlit, 1);
             break;
         }
     }

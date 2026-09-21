@@ -31,7 +31,7 @@ fn signature_ok() {
     let ctx = init_ctx(&device, &queue);
     let pass = GBufferPass::init(&ctx);
     let sig = pass.signature();
-    assert_eq!(sig.writes.len(), 5);
+    assert_eq!(sig.writes.len(), 6);
 }
 
 #[test]
@@ -54,12 +54,17 @@ fn resolve_ok() {
         (
             std::any::TypeId::of::<GAlbedo>(),
             GAlbedo::NAME,
-            wgpu::TextureFormat::Rgba8Unorm,
+            wgpu::TextureFormat::Rgba8Uint,
         ),
         (
             std::any::TypeId::of::<GMaterial>(),
             GMaterial::NAME,
             wgpu::TextureFormat::Rg8Unorm,
+        ),
+        (
+            std::any::TypeId::of::<GEmissive>(),
+            GEmissive::NAME,
+            wgpu::TextureFormat::Rgba8Unorm,
         ),
         (
             std::any::TypeId::of::<GDepth>(),
@@ -96,4 +101,14 @@ fn shader_preserves_unlit_marker_flag_in_albedo_alpha() {
     naga::front::wgsl::parse_str(shaders::GBUFFER_SHADER_SRC)
         .expect("G-buffer shader should remain valid WGSL");
     assert!(shaders::GBUFFER_SHADER_SRC.contains("f32(obj.unlit)"));
+    assert!(shaders::GBUFFER_SHADER_SRC.contains("normal_texture"));
+    assert!(shaders::GBUFFER_SHADER_SRC.contains("orm_texture"));
+    assert!(shaders::GBUFFER_SHADER_SRC.contains("obj.occlusion_strength"));
+}
+
+#[test]
+fn gbuffer_shader_writes_resolved_emissive_data() {
+    assert!(shaders::GBUFFER_SHADER_SRC.contains("emissive_texture"));
+    assert!(shaders::GBUFFER_SHADER_SRC.contains("obj.emissive_present"));
+    assert!(shaders::GBUFFER_SHADER_SRC.contains("@location(4) emissive"));
 }

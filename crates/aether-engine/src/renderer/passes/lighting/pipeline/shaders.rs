@@ -76,6 +76,7 @@ struct LocalLightParams {
 @group(3) @binding(4) var env_map: texture_cube<f32>;
 
 @group(0) @binding(5) var ao_texture: texture_2d<f32>;
+@group(0) @binding(6) var gbuffer_emissive: texture_2d<u32>;
 
 @group(3) @binding(5) var<storage, read> local_lights: array<GpuLocalLight>;
 @group(3) @binding(6) var<uniform> local_light_params: LocalLightParams;
@@ -142,6 +143,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let normal_sample = textureSample(gbuffer_normal, gbuffer_sampler, uv);
     let albedo_sample = textureSample(gbuffer_albedo, gbuffer_sampler, uv);
     let material_sample = textureSample(gbuffer_material, gbuffer_sampler, uv);
+    let emissive_sample = vec3<f32>(textureLoad(gbuffer_emissive, vec2<i32>(in.clip_position.xy), 0).rgb) / 255.0;
 
     let world_pos = position_sample.xyz;
 
@@ -209,9 +211,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     // AO darkens both the constant ambient term and the IBL contribution.
     // When ssao_enabled=false, the override compiler eliminates the texture sample.
-    var ao: f32 = 1.0;
+    var ao: f32 = normal_sample.a;
     if (ssao_enabled) {
-        ao = textureSample(ao_texture, gbuffer_sampler, in.uv).r;
+        ao = ao * textureSample(ao_texture, gbuffer_sampler, in.uv).r;
     }
     let ambient = albedo * uniforms.ambient_intensity * ao;
     let radiance = uniforms.light.color * uniforms.light.intensity;
@@ -309,7 +311,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         ibl_light = diffuse_ibl + specular_ibl;
     }
 
-    let final_color = direct_with_locals + ibl_light * ao;
+    let final_color = direct_with_locals + ibl_light * ao + emissive_sample;
 
     if (uniforms.debug_mode == 1u) {
         output_color = ambient;

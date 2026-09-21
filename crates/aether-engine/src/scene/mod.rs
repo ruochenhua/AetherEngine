@@ -7,6 +7,8 @@
 pub mod config;
 /// Scene loader.
 pub mod loader;
+/// Opaque material schema resolution.
+pub mod material;
 /// Scene serializer.
 pub mod serializer;
 

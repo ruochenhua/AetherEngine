@@ -29,6 +29,7 @@ pub struct LightingPass {
     normal_handle: Option<ResHandle<GNormal>>,
     albedo_handle: Option<ResHandle<GAlbedo>>,
     material_handle: Option<ResHandle<GMaterial>>,
+    emissive_handle: Option<ResHandle<GEmissive>>,
     /// Shadow depth handle (populated by resolve).
     shadow_depth_handle: Option<ResHandle<ShadowDepth>>,
     /// Texture bind group (recreated during resolve).
@@ -63,6 +64,7 @@ impl Pass for LightingPass {
             .read::<GNormal>()
             .read::<GAlbedo>()
             .read::<GMaterial>()
+            .read::<GEmissive>()
             .read::<ShadowDepth>()
             .read::<AOTextureBlurred>()
             .write::<SceneColor>(wgpu::TextureFormat::Rgba16Float)
@@ -87,6 +89,7 @@ impl Pass for LightingPass {
         self.normal_handle = Some(resources.handle::<GNormal>());
         self.albedo_handle = Some(resources.handle::<GAlbedo>());
         self.material_handle = Some(resources.handle::<GMaterial>());
+        self.emissive_handle = Some(resources.handle::<GEmissive>());
         self.shadow_depth_handle = Some(resources.handle::<ShadowDepth>());
         self.ao_handle = Some(resources.handle::<AOTextureBlurred>());
 
@@ -123,6 +126,7 @@ impl Pass for LightingPass {
         let norm_view = resources.get(self.normal_handle.unwrap());
         let albedo_view = resources.get(self.albedo_handle.unwrap());
         let material_view = resources.get(self.material_handle.unwrap());
+        let emissive_view = resources.get(self.emissive_handle.unwrap());
         let shadow_view = resources.get(self.shadow_depth_handle.unwrap());
         let ao_view = resources.get(self.ao_handle.unwrap());
 
@@ -153,6 +157,10 @@ impl Pass for LightingPass {
                 wgpu::BindGroupEntry {
                     binding: 5,
                     resource: wgpu::BindingResource::TextureView(ao_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 6,
+                    resource: wgpu::BindingResource::TextureView(emissive_view),
                 },
             ],
         }));
@@ -315,6 +323,7 @@ impl LightingPass {
             normal_handle: None,
             albedo_handle: None,
             material_handle: None,
+            emissive_handle: None,
             shadow_depth_handle: None,
             ao_handle: None,
             texture_bind_group: None,

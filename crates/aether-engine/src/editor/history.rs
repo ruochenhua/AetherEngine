@@ -335,6 +335,7 @@ fn insert_component(
                     unlit: u32::from(config.unlit),
                     _pad: 0,
                     albedo_texture_id: 0,
+                    ..MaterialUniform::default()
                 },),
             )
         }

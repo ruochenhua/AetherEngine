@@ -1,6 +1,6 @@
 //! G-Buffer Pass
 //!
-//! Writes position, normal, albedo, and material to four MRT targets.
+//! Writes position, normal, albedo, material, and emissive data to five MRT targets.
 //! Uses GPU instancing with pre-uploaded instance data.
 //!
 //! ## Known Pitfalls
@@ -35,10 +35,11 @@ pub struct GBufferPass {
     object_buffer_capacity: usize,
     object_bind_group: wgpu::BindGroup,
     object_bind_group_layout: wgpu::BindGroupLayout,
-    /// Per-batch albedo texture bind group layout and bind groups.
+    /// Per-batch material texture bind group layout and bind groups.
     texture_bind_group_layout: wgpu::BindGroupLayout,
     texture_bind_groups: Vec<wgpu::BindGroup>,
     fallback_white: Arc<crate::asset::texture::GpuTexture>,
+    fallback_normal: Arc<crate::asset::texture::GpuTexture>,
     /// Per-instance transform + entity_id vertex buffer.
     instance_buffer: wgpu::Buffer,
     instance_buffer_capacity: usize,
@@ -47,6 +48,7 @@ pub struct GBufferPass {
     normal_handle: Option<ResHandle<GNormal>>,
     albedo_handle: Option<ResHandle<GAlbedo>>,
     material_handle: Option<ResHandle<GMaterial>>,
+    emissive_handle: Option<ResHandle<GEmissive>>,
     depth_handle: Option<ResHandle<GDepth>>,
 
     batches: Arc<[RenderBatch]>,
@@ -65,6 +67,7 @@ impl Pass for GBufferPass {
             .write::<GNormal>(wgpu::TextureFormat::Rgba16Float)
             .write::<GAlbedo>(wgpu::TextureFormat::Rgba8Unorm)
             .write::<GMaterial>(wgpu::TextureFormat::Rg8Unorm)
+            .write::<GEmissive>(wgpu::TextureFormat::Rgba8Uint)
             .write::<GDepth>(wgpu::TextureFormat::Depth32Float)
     }
 
@@ -77,6 +80,7 @@ impl Pass for GBufferPass {
         self.normal_handle = Some(resources.handle::<GNormal>());
         self.albedo_handle = Some(resources.handle::<GAlbedo>());
         self.material_handle = Some(resources.handle::<GMaterial>());
+        self.emissive_handle = Some(resources.handle::<GEmissive>());
         self.depth_handle = Some(resources.handle::<GDepth>());
     }
 
@@ -121,12 +125,7 @@ impl Pass for GBufferPass {
         }
         let mut obj_data: Vec<u8> = Vec::with_capacity(batch_count * obj_size as usize);
         for batch in self.batches.iter() {
-            let obj = ObjectUniform {
-                albedo: batch.material.albedo,
-                roughness: batch.material.roughness,
-                metallic: batch.material.metallic,
-                unlit: batch.material.unlit,
-            };
+            let obj = ObjectUniform::from_material(&batch.material);
             obj_data.extend_from_slice(bytemuck::cast_slice(&[obj]));
         }
         if !obj_data.is_empty() {
@@ -159,7 +158,25 @@ impl Pass for GBufferPass {
         // Build per-batch albedo texture bind groups.
         self.texture_bind_groups.clear();
         for batch in self.batches.iter() {
-            let gpu_tex = match &batch.albedo_texture {
+            let albedo_tex = match &batch.albedo_texture {
+                Some(handle) => frame
+                    .texture_cache
+                    .get_or_upload(handle.clone(), frame.asset_manager),
+                None => self.fallback_white.clone(),
+            };
+            let normal_tex = match &batch.normal_texture {
+                Some(handle) => frame
+                    .texture_cache
+                    .get_or_upload(handle.clone(), frame.asset_manager),
+                None => self.fallback_normal.clone(),
+            };
+            let orm_tex = match &batch.orm_texture {
+                Some(handle) => frame
+                    .texture_cache
+                    .get_or_upload(handle.clone(), frame.asset_manager),
+                None => self.fallback_white.clone(),
+            };
+            let emissive_tex = match &batch.emissive_texture {
                 Some(handle) => frame
                     .texture_cache
                     .get_or_upload(handle.clone(), frame.asset_manager),
@@ -171,11 +188,35 @@ impl Pass for GBufferPass {
                 entries: &[
                     wgpu::BindGroupEntry {
                         binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&gpu_tex.view),
+                        resource: wgpu::BindingResource::TextureView(&albedo_tex.view),
                     },
                     wgpu::BindGroupEntry {
                         binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&gpu_tex.sampler),
+                        resource: wgpu::BindingResource::Sampler(&albedo_tex.sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::TextureView(&normal_tex.view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: wgpu::BindingResource::Sampler(&normal_tex.sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
+                        resource: wgpu::BindingResource::TextureView(&orm_tex.view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 5,
+                        resource: wgpu::BindingResource::Sampler(&orm_tex.sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 6,
+                        resource: wgpu::BindingResource::TextureView(&emissive_tex.view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 7,
+                        resource: wgpu::BindingResource::Sampler(&emissive_tex.sampler),
                     },
                 ],
             });
@@ -194,12 +235,14 @@ impl Pass for GBufferPass {
             Some(normal_view),
             Some(albedo_view),
             Some(material_view),
+            Some(emissive_view),
             Some(depth_view),
         ) = (
             resources.get_if_handle(self.pos_handle),
             resources.get_if_handle(self.normal_handle),
             resources.get_if_handle(self.albedo_handle),
             resources.get_if_handle(self.material_handle),
+            resources.get_if_handle(self.emissive_handle),
             resources.get_if_handle(self.depth_handle),
         )
         else {
@@ -238,6 +281,15 @@ impl Pass for GBufferPass {
                 }),
                 Some(wgpu::RenderPassColorAttachment {
                     view: material_view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                }),
+                Some(wgpu::RenderPassColorAttachment {
+                    view: emissive_view,
                     depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {

@@ -107,6 +107,7 @@ pub fn spawn_default_cube(
                 unlit: 0,
                 _pad: 0,
                 albedo_texture_id: 0,
+                ..MaterialUniform::default()
             },
             Visibility::default(),
             Name("DefaultCube".into()),

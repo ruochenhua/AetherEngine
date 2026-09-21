@@ -9,6 +9,7 @@ pub mod camera;
 pub mod clouds;
 pub mod god_ray;
 pub mod light;
+pub mod material;
 pub mod object;
 pub mod terrain;
 pub mod water;

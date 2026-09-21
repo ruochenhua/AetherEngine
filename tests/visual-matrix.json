@@ -204,6 +204,14 @@
       "height": 720,
       "debug_mode": 7,
       "threshold": 0.99
+    },
+    {
+      "name": "t3_pbr_material_grid",
+      "scene": "scenes/24_t3_pbr_material_grid.ron",
+      "frames": 60,
+      "width": 1280,
+      "height": 720,
+      "threshold": 0.99
     }
   ]
 }

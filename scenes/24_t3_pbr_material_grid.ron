@@ -1,0 +1,90 @@
+SceneDescription(
+    name: "T3.2 PBR Material Grid",
+    camera: (
+        position: (0.0, 4.2, 12.0),
+        yaw: -1.57,
+        pitch: -0.28,
+        speed: 4.0,
+        fov: 45.0,
+    ),
+    lights: [
+        (
+            light_type: Directional,
+            direction: (-0.35, -1.0, -0.45),
+            color: (1.0, 0.93, 0.82),
+            intensity: 1.6,
+        ),
+    ],
+    ambient: 0.035,
+    objects: [
+        (
+            name: "GridGround",
+            mesh: Builtin("plane"),
+            transform: (
+                translation: (0.0, -1.6, 0.0),
+                scale: (8.0, 1.0, 5.0),
+            ),
+            material: (
+                albedo: (0.32, 0.34, 0.38, 1.0),
+                roughness: 0.86,
+                metallic: 0.0,
+            ),
+        ),
+        (
+            name: "DielectricRough",
+            mesh: Builtin("sphere"),
+            transform: (translation: (-3.0, 0.0, 0.0), scale: (1.35, 1.35, 1.35)),
+            material: (
+                albedo: (0.72, 0.18, 0.12, 1.0),
+                roughness: 0.82,
+                metallic: 0.0,
+            ),
+        ),
+        (
+            name: "MetalSmooth",
+            mesh: Builtin("sphere"),
+            transform: (translation: (-1.0, 0.0, 0.0), scale: (1.35, 1.35, 1.35)),
+            material: (
+                albedo: (0.72, 0.74, 0.78, 1.0),
+                roughness: 0.10,
+                metallic: 1.0,
+            ),
+        ),
+        (
+            name: "NormalMapped",
+            mesh: Builtin("sphere"),
+            transform: (translation: (1.0, 0.0, 0.0), scale: (1.35, 1.35, 1.35)),
+            material: (
+                albedo: (0.12, 0.32, 0.72, 1.0),
+                roughness: 0.34,
+                metallic: 0.15,
+                normal_texture: Some("assets/models/cyborg/cyborg_normal.png"),
+                normal_scale: 1.5,
+            ),
+        ),
+        (
+            name: "OrmMapped",
+            mesh: Builtin("cube"),
+            transform: (translation: (3.0, -0.15, 0.0), scale: (1.2, 1.2, 1.2)),
+            material: (
+                albedo: (0.72, 0.42, 0.08, 1.0),
+                roughness: 0.72,
+                metallic: 0.55,
+                orm_texture: Some("assets/models/cyborg/cyborg_specular.png"),
+                orm_swizzle: (ao: One, roughness: R, metallic: One),
+            ),
+        ),
+        (
+            name: "EmissiveMarker",
+            mesh: Builtin("cube"),
+            transform: (translation: (0.0, 1.25, -0.35), scale: (0.72, 0.72, 0.72)),
+            material: (
+                albedo: (0.04, 0.04, 0.04, 1.0),
+                roughness: 0.5,
+                metallic: 0.0,
+                emissive: (1.0, 0.08, 0.01),
+                emissive_intensity: 1.0,
+            ),
+        ),
+    ],
+)
