@@ -5,9 +5,7 @@
 //! a subset of the camera frustum.
 //!
 //! ## Known Pitfalls
-//! - **Depth-only rendering**: No fragment shader needed; use `fragment: None`.
-//!   GPU derives depth from `@builtin(position)`. Manually writing
-//!   `@builtin(frag_depth)` is error-prone (e.g., returning 0.0).
+//! - **Depth-only rendering**: The fragment filter must not write color.
 //! - **Per-object draw order**: Do NOT use `queue.write_buffer` inside the
 //!   render pass to update per-object uniforms; Metal may serve stale data.
 //!   Pre-upload all instance data to a dynamic uniform buffer before the
@@ -48,7 +46,6 @@ pub struct Cascade {
     /// Far split distance in view space.
     pub split_depth: f32,
 }
-
 /// Cascaded shadow map pass.
 pub struct ShadowPass {
     device: wgpu::Device,
@@ -64,7 +61,6 @@ pub struct ShadowPass {
     cascades: [Cascade; CASCADE_COUNT],
     terrain_geometry: Option<Arc<RwLock<TerrainGeometry>>>,
 }
-
 impl Pass for ShadowPass {
     fn name(&self) -> &str {
         "Shadow"
@@ -241,7 +237,7 @@ impl ShadowPass {
             label: Some("S VP BGL"),
             entries: &[wgpu::BindGroupLayoutEntry {
                 binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
+                visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
                 ty: wgpu::BindingType::Buffer {
                     ty: wgpu::BufferBindingType::Uniform,
                     has_dynamic_offset: true,
@@ -266,7 +262,12 @@ impl ShadowPass {
                 compilation_options: Default::default(),
                 buffers: &[Vertex::desc(), InstanceData::instance_desc()],
             },
-            fragment: None,
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_main"),
+                compilation_options: Default::default(),
+                targets: &[],
+            }),
             primitive: wgpu::PrimitiveState {
                 topology: wgpu::PrimitiveTopology::TriangleList,
                 strip_index_format: None,
@@ -491,7 +492,6 @@ fn compute_cascade(
     let proj = ortho_wgpu(
         min_ls.x, max_ls.x, min_ls.y, max_ls.y, near_plane, far_plane,
     );
-
     Cascade {
         view_proj: proj * light_view,
         split_depth,

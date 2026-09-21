@@ -172,3 +172,10 @@ fn shadow_pass_stores_terrain_geometry() {
         .is_empty());
     drop(device);
 }
+
+#[test]
+fn shadow_shader_filters_edge_on_triangles() {
+    assert!(shaders::SHADOW_SHADER_SRC.contains("dpdx(in.world_position)"));
+    assert!(shaders::SHADOW_SHADER_SRC.contains("dpdy(in.world_position)"));
+    assert!(shaders::SHADOW_SHADER_SRC.contains("discard;"));
+}
