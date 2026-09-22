@@ -1,0 +1,8 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>Aether T3.3 material Inspector report</title><style>body{font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:1100px;margin:32px auto;color:#172033}table{border-collapse:collapse;width:100%}td,th{border:1px solid #d0d5dd;padding:9px;text-align:left}.pass{color:#15803d}.fail{color:#b42318}.callout{background:#f0fdf4;padding:14px;border-left:4px solid #15803d}.failbox{background:#fef3f2;padding:14px;border-left:4px solid #b42318}a{color:#2563eb}</style></head><body>
+<h1>T3.3 · Material Inspector atomic apply</h1><p>Run: <code>20260922-t3.3-material-inspector</code></p>
+<div class="callout"><strong>PASS</strong>：T3.3 三个 primary case 全部通过。</div>
+<h2>Primary cases</h2><table><tr><th>Case</th><th>Status</th><th>Report</th></tr>
+<tr><td><code>t3_material_atomic_apply</code></td><td class="pass">PASS</td><td><a href="20260922-t3.3-material-inspector-t3_material_atomic_apply.html">HTML evidence</a></td></tr>
+<tr><td><code>t3_material_undo</code></td><td class="pass">PASS</td><td><a href="20260922-t3.3-material-inspector-t3_material_undo.html">HTML evidence</a></td></tr>
+<tr><td><code>t3_material_save_load</code></td><td class="pass">PASS</td><td><a href="20260922-t3.3-material-inspector-t3_material_save_load.html">HTML evidence</a></td></tr>
+</table><h2>验收 checklist</h2><ul><li>☑ Inspector 只编辑 MaterialConfig，不直接编辑 GPU uniform</li><li>☑ normal_scale、occlusion_strength、emissive_intensity 非法时拒绝且 World 不变</li><li>☑ 合法配置一次性同步 MaterialConfig 与 MaterialUniform</li><li>☑ Undo 恢复完整源配置和 GPU 适配器</li><li>☑ Normal/ORM/Emissive 路径及扩展字段保存后可加载</li></ul></body></html>

@@ -1,0 +1,15 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>Aether T3.3 material Inspector case</title><style>body{font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:1000px;margin:32px auto;color:#172033}td,th{border:1px solid #d0d5dd;padding:8px;text-align:left}table{border-collapse:collapse;width:100%}pre{background:#101828;color:#f2f4f7;padding:16px;overflow:auto;white-space:pre-wrap}.pass{color:#15803d}.fail{color:#b42318}.note{background:#eff6ff;padding:12px;border-left:4px solid #2563eb}</style></head><body>
+<h1>t3_material_atomic_apply</h1>
+<table><tr><th>状态</th><td class="pass">PASS</td></tr><tr><th>命令</th><td><code>cargo test -p aether-launcher inspector::material::tests --no-fail-fast</code></td></tr></table>
+<p class="note">T3.3 headless fixture：不启动 launcher，不创建 Metal 窗口；验证 Inspector 的 MaterialConfig 原子应用、回滚以及完整字段保存/加载。</p><h2>完整输出</h2><pre>
+   Compiling aether-launcher v0.1.0 (/Users/ruochenhua/AetherEngine/crates/aether-launcher)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.59s
+     Running unittests src/main.rs (target/debug/deps/aether_launcher-5341c675e6549311)
+
+running 2 tests
+test inspector::material::tests::invalid_material_is_rejected_without_mutating_world ... ok
+test inspector::material::tests::valid_material_updates_config_and_gpu_adapter_together ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 23 filtered out; finished in 0.00s
+
+</pre></body></html>
