@@ -404,7 +404,13 @@ pub(crate) fn render(
     // Write back inspector changes
     if let Some(ref target) = inspector_target {
         if let LauncherState::Running { ref mut world, .. } = app.state {
-            inspector::apply(target, world, &mut app.undo_stack, &mut app.redo_stack);
+            let _ = inspector::apply(
+                target,
+                world,
+                &mut app.undo_stack,
+                &mut app.redo_stack,
+                &mut app.asset_manager,
+            );
             // If the camera was edited, sync intrinsic params to the runtime fly camera.
             if matches!(target, inspector::InspectorTarget::Camera { .. }) {
                 if let Some(camera) = world.query::<&Camera>().iter().next() {

@@ -101,6 +101,7 @@ pub(super) fn build_objects(
                             mesh_source.clone(),
                             format!("{}::{}", mesh_name, submesh.name),
                         ),
+                        material_config,
                         material,
                         Visibility(obj.visible),
                         Name(format!("{}::{}", obj.name, submesh.name)),
@@ -116,6 +117,7 @@ pub(super) fn build_objects(
         world.spawn((
             transform,
             MeshHandle::new(base_gpu_mesh, mesh_source, mesh_name),
+            obj.material.clone(),
             material,
             Visibility(obj.visible),
             Name(obj.name.clone()),

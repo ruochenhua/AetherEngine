@@ -126,16 +126,20 @@ pub fn capture_snapshot(
         records.push(ComponentRecord::Mesh { source });
     }
     if let Ok(material) = world.query_one::<&MaterialUniform>(entity).get() {
-        records.push(ComponentRecord::Material {
-            config: MaterialConfig {
+        let config = world
+            .query_one::<&MaterialConfig>(entity)
+            .get()
+            .ok()
+            .cloned()
+            .unwrap_or_else(|| MaterialConfig {
                 albedo: material.albedo,
                 roughness: material.roughness,
                 metallic: material.metallic,
                 unlit: material.unlit != 0,
                 albedo_texture: None,
                 ..MaterialConfig::default()
-            },
-        });
+            });
+        records.push(ComponentRecord::Material { config });
     }
     if let Ok(visibility) = world.query_one::<&Visibility>(entity).get() {
         records.push(ComponentRecord::Visibility {

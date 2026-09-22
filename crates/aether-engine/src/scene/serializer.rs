@@ -168,13 +168,14 @@ fn extract_god_ray(world: &World) -> Option<GodRayConfig> {
 
 fn extract_objects(world: &World) -> Vec<ObjectConfig> {
     let mut objects = Vec::new();
-    for (transform, mesh_handle, material, visibility, name) in world
+    for (transform, mesh_handle, material, visibility, name, stored_config) in world
         .query::<(
             &Transform,
             &MeshHandle,
             &MaterialUniform,
             &Visibility,
             &Name,
+            Option<&MaterialConfig>,
         )>()
         .iter()
     {
@@ -191,14 +192,14 @@ fn extract_objects(world: &World) -> Vec<ObjectConfig> {
                 rotation: transform.rotation.to_array(),
                 scale: transform.scale.to_array(),
             },
-            material: MaterialConfig {
+            material: stored_config.cloned().unwrap_or_else(|| MaterialConfig {
                 albedo: material.albedo,
                 roughness: material.roughness,
                 metallic: material.metallic,
                 unlit: material.unlit != 0,
                 albedo_texture: None,
                 ..MaterialConfig::default()
-            },
+            }),
             visible: visibility.0,
         };
         objects.push(obj);

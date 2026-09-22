@@ -1,12 +1,13 @@
 //! Apply inspector changes back to the ECS world and undo/redo support.
 
 use super::helpers::{light_direction_to_rotation, rebuild_terrain_material};
+use super::material::{apply_material_config, swap_material_state};
 use super::{EditorCommand, InspectorTarget};
+use aether_engine::asset::AssetManager;
 use aether_engine::ecs::components::{
     Atmosphere, Camera, Clouds, GodRay, Light, Terrain, Transform, Water,
 };
 use aether_engine::ecs::World;
-use aether_engine::renderer::renderable::MaterialUniform;
 use glam::{Quat, Vec3};
 
 /// Apply any changes in the inspector target back to the ECS world, pushing
@@ -16,7 +17,8 @@ pub(crate) fn apply(
     world: &mut World,
     undo_stack: &mut Vec<EditorCommand>,
     redo_stack: &mut Vec<EditorCommand>,
-) {
+    assets: &mut AssetManager,
+) -> Result<(), String> {
     match target {
         InspectorTarget::Mesh {
             entity,
@@ -24,6 +26,7 @@ pub(crate) fn apply(
             material,
             euler,
         } => {
+            let material_previous = apply_material_config(world, *entity, material, assets)?;
             let mut desired_transform = transform.clone();
             desired_transform.rotation =
                 Quat::from_euler(glam::EulerRot::XYZ, euler[0], euler[1], euler[2]);
@@ -37,15 +40,13 @@ pub(crate) fn apply(
                     *current = desired_transform;
                 }
             }
-            if let Ok(current) = world.query_one_mut::<&mut MaterialUniform>(*entity) {
-                if *current != *material {
-                    undo_stack.push(EditorCommand::Material {
-                        entity: *entity,
-                        old_material: *current,
-                    });
-                    redo_stack.clear();
-                    *current = *material;
-                }
+            if material_previous.config.as_ref() != Some(material) {
+                undo_stack.push(EditorCommand::Material {
+                    entity: *entity,
+                    old_config: material_previous.config,
+                    old_material: material_previous.uniform,
+                });
+                redo_stack.clear();
             }
         }
         InspectorTarget::Light {
@@ -155,6 +156,7 @@ pub(crate) fn apply(
             }
         }
     }
+    Ok(())
 }
 
 /// Apply an undo command, returning the command that would redo the change.
@@ -176,13 +178,14 @@ pub(crate) fn apply_undo(world: &mut World, cmd: &EditorCommand) -> EditorComman
         }
         EditorCommand::Material {
             entity,
+            old_config,
             old_material,
         } => {
-            let current = *world.query_one_mut::<&mut MaterialUniform>(entity).unwrap();
-            *world.query_one_mut::<&mut MaterialUniform>(entity).unwrap() = old_material;
+            let current = swap_material_state(world, entity, old_config.as_ref(), old_material);
             EditorCommand::Material {
                 entity,
-                old_material: current,
+                old_config: current.config,
+                old_material: current.uniform,
             }
         }
         EditorCommand::Light {

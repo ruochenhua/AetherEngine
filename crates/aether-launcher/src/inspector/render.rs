@@ -5,7 +5,6 @@ use super::InspectorTarget;
 use aether_engine::ecs::components::{
     Atmosphere, Camera, Clouds, GodRay, Light, Terrain, Transform, Water,
 };
-use aether_engine::renderer::renderable::MaterialUniform;
 
 /// Render the inspector UI for the given target.
 pub(crate) fn render(ui: &mut egui::Ui, target: &mut InspectorTarget) {
@@ -20,7 +19,7 @@ pub(crate) fn render(ui: &mut egui::Ui, target: &mut InspectorTarget) {
             ..
         } => {
             render_transform(ui, transform, euler);
-            render_material(ui, material);
+            super::material_render::render_material(ui, material);
         }
         InspectorTarget::Light {
             light, direction, ..
@@ -45,37 +44,6 @@ fn render_transform(ui: &mut egui::Ui, transform: &mut Transform, euler: &mut [f
     drag_xyz_raw(ui, euler, 0.01);
     ui.label("Scale");
     drag_xyz(ui, &mut transform.scale, 0.05);
-    ui.separator();
-}
-
-fn render_material(ui: &mut egui::Ui, material: &mut MaterialUniform) {
-    ui.label("Material");
-    ui.horizontal(|ui| {
-        ui.label("R");
-        ui.add(
-            egui::DragValue::new(&mut material.albedo[0])
-                .speed(0.01)
-                .range(0.0..=1.0),
-        );
-    });
-    ui.horizontal(|ui| {
-        ui.label("G");
-        ui.add(
-            egui::DragValue::new(&mut material.albedo[1])
-                .speed(0.01)
-                .range(0.0..=1.0),
-        );
-    });
-    ui.horizontal(|ui| {
-        ui.label("B");
-        ui.add(
-            egui::DragValue::new(&mut material.albedo[2])
-                .speed(0.01)
-                .range(0.0..=1.0),
-        );
-    });
-    ui.add(egui::Slider::new(&mut material.roughness, 0.0..=1.0).text("Roughness"));
-    ui.add(egui::Slider::new(&mut material.metallic, 0.0..=1.0).text("Metallic"));
     ui.separator();
 }
 
