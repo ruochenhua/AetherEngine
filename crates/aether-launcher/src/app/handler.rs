@@ -71,6 +71,7 @@ impl ApplicationHandler for App {
             ctx.config.width,
             ctx.config.height,
             has_terrain,
+            self.transparent_enabled,
         )
         .expect("Failed to build render pipeline");
         self.has_terrain_pipeline = has_terrain;

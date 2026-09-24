@@ -1,0 +1,37 @@
+SceneDescription(
+    name: "T5 Particle Smoke / Deterministic Seek",
+    camera: (
+        position: (0.0, 3.5, 6.0),
+        yaw: -1.5707963,
+        pitch: 0.0,
+        speed: 4.0,
+        fov: 48.0,
+    ),
+    lights: [],
+    ambient: 0.0,
+    objects: [
+        (
+            name: "Smoke Base",
+            mesh: Builtin("cube"),
+            transform: (translation: (0.0, 2.4, 0.0), scale: (1.5, 0.18, 1.0)),
+            material: (albedo: (0.12, 0.14, 0.18, 1.0), roughness: 0.9),
+        ),
+    ],
+    particle_emitters: [
+        (
+            emission_rate: 12.0,
+            burst: 3,
+            max_particles: 256,
+            lifetime: (2.0, 3.2),
+            initial_speed: (0.12, 0.34),
+            position: (-0.38, 2.6, 0.0),
+            gravity: (0.0, 0.45, 0.0),
+            start_size: 0.32,
+            end_size: 0.58,
+            start_color: (0.32, 0.36, 0.4, 0.46),
+            end_color: (0.1, 0.12, 0.14, 0.0),
+            blend: Alpha,
+            seed: 20260924,
+        ),
+    ],
+)

@@ -1,0 +1,87 @@
+SceneDescription(
+    name: "T4.3 Transparent Water Composite",
+    camera: (
+        position: (0.0, 3.6, 8.0),
+        yaw: -1.571,
+        pitch: -0.30,
+        speed: 4.0,
+        fov: 50.0,
+    ),
+    lights: [
+        (
+            light_type: Directional,
+            direction: (-0.3, -1.0, -0.4),
+            color: (1.0, 0.95, 0.9),
+            intensity: 1.6,
+        ),
+    ],
+    ambient: 0.08,
+    water: Some((
+        level: 0.25,
+        wave_direction: (1.0, 0.2),
+        wave_amplitude: 0.12,
+        wave_wavelength: 5.0,
+        wave_speed: 0.8,
+        wave_steepness: 0.35,
+        water_color: (0.0, 0.34, 0.48),
+        deep_color: (0.0, 0.12, 0.24),
+        fresnel_power: 3.0,
+        refraction_scale: 0.02,
+        reflectivity: 0.45,
+        reflection_enabled: true,
+    )),
+    objects: [
+        (
+            name: "OpaqueFloorUnderWater",
+            mesh: Builtin("cube"),
+            transform: (
+                translation: (0.0, -0.9, -1.0),
+                scale: (5.5, 0.15, 4.0),
+            ),
+            material: (
+                albedo: (0.20, 0.24, 0.30, 1.0),
+                roughness: 0.82,
+                metallic: 0.0,
+            ),
+        ),
+        (
+            name: "AlphaRedAboveWater",
+            mesh: Builtin("cube"),
+            transform: (
+                translation: (-0.95, 1.25, -1.2),
+                scale: (1.35, 1.35, 0.55),
+            ),
+            material: (
+                albedo: (1.0, 0.08, 0.05, 0.50),
+                roughness: 0.5,
+                transparent: Some((blend: Alpha)),
+            ),
+        ),
+        (
+            name: "AlphaBlueAboveWater",
+            mesh: Builtin("cube"),
+            transform: (
+                translation: (0.95, 1.25, -1.8),
+                scale: (1.35, 1.35, 0.55),
+            ),
+            material: (
+                albedo: (0.05, 0.25, 1.0, 0.48),
+                roughness: 0.5,
+                transparent: Some((blend: Alpha)),
+            ),
+        ),
+        (
+            name: "AdditiveGreenAboveWater",
+            mesh: Builtin("sphere"),
+            transform: (
+                translation: (0.0, 1.55, -0.35),
+                scale: (0.8, 0.8, 0.8),
+            ),
+            material: (
+                albedo: (0.05, 1.0, 0.12, 0.25),
+                roughness: 0.2,
+                transparent: Some((blend: Additive)),
+            ),
+        ),
+    ],
+)

@@ -8,6 +8,7 @@ mod apply;
 mod helpers;
 mod material;
 mod material_render;
+mod particle;
 mod render;
 
 pub(crate) use apply::{apply, apply_undo};
@@ -17,6 +18,7 @@ use aether_engine::ecs::components::{
     Atmosphere, Camera, Clouds, GodRay, Light, Terrain, Transform, Water,
 };
 use aether_engine::ecs::{Entity, World};
+use aether_engine::particles::ParticleEmitterConfig;
 use aether_engine::renderer::renderable::MaterialUniform;
 use aether_engine::scene::MaterialConfig;
 
@@ -59,6 +61,11 @@ pub(crate) enum EditorCommand {
     GodRay { entity: Entity, old_god_ray: GodRay },
     /// Restore a Camera to a previous value.
     Camera { entity: Entity, old_camera: Camera },
+    /// Restore a particle emitter configuration.
+    ParticleEmitter {
+        entity: Entity,
+        old_config: ParticleEmitterConfig,
+    },
 }
 
 /// Editable snapshot of the currently selected entity.
@@ -98,6 +105,12 @@ pub(crate) enum InspectorTarget {
         camera: Camera,
         fov_degrees: f32,
     },
+    /// CPU particle emitter controls.
+    ParticleEmitter {
+        entity: Entity,
+        config: ParticleEmitterConfig,
+        restart: bool,
+    },
 }
 
 impl InspectorTarget {
@@ -110,7 +123,8 @@ impl InspectorTarget {
             | InspectorTarget::Atmosphere { entity, .. }
             | InspectorTarget::Clouds { entity, .. }
             | InspectorTarget::GodRay { entity, .. }
-            | InspectorTarget::Camera { entity, .. } => entity,
+            | InspectorTarget::Camera { entity, .. }
+            | InspectorTarget::ParticleEmitter { entity, .. } => entity,
         }
     }
 }
@@ -208,6 +222,15 @@ pub(crate) fn extract(world: &World) -> Option<InspectorTarget> {
             entity,
             camera: *camera,
             fov_degrees: camera.fov.to_degrees(),
+        });
+    }
+
+    let mut q = world.query_one::<&ParticleEmitterConfig>(entity);
+    if let Ok(config) = q.get() {
+        return Some(InspectorTarget::ParticleEmitter {
+            entity,
+            config: config.clone(),
+            restart: false,
         });
     }
 

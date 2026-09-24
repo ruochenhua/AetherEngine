@@ -115,6 +115,7 @@ mod tests {
             emissive: [0.1, 0.3, 0.8],
             emissive_intensity: 2.5,
             orm_swizzle: Default::default(),
+            transparent: None,
         }
     }
 

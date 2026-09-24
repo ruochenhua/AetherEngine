@@ -1,0 +1,90 @@
+SceneDescription(
+    name: "T4.2 Transparent Overlap",
+    camera: (
+        position: (0.0, 1.0, 7.0),
+        yaw: -1.571,
+        pitch: -0.05,
+        speed: 4.0,
+        fov: 45.0,
+    ),
+    lights: [
+        (
+            light_type: Directional,
+            direction: (-0.3, -1.0, -0.4),
+            color: (1.0, 1.0, 1.0),
+            intensity: 1.0,
+        ),
+    ],
+    ambient: 0.08,
+    objects: [
+        (
+            name: "OpaqueBackdrop",
+            mesh: Builtin("cube"),
+            transform: (
+                translation: (0.0, 1.0, -0.8),
+                scale: (6.0, 3.8, 0.25),
+            ),
+            material: (
+                albedo: (0.12, 0.16, 0.22, 1.0),
+                roughness: 0.7,
+                metallic: 0.0,
+            ),
+        ),
+        (
+            name: "OpaqueFloor",
+            mesh: Builtin("cube"),
+            transform: (
+                translation: (0.0, -0.35, -0.2),
+                scale: (6.0, 0.15, 4.0),
+            ),
+            material: (
+                albedo: (0.22, 0.24, 0.28, 1.0),
+                roughness: 0.8,
+                metallic: 0.0,
+            ),
+        ),
+        (
+            name: "AlphaFarRed",
+            mesh: Builtin("cube"),
+            transform: (
+                translation: (-0.8, 1.0, 0.0),
+                scale: (2.0, 2.0, 0.5),
+            ),
+            material: (
+                albedo: (1.0, 0.08, 0.05, 0.42),
+                roughness: 0.5,
+                transparent: Some((
+                    blend: Alpha,
+                    alpha_cutoff: Some(0.08),
+                    texture: Some("assets/models/cyborg/cyborg_diffuse.png"),
+                )),
+            ),
+        ),
+        (
+            name: "AlphaNearBlue",
+            mesh: Builtin("cube"),
+            transform: (
+                translation: (0.8, 1.0, 0.8),
+                scale: (2.0, 2.0, 0.5),
+            ),
+            material: (
+                albedo: (0.05, 0.25, 1.0, 0.48),
+                roughness: 0.5,
+                transparent: Some((blend: Alpha)),
+            ),
+        ),
+        (
+            name: "AdditiveCenter",
+            mesh: Builtin("sphere"),
+            transform: (
+                translation: (0.0, 1.0, 1.35),
+                scale: (1.1, 1.1, 1.1),
+            ),
+            material: (
+                albedo: (1.0, 0.55, 0.05, 0.65),
+                roughness: 0.2,
+                transparent: Some((blend: Additive)),
+            ),
+        ),
+    ],
+)

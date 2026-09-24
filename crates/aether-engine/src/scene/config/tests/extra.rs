@@ -35,6 +35,7 @@ fn atmosphere_config_roundtrips_through_ron() {
         water: None,
         clouds: None,
         god_ray: None,
+        particle_emitters: vec![],
         objects: vec![],
     };
     let ron = ron::ser::to_string(&desc).expect("should serialize");
@@ -114,6 +115,7 @@ fn water_config_roundtrips_through_ron() {
         }),
         clouds: None,
         god_ray: None,
+        particle_emitters: vec![],
         objects: vec![],
     };
     let ron = ron::ser::to_string(&desc).expect("should serialize");
@@ -172,6 +174,7 @@ fn terrain_config_roundtrips_through_ron() {
         water: None,
         clouds: None,
         god_ray: None,
+        particle_emitters: vec![],
         objects: vec![],
     };
     let ron = ron::ser::to_string(&desc).expect("should serialize");
@@ -243,6 +246,7 @@ fn cloud_config_roundtrips_through_ron() {
             max_render_dist: 30000.0,
         }),
         god_ray: None,
+        particle_emitters: vec![],
         objects: vec![],
     };
     let ron = ron::ser::to_string(&desc).expect("should serialize");
@@ -304,9 +308,35 @@ fn godray_config_roundtrips_through_ron() {
             weight: 0.7,
             exposure: 0.4,
         }),
+        particle_emitters: vec![],
         objects: vec![],
     };
     let ron = ron::ser::to_string(&desc).expect("should serialize");
     let parsed = SceneDescription::from_ron(&ron).expect("should deserialize");
     assert_eq!(parsed, desc);
+}
+
+#[test]
+fn parse_particle_emitter_scene_configuration() {
+    let scene = SceneDescription::from_ron(
+        r#"SceneDescription(
+            name: "Particle Controls",
+            camera: (position: (0.0, 0.0, 5.0)),
+            particle_emitters: [(
+                emission_rate: 24.0,
+                burst: 3,
+                seed: 912,
+                paused: true,
+            )],
+        )"#,
+    )
+    .expect("particle emitter scene should parse");
+
+    assert_eq!(scene.particle_emitters.len(), 1);
+    let emitter = &scene.particle_emitters[0];
+    assert_eq!(emitter.emission_rate, 24.0);
+    assert_eq!(emitter.burst, 3);
+    assert_eq!(emitter.seed, 912);
+    assert!(emitter.paused);
+    assert_eq!(emitter.lifetime, [1.0, 1.0]);
 }

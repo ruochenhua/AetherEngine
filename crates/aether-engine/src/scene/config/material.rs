@@ -97,6 +97,9 @@ pub struct MaterialConfig {
     /// Explicit channel mapping for the ORM texture.
     #[serde(default)]
     pub orm_swizzle: OrmSwizzle,
+    /// Optional general transparent rendering contract.
+    #[serde(default)]
+    pub transparent: Option<super::transparent::TransparentMaterialConfig>,
 }
 
 fn default_albedo() -> [f32; 4] {
@@ -131,6 +134,7 @@ impl Default for MaterialConfig {
             emissive: [0.0; 3],
             emissive_intensity: default_emissive_intensity(),
             orm_swizzle: OrmSwizzle::default(),
+            transparent: None,
         }
     }
 }

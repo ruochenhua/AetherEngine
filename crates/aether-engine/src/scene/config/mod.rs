@@ -12,6 +12,7 @@ pub mod light;
 pub mod material;
 pub mod object;
 pub mod terrain;
+pub mod transparent;
 pub mod water;
 
 pub use atmosphere::*;
@@ -21,6 +22,7 @@ pub use god_ray::*;
 pub use light::*;
 pub use object::*;
 pub use terrain::*;
+pub use transparent::*;
 pub use water::*;
 
 use serde::{Deserialize, Serialize};
@@ -60,6 +62,9 @@ pub struct SceneDescription {
     /// Optional god ray (volumetric light) configuration.
     #[serde(default)]
     pub god_ray: Option<GodRayConfig>,
+    /// CPU particle emitters owned by this scene.
+    #[serde(default)]
+    pub particle_emitters: Vec<crate::particles::ParticleEmitterConfig>,
 }
 
 // ---------------------------------------------------------------------------

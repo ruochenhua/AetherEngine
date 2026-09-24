@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>T4/T5 Review Fix Verification — 2026-09-24</title>
+  <style>
+    :root { color-scheme: light dark; font: 16px/1.55 system-ui, sans-serif; }
+    body { margin: 0; padding: 2rem; background: Canvas; color: CanvasText; }
+    main { max-width: 68rem; margin: auto; }
+    .summary { padding: 1rem 1.25rem; border: 1px solid ButtonBorder; border-radius: .7rem; }
+    .pass { color: #188038; } .warn { color: #b06000; }
+    figure { margin: 1.5rem 0; }
+    img { display: block; width: 100%; height: auto; border: 1px solid ButtonBorder; border-radius: .5rem; }
+    figcaption, .meta { color: GrayText; }
+    code { font-family: ui-monospace, monospace; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>T4/T5 Review Fix Verification</h1>
+  <p class="meta">2026-09-24 · Targeted transparent pipeline and particle runtime validation</p>
+  <section class="summary">
+    <p class="pass"><strong>Passed:</strong> formatting, Clippy, report/runner checks, workspace tests, release build, and two targeted launcher captures.</p>
+    <p class="warn"><strong>Outstanding gate:</strong> <code>verify-module-health.sh</code> still fails. Thirty baseline entries already exceeded their recorded line count at the reviewed HEAD; this work also increases some baseline-tracked files. No Rust file exceeds 500 lines. The baseline was not changed; module-health cleanup remains incomplete.</p>
+    <p><strong>Fixes covered:</strong> mixed mesh/particle back-to-front ordering; transparent albedo texture sampling and alpha cutoff; explicit Transparent → Water graph dependency; one emitter per fire/smoke/dust acceptance scene; removal of production unwraps in the transparent pipeline.</p>
+  </section>
+  <h2>Runtime captures</h2>
+  <figure>
+    <img src="../output/20260924-review-fixes-transparent.png" alt="Transparent overlap scene with textured alpha-tested transparent mesh">
+    <figcaption>Transparent overlap scene · texture binding and alpha cutoff · 1280 × 720 · fixed simulation time 0.5 s.</figcaption>
+  </figure>
+  <figure>
+    <img src="../output/20260924-review-fixes-particles.png" alt="Particle fire scene rendered through the shared transparent pass">
+    <figcaption>Particle fire scene · transparent and particle paths enabled · 1280 × 720 · fixed simulation time 0.5 s.</figcaption>
+  </figure>
+  <h2>Automated checks</h2>
+  <ul>
+    <li><code>cargo test --workspace</code>: engine 281, launcher 36, and all integration/doc tests passed.</li>
+    <li><code>cargo clippy --workspace --all-targets -- -D warnings</code>: passed.</li>
+    <li><code>cargo build -p aether-launcher --release</code>: passed.</li>
+    <li><code>./scripts/verify-ci.sh</code>: all checks through workspace tests passed; stopped at the known module-health baseline drift.</li>
+  </ul>
+</main>
+</body>
+</html>

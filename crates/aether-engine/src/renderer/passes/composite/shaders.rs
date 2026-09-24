@@ -18,6 +18,7 @@ fn vs_main(@location(0) pos: vec2<f32>) -> VertexOutput {
 @group(0) @binding(2) var water_color: texture_2d<f32>;
 @group(0) @binding(3) var cloud_color: texture_2d<f32>;
 @group(0) @binding(4) var god_ray_color: texture_2d<f32>;
+/*TRANSPARENT_BINDING*/
 @group(0) @binding(5) var tex_sampler: sampler;
 @group(0) @binding(6) var gbuffer_position: texture_2d<f32>;
 @group(0) @binding(7) var gbuffer_normal: texture_2d<f32>;
@@ -64,11 +65,31 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         lit = mix(scene.rgb, refl.rgb, reflectance);
     }
 
+    var final_color = lit;
+    /*TRANSPARENT_COMPOSITE*/
     // Volumetric clouds: background * transmittance + in-scattered light.
-    let with_clouds = lit * (1.0 - cloud.a) + cloud.rgb;
+    let with_clouds = final_color * (1.0 - cloud.a) + cloud.rgb;
     let with_god_rays = with_clouds + god_ray.rgb;
-    var final_color = with_god_rays;
+    final_color = with_god_rays;
     if (water.a > 0.0001) { final_color = mix(with_god_rays, water.rgb, clamp(water.a, 0.0, 1.0)); }
     return vec4<f32>(final_color, 1.0);
 }
 "#;
+
+/// Build the ABI-compatible shader variant for the optional transparent overlay.
+pub(super) fn shader_source(transparent_enabled: bool) -> std::borrow::Cow<'static, str> {
+    if !transparent_enabled {
+        return std::borrow::Cow::Borrowed(COMPOSITE_SHADER_SRC);
+    }
+    std::borrow::Cow::Owned(
+        COMPOSITE_SHADER_SRC
+            .replace(
+                "/*TRANSPARENT_BINDING*/",
+                "@group(0) @binding(10) var transparent_color: texture_2d<f32>;",
+            )
+            .replace(
+                "/*TRANSPARENT_COMPOSITE*/",
+                "let transparent = textureSample(transparent_color, tex_sampler, uv);\n    final_color = final_color * (1.0 - transparent.a) + transparent.rgb;",
+            ),
+    )
+}

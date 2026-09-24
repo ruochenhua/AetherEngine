@@ -98,6 +98,17 @@ impl SceneLoader {
         spawn::spawn_clouds(world, desc.clouds.as_ref());
         spawn::spawn_god_ray(world, desc.god_ray.as_ref());
         spawn::spawn_terrain(world, desc.terrain.as_ref(), assets);
+        for (index, config) in desc.particle_emitters.iter().enumerate() {
+            let entity = world.spawn((
+                config.clone(),
+                Name(format!("ParticleEmitter{}", index + 1)),
+            ));
+            if let Ok(stored) =
+                world.query_one_mut::<&mut crate::particles::ParticleEmitterConfig>(entity)
+            {
+                stored.entity_bits = entity.to_bits().get();
+            }
+        }
         objects::build_objects(desc, device, registry, assets, world)?;
         Ok(lighting::build_lighting_uniforms(desc))
     }

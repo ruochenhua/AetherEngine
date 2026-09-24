@@ -101,6 +101,10 @@ impl_resource_tag!(ReflectionTexture, "reflection");
 pub enum SceneColor {}
 impl_resource_tag!(SceneColor, "scene_color");
 
+/// General transparent overlay color/coverage (Rgba16Float).
+pub enum TransparentColor {}
+impl_resource_tag!(TransparentColor, "transparent_color");
+
 /// Water overlay color/alpha (Rgba16Float).
 pub enum WaterColor {}
 impl_resource_tag!(WaterColor, "water_color");
@@ -209,6 +213,7 @@ mod tests {
         assert_eq!(AOTexture::NAME, "ao");
         assert_eq!(AOTextureBlurred::NAME, "ao_blurred");
         assert_eq!(ShadowDepth::NAME, "shadow_depth");
+        assert_eq!(TransparentColor::NAME, "transparent_color");
     }
 
     /// No two tags can share the same logical graph name.
@@ -230,6 +235,7 @@ mod tests {
             BrdfLUT::NAME,
             ReflectionTexture::NAME,
             SceneColor::NAME,
+            TransparentColor::NAME,
             WaterColor::NAME,
             CloudColor::NAME,
             GodRayColor::NAME,

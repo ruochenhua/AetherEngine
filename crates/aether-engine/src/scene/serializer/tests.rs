@@ -240,6 +240,7 @@ fn serialize_to_ron_roundtrips() {
         water: None,
         clouds: None,
         god_ray: None,
+        particle_emitters: vec![],
         objects: vec![ObjectConfig {
             name: "Cube".into(),
             mesh: MeshRef::Builtin("cube".into()),
@@ -252,6 +253,32 @@ fn serialize_to_ron_roundtrips() {
     let ron = to_ron_string(&desc).expect("should serialize");
     let parsed = SceneDescription::from_ron(&ron).expect("should deserialize");
     assert_eq!(parsed, desc);
+}
+
+#[test]
+fn serialize_world_preserves_particle_emitter_controls_without_runtime_entity_bits() {
+    let mut world = World::new();
+    world.spawn((crate::particles::ParticleEmitterConfig {
+        entity_bits: 448,
+        emission_rate: 32.0,
+        burst: 4,
+        seed: 912,
+        paused: true,
+        ..Default::default()
+    },));
+
+    let desc = serialize_world(&world, &LightingUniforms::default(), "ParticleScene");
+    assert_eq!(desc.particle_emitters.len(), 1);
+    assert_eq!(desc.particle_emitters[0].emission_rate, 32.0);
+    assert_eq!(desc.particle_emitters[0].burst, 4);
+    assert_eq!(desc.particle_emitters[0].seed, 912);
+    assert!(desc.particle_emitters[0].paused);
+
+    let ron = to_ron_string(&desc).unwrap();
+    assert!(!ron.contains("entity_bits"));
+    let parsed = SceneDescription::from_ron(&ron).unwrap();
+    assert_eq!(parsed.particle_emitters[0].entity_bits, 0);
+    assert_eq!(parsed.particle_emitters[0].seed, 912);
 }
 
 #[test]

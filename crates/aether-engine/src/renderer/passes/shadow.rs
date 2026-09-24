@@ -13,7 +13,7 @@
 
 use crate::asset::mesh::{InstanceData, Vertex};
 use crate::asset::shader::ShaderLibrary;
-use crate::renderer::extract::RenderBatch;
+use crate::renderer::extract::{opaque_batches, RenderBatch};
 use crate::renderer::frame::RenderFrame;
 use crate::renderer::pass::{InitContext, Pass, PassSignature, ResHandle};
 use crate::renderer::resource::*;
@@ -99,7 +99,7 @@ impl Pass for ShadowPass {
     }
 
     fn apply_frame(&mut self, frame: &RenderFrame) {
-        self.batches = frame.batches.clone();
+        self.batches = opaque_batches(&frame.batches);
         self.terrain_geometry = frame.terrain_geometry.clone();
         let light_dir = glam::Vec3::from_array(frame.lighting.light.direction).normalize();
 

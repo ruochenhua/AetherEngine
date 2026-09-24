@@ -6,6 +6,7 @@
 mod cli;
 mod handler;
 mod input;
+mod particle_runtime;
 mod ready;
 mod render;
 mod scene;
@@ -61,9 +62,11 @@ pub(crate) struct App {
     pub(crate) camera: FlyCamera,
     pub(crate) mesh_registry: BuiltinMeshRegistry,
     pub(crate) asset_manager: AssetManager,
+    pub(crate) particle_runtime: aether_engine::particles::ParticleRuntime,
     pub(crate) texture_cache: Option<GpuTextureCache>,
     pub(crate) scheduler: Option<Scheduler>,
     pub(crate) has_terrain_pipeline: bool,
+    pub(crate) transparent_enabled: bool,
     pub(crate) terrain_geometry: Option<Arc<std::sync::RwLock<TerrainGeometry>>>,
     pub(crate) gpu_timer: Option<aether_engine::renderer::gpu_timer::GpuTimer>,
     pub(crate) ibl_resources: Option<IblResources>,
@@ -157,9 +160,11 @@ impl App {
             },
             mesh_registry: BuiltinMeshRegistry::new(),
             asset_manager: AssetManager::new(),
+            particle_runtime: aether_engine::particles::ParticleRuntime::default(),
             texture_cache: None,
             scheduler: None,
             has_terrain_pipeline: false,
+            transparent_enabled: cli.transparent_enabled,
             terrain_geometry: None,
             gpu_timer: None,
             ibl_resources: None,
@@ -275,6 +280,7 @@ impl App {
             width,
             height,
             has_terrain,
+            self.transparent_enabled,
         ) {
             Ok((scheduler, ibl_resources)) => {
                 info!("rebuilt pipeline with passes: {:?}", scheduler.pass_names());

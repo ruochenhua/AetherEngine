@@ -9,7 +9,7 @@ use aether_engine::renderer::{
         composite::CompositePass, debug::DebugLinePass, fxaa::FXAAPass, gbuffer::GBufferPass,
         god_ray::GodRayPass, lighting::LightingPass, shadow::ShadowPass, ssao::SSAOPass,
         ssr::SSRPass, terrain::TerrainPass, tone_mapping::ToneMappingPass,
-        volumetric_cloud::VolumetricCloudPass, water::WaterPass,
+        transparent::TransparentPass, volumetric_cloud::VolumetricCloudPass, water::WaterPass,
         water_reflection::WaterReflectionPass,
     },
     pipeline_builder::{PipelineBuildError, PipelineBuilder},
@@ -31,6 +31,7 @@ pub fn build_pipeline(
     width: u32,
     height: u32,
     has_terrain: bool,
+    transparent_enabled: bool,
 ) -> Result<(Scheduler, IblResources), PipelineBuildError> {
     let ibl_resources = IblResources::generate(
         device,
@@ -63,7 +64,7 @@ pub fn build_pipeline(
     if has_terrain {
         builder = builder.add_pass(TerrainPass::init(&ctx));
     }
-    let scheduler = builder
+    let mut builder = builder
         .add_pass(ssao)
         .add_pass(ao_blur)
         .add_pass(LightingPass::init(&ctx))
@@ -71,9 +72,18 @@ pub fn build_pipeline(
         .add_pass(VolumetricCloudPass::init(&ctx))
         .add_pass(SSRPass::init(&ctx))
         .add_pass(GodRayPass::init(&ctx))
-        .add_pass(WaterReflectionPass::init(&ctx))
+        .add_pass(WaterReflectionPass::init(&ctx));
+    if transparent_enabled {
+        builder = builder.add_pass(TransparentPass::init(&ctx));
+    }
+    let composite = if transparent_enabled {
+        CompositePass::new_with_transparency(device, surface_format)
+    } else {
+        CompositePass::init(&ctx)
+    };
+    let scheduler = builder
         .add_pass(WaterPass::init(&ctx))
-        .add_pass(CompositePass::init(&ctx))
+        .add_pass(composite)
         .add_pass(BloomPass::init(&ctx))
         .add_pass(ToneMappingPass::init(&ctx))
         .add_pass(FXAAPass::init(&ctx))

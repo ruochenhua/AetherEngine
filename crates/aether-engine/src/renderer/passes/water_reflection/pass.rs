@@ -2,6 +2,7 @@
 
 use super::{ReflectionUniform, WaterReflectionPass};
 use crate::asset::mesh::InstanceData;
+use crate::renderer::extract::opaque_batches;
 use crate::renderer::frame::RenderFrame;
 use crate::renderer::pass::{InitContext, Pass, PassSignature};
 use crate::renderer::renderable::ObjectUniform;
@@ -44,7 +45,7 @@ impl Pass for WaterReflectionPass {
             return;
         }
 
-        self.batches = frame.batches.clone();
+        self.batches = opaque_batches(&frame.batches);
 
         // Mirror the camera across the water plane by post-multiplying the view
         // matrix with a Y-reflection matrix. This is more robust than manually

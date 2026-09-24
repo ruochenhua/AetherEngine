@@ -9,6 +9,7 @@ use crate::{
     ecs::components::{MeshHandle, MeshSource, Name, Transform, Visibility},
     ecs::World,
     renderer::renderable::MaterialUniform,
+    renderer::transparent::TransparentMaterial,
     scene::{material::MaterialResolver, MaterialConfig, MeshRef, SceneDescription},
 };
 use glam::{Quat, Vec3};
@@ -111,17 +112,48 @@ pub(super) fn build_objects(
             }
         }
 
-        let resolution = material_resolver.resolve(&obj.material, assets)?;
+        let mut material_config = obj.material.clone();
+        if let Some(texture) = obj
+            .material
+            .transparent
+            .as_ref()
+            .and_then(|transparent| transparent.texture.as_ref())
+        {
+            material_config.albedo_texture = Some(texture.clone());
+        }
+        let resolution = material_resolver.resolve(&material_config, assets)?;
         let material = MaterialUniform::from_resolution(&resolution);
+        let mesh_handle = MeshHandle::new(base_gpu_mesh, mesh_source, mesh_name);
 
-        world.spawn((
-            transform,
-            MeshHandle::new(base_gpu_mesh, mesh_source, mesh_name),
-            obj.material.clone(),
-            material,
-            Visibility(obj.visible),
-            Name(obj.name.clone()),
-        ));
+        if let Some(config) = &obj.material.transparent {
+            let transparent_material = TransparentMaterial {
+                base_color: obj.material.albedo,
+                texture: resolution.material.albedo.clone(),
+                blend: config.blend,
+                alpha_cutoff: config.alpha_cutoff,
+            };
+            transparent_material.validate().map_err(|error| {
+                anyhow::anyhow!("Invalid transparent material '{}': {:?}", obj.name, error)
+            })?;
+            world.spawn((
+                transform,
+                mesh_handle,
+                obj.material.clone(),
+                material,
+                transparent_material,
+                Visibility(obj.visible),
+                Name(obj.name.clone()),
+            ));
+        } else {
+            world.spawn((
+                transform,
+                mesh_handle,
+                obj.material.clone(),
+                material,
+                Visibility(obj.visible),
+                Name(obj.name.clone()),
+            ));
+        }
     }
     Ok(())
 }

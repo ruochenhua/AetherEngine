@@ -8,6 +8,7 @@ use aether_engine::ecs::components::{
     Atmosphere, Camera, Clouds, GodRay, Light, Terrain, Transform, Water,
 };
 use aether_engine::ecs::World;
+use aether_engine::particles::ParticleEmitterConfig;
 use glam::{Quat, Vec3};
 
 /// Apply any changes in the inspector target back to the ECS world, pushing
@@ -155,6 +156,25 @@ pub(crate) fn apply(
                 }
             }
         }
+        InspectorTarget::ParticleEmitter { entity, config, .. } => {
+            let current = world
+                .query_one::<&ParticleEmitterConfig>(*entity)
+                .get()
+                .map_err(|error| format!("particle emitter unavailable: {error}"))?
+                .clone();
+            let mut desired = config.clone();
+            desired.entity_bits = current.entity_bits;
+            if desired != current {
+                undo_stack.push(EditorCommand::ParticleEmitter {
+                    entity: *entity,
+                    old_config: current,
+                });
+                redo_stack.clear();
+                *world
+                    .query_one_mut::<&mut ParticleEmitterConfig>(*entity)
+                    .map_err(|error| format!("particle emitter unavailable: {error}"))? = desired;
+            }
+        }
     }
     Ok(())
 }
@@ -264,6 +284,20 @@ pub(crate) fn apply_undo(world: &mut World, cmd: &EditorCommand) -> EditorComman
             EditorCommand::Camera {
                 entity,
                 old_camera: current,
+            }
+        }
+        EditorCommand::ParticleEmitter { entity, old_config } => {
+            let current = world
+                .query_one::<&ParticleEmitterConfig>(entity)
+                .get()
+                .unwrap()
+                .clone();
+            *world
+                .query_one_mut::<&mut ParticleEmitterConfig>(entity)
+                .unwrap() = old_config;
+            EditorCommand::ParticleEmitter {
+                entity,
+                old_config: current,
             }
         }
     }

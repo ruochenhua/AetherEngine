@@ -34,6 +34,9 @@ pub(crate) fn render(ui: &mut egui::Ui, target: &mut InspectorTarget) {
             fov_degrees,
             ..
         } => render_camera(ui, camera, fov_degrees),
+        InspectorTarget::ParticleEmitter {
+            config, restart, ..
+        } => super::particle::render(ui, config, restart),
     }
 }
 

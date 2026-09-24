@@ -1,0 +1,43 @@
+SceneDescription(
+    name: "T5 Particle Fire / Deterministic Seek",
+    camera: (
+        position: (0.0, 3.5, 6.0),
+        yaw: -1.5707963,
+        pitch: 0.0,
+        speed: 4.0,
+        fov: 48.0,
+    ),
+    lights: [],
+    ambient: 0.0,
+    objects: [
+        (
+            name: "Fire Base",
+            mesh: Builtin("cube"),
+            transform: (
+                translation: (0.0, 2.4, 0.0),
+                scale: (1.5, 0.18, 1.0),
+            ),
+            material: (
+                albedo: (0.12, 0.14, 0.18, 1.0),
+                roughness: 0.9,
+            ),
+        ),
+    ],
+    particle_emitters: [
+        (
+            emission_rate: 36.0,
+            burst: 12,
+            max_particles: 256,
+            lifetime: (1.2, 2.4),
+            initial_speed: (0.3, 1.1),
+            position: (0.0, 2.6, 0.0),
+            gravity: (0.0, 1.4, 0.0),
+            start_size: 0.32,
+            end_size: 0.06,
+            start_color: (1.0, 0.24, 0.025, 0.92),
+            end_color: (0.28, 0.035, 0.0, 0.0),
+            blend: Alpha,
+            seed: 20260923,
+        ),
+    ],
+)

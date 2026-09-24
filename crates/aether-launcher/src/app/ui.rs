@@ -5,6 +5,7 @@ use crate::inspector::{self, InspectorTarget};
 use aether_engine::ecs::components::{Camera, MeshHandle, Name};
 use aether_engine::ecs::Entity;
 use aether_engine::renderer::passes::{fxaa::FxaaQuality, tone_mapping::ToneMappingMode};
+use tracing::error;
 
 #[derive(Clone)]
 struct HierarchyItem {
@@ -411,6 +412,25 @@ pub(crate) fn render(
                 &mut app.redo_stack,
                 &mut app.asset_manager,
             );
+            if let inspector::InspectorTarget::ParticleEmitter {
+                entity, restart, ..
+            } = target
+            {
+                if let Err(message) =
+                    super::particle_runtime::configure_from_world(&mut app.particle_runtime, world)
+                {
+                    error!("Particle emitter edit rejected: {message}");
+                } else if *restart {
+                    let entity_bits = entity.to_bits().get();
+                    if let Err(message) = super::particle_runtime::restart_emitter(
+                        &mut app.particle_runtime,
+                        &mut app.cli.time,
+                        entity_bits,
+                    ) {
+                        error!("Particle emitter restart failed: {message}");
+                    }
+                }
+            }
             // If the camera was edited, sync intrinsic params to the runtime fly camera.
             if matches!(target, inspector::InspectorTarget::Camera { .. }) {
                 if let Some(camera) = world.query::<&Camera>().iter().next() {

@@ -18,6 +18,7 @@ pub mod ssr;
 pub mod template;
 pub mod terrain;
 pub mod tone_mapping;
+pub mod transparent;
 pub mod volumetric_cloud;
 pub mod water;
 pub mod water_reflection;

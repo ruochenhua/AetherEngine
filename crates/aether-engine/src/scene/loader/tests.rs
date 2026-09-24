@@ -1,4 +1,6 @@
 use super::*;
+mod particles;
+mod transparent;
 use crate::ecs::components::Transform;
 use crate::ecs::World;
 use crate::renderer::renderable::MaterialUniform;
@@ -35,6 +37,7 @@ fn test_scene_desc() -> SceneDescription {
         water: None,
         clouds: None,
         god_ray: None,
+        particle_emitters: vec![],
         objects: vec![
             ObjectConfig {
                 name: "cube_left".into(),

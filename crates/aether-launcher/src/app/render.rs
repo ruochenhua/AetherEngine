@@ -9,6 +9,8 @@ use aether_engine::renderer::{
     gizmo::{build_transform_gizmo, selected_entity_transform},
 };
 use render_target::FrameTarget;
+#[path = "particle_fixture.rs"]
+mod particle_fixture;
 use std::sync::Arc;
 use std::time::Instant;
 use tracing::{debug, error, info, trace};
@@ -152,6 +154,26 @@ pub(crate) fn frame(
             let t_extract_0 = Instant::now();
             let batches = extract_render_batches(world);
             let mut optional = extract_optional_pass_data(world);
+            if app.cli.particles_enabled {
+                if super::particle_runtime::is_static_billboard_fixture(app.cli.scene.as_deref()) {
+                    let texture = app
+                        .asset_manager
+                        .load::<aether_engine::asset::texture::CpuTexture>(
+                            "assets/models/cyborg/cyborg_diffuse.png",
+                        )
+                        .ok();
+                    optional.particles = Some(particle_fixture::billboard_frame(texture));
+                } else {
+                    match super::particle_runtime::advance(
+                        &mut app.particle_runtime,
+                        &mut app.cli.time,
+                        dt,
+                    ) {
+                        Ok(frame) => optional.particles = Some(frame),
+                        Err(error) => error!("Particle simulation failed: {error}"),
+                    }
+                }
+            }
             optional.lighting = lighting_frame;
             extract_ms = t_extract_0.elapsed().as_secs_f64() * 1000.0;
 
@@ -200,6 +222,7 @@ pub(crate) fn frame(
                 screen_width: ctx.config.width,
                 screen_height: ctx.config.height,
                 dynamic_lines: gizmo_lines,
+                debug_helpers_enabled: app.cli.debug_helpers_enabled,
             };
 
             // Build per-frame context — all passes extract

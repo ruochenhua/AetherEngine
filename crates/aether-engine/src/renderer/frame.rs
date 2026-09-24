@@ -68,6 +68,8 @@ pub struct FrameConfig {
     pub screen_height: u32,
     /// Dynamic debug lines to draw this frame.
     pub dynamic_lines: Vec<DebugVertex>,
+    /// Draw the editor grid, world axes, and dynamic transform gizmos.
+    pub debug_helpers_enabled: bool,
 }
 
 impl Default for FrameConfig {
@@ -94,6 +96,7 @@ impl Default for FrameConfig {
             screen_width: 1280,
             screen_height: 720,
             dynamic_lines: Vec::new(),
+            debug_helpers_enabled: true,
         }
     }
 }

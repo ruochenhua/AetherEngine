@@ -1,6 +1,4 @@
-//! Aether Engine
-//!
-//! A modern rendering engine built with Rust and wgpu.
+//! Aether Engine is a modern Rust rendering engine built on wgpu.
 //! ## Architecture
 //!
 //! - **ECS**: Entity-Component-System architecture using `hecs`
@@ -14,6 +12,8 @@ pub mod editor;
 /// Input state manager.
 pub mod input;
 pub mod math;
+/// Deterministic CPU particle simulation.
+pub mod particles;
 pub mod physics;
 pub mod renderer;
 pub mod scene;

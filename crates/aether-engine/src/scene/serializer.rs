@@ -42,6 +42,7 @@ pub fn serialize_world(
     let water = extract_water(world);
     let clouds = extract_clouds(world);
     let god_ray = extract_god_ray(world);
+    let particle_emitters = extract_particle_emitters(world);
     let objects = extract_objects(world);
 
     SceneDescription {
@@ -54,6 +55,7 @@ pub fn serialize_world(
         water,
         clouds,
         god_ray,
+        particle_emitters,
         objects,
     }
 }
@@ -164,6 +166,23 @@ fn extract_god_ray(world: &World) -> Option<GodRayConfig> {
         .iter()
         .next()
         .map(|gr| gr.config.clone())
+}
+
+fn extract_particle_emitters(world: &World) -> Vec<crate::particles::ParticleEmitterConfig> {
+    let mut emitters: Vec<_> = world
+        .query::<(crate::ecs::Entity, &crate::particles::ParticleEmitterConfig)>()
+        .iter()
+        .map(|(entity, config)| (entity.to_bits().get(), config.clone()))
+        .collect();
+    emitters.sort_by_key(|(entity_bits, _)| *entity_bits);
+    emitters
+        .into_iter()
+        .map(|(_, mut config)| {
+            // ECS IDs are runtime details; they are allocated again on load.
+            config.entity_bits = 0;
+            config
+        })
+        .collect()
 }
 
 fn extract_objects(world: &World) -> Vec<ObjectConfig> {

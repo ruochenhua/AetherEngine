@@ -27,6 +27,9 @@ pub(crate) fn parse_args(args: &[String]) -> Result<CliArgs, CliError> {
         ssao_enabled: false,
         no_ibl: false,
         ssr_enabled: false,
+        transparent_enabled: false,
+        particles_enabled: false,
+        debug_helpers_enabled: true,
         width: None,
         height: None,
         time: TimeControl::default(),
@@ -58,6 +61,7 @@ pub(crate) fn parse_args(args: &[String]) -> Result<CliArgs, CliError> {
                 }
             }
             "--no-gui-overlay" => cli.no_gui_overlay = true,
+            "--no-debug-helpers" => cli.debug_helpers_enabled = false,
             "--debug-mode" => {
                 i += 1;
                 if i < args.len() {
@@ -99,6 +103,22 @@ pub(crate) fn parse_args(args: &[String]) -> Result<CliArgs, CliError> {
             "--ssao" => cli.ssao_enabled = true,
             "--no-ibl" => cli.no_ibl = true,
             "--ssr" => cli.ssr_enabled = true,
+            "--transparent" => {
+                let value = next_value(args, &mut i, "--transparent")?;
+                cli.transparent_enabled = match value {
+                    "on" => true,
+                    "off" => false,
+                    _ => return Err(error(format!("unsupported --transparent value {value}"))),
+                };
+            }
+            "--particles" => {
+                let value = next_value(args, &mut i, "--particles")?;
+                cli.particles_enabled = match value {
+                    "on" => true,
+                    "off" => false,
+                    _ => return Err(error(format!("unsupported --particles value {value}"))),
+                };
+            }
             "--width" => {
                 i += 1;
                 if i < args.len() {

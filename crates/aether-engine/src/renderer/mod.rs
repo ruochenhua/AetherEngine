@@ -42,3 +42,5 @@ pub mod resource;
 pub mod resource_table;
 /// Pass scheduler and execution.
 pub mod scheduler;
+/// CPU-side transparent material and draw-item contracts.
+pub mod transparent;

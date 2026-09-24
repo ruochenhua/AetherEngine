@@ -10,7 +10,7 @@
 //!   pre-uploaded data per draw batch.
 
 use crate::asset::mesh::InstanceData;
-use crate::renderer::extract::RenderBatch;
+use crate::renderer::extract::{opaque_batches, RenderBatch};
 use crate::renderer::frame::RenderFrame;
 use crate::renderer::pass::{InitContext, Pass, PassSignature, ResHandle};
 use crate::renderer::renderable::*;
@@ -85,7 +85,7 @@ impl Pass for GBufferPass {
     }
 
     fn apply_frame(&mut self, frame: &RenderFrame) {
-        self.batches = frame.batches.clone();
+        self.batches = opaque_batches(&frame.batches);
         self.view = frame.camera.view_matrix();
         self.proj = frame.camera.projection_matrix(frame.aspect);
 

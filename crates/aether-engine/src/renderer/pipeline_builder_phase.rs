@@ -31,7 +31,7 @@ pub(super) fn phase_for_pass(name: &str) -> RenderPhase {
         "SSR" => RenderPhase::ScreenSpaceReflection,
         "VolumetricCloud" | "GodRay" => RenderPhase::VolumetricOverlay,
         "WaterReflection" => RenderPhase::PlanarReflection,
-        "Water" => RenderPhase::Transparent,
+        "Transparent" | "Water" => RenderPhase::Transparent,
         "Composite" => RenderPhase::Composite,
         "Bloom" => RenderPhase::Bloom,
         "ToneMapping" => RenderPhase::ToneMapping,
@@ -50,7 +50,11 @@ pub(super) fn add_phase_dependencies(deps: &mut [Vec<usize>], sigs: &[PassSignat
         }
         for (earlier, earlier_sig) in sigs.iter().enumerate() {
             let earlier_phase = phase_for_pass(earlier_sig.name);
-            if earlier_phase < later_phase && !deps[later].contains(&earlier) {
+            let transparent_before_water =
+                earlier_sig.name == "Transparent" && later_sig.name == "Water";
+            if (earlier_phase < later_phase || transparent_before_water)
+                && !deps[later].contains(&earlier)
+            {
                 deps[later].push(earlier);
             }
         }
@@ -85,5 +89,26 @@ mod tests {
         assert!(phase_for_pass("GBuffer") < phase_for_pass("Lighting"));
         assert!(phase_for_pass("SSR") < phase_for_pass("Water"));
         assert!(phase_for_pass("WaterReflection") < phase_for_pass("Composite"));
+    }
+
+    #[test]
+    fn general_transparent_pass_is_after_reflections_and_before_water() {
+        assert!(phase_for_pass("VolumetricCloud") < phase_for_pass("Transparent"));
+        assert!(phase_for_pass("GodRay") < phase_for_pass("Transparent"));
+        assert!(phase_for_pass("WaterReflection") < phase_for_pass("Transparent"));
+        assert_eq!(phase_for_pass("Transparent"), phase_for_pass("Water"));
+    }
+
+    #[test]
+    fn transparent_pass_precedes_water_with_an_explicit_graph_edge() {
+        let sigs = vec![
+            PassSignature::new("Transparent"),
+            PassSignature::new("Water"),
+        ];
+        let mut deps = vec![Vec::new(); sigs.len()];
+
+        add_phase_dependencies(&mut deps, &sigs);
+
+        assert!(deps[1].contains(&0));
     }
 }

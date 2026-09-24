@@ -114,6 +114,13 @@ pub(crate) fn open_cli_scene(app: &mut App, ctx: &RenderContext) {
             ) {
                 Ok(new_lighting) => {
                     *lighting = new_lighting;
+                    if let Err(error) = super::particle_runtime::load_scene(
+                        &mut app.particle_runtime,
+                        world,
+                        &mut app.cli.time,
+                    ) {
+                        error!("Particle runtime scene initialization failed: {error}");
+                    }
                     if let Some((pos, yaw, pitch, fov, speed, near, far)) =
                         read_camera_from_world(world)
                     {
@@ -160,6 +167,13 @@ pub(crate) fn process_pending_load(app: &mut App) {
             ) {
                 Ok(new_lighting) => {
                     *lighting = new_lighting;
+                    if let Err(error) = super::particle_runtime::load_scene(
+                        &mut app.particle_runtime,
+                        world,
+                        &mut app.cli.time,
+                    ) {
+                        error!("Particle runtime scene initialization failed: {error}");
+                    }
                     if let Some((pos, yaw, pitch, fov, speed, near, far)) =
                         read_camera_from_world(world)
                     {
@@ -186,4 +200,5 @@ pub(crate) fn process_pending_load(app: &mut App) {
 
 /// Process pending scene operations triggered by the editor UI.
 mod ops;
+mod save;
 pub(crate) use ops::process_post_ui_ops;

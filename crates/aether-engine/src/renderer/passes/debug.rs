@@ -66,6 +66,7 @@ pub struct DebugLinePass {
     /// Dynamic lines buffer (updated per frame).
     dynamic_vertex_buffer: wgpu::Buffer,
     dynamic_vertex_count: u32,
+    helpers_enabled: bool,
     max_dynamic_vertices: u32,
     /// Pending dynamic vertices to upload next frame.
     pending_dynamic_lines: Vec<DebugVertex>,
@@ -98,6 +99,7 @@ impl Pass for DebugLinePass {
 
     fn apply_frame(&mut self, frame: &RenderFrame) {
         self.set_dynamic_lines(frame.config.dynamic_lines.clone());
+        self.helpers_enabled = frame.config.debug_helpers_enabled;
 
         let view = frame.camera.view_matrix();
         let proj = frame.camera.projection_matrix(frame.aspect);
@@ -159,20 +161,20 @@ impl Pass for DebugLinePass {
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &self.uniform_bind_group, &[]);
 
-        // Draw grid
-        if self.grid_vertex_count > 0 {
+        // Editor helpers are hidden for clean visual regression captures.
+        if self.helpers_enabled && self.grid_vertex_count > 0 {
             pass.set_vertex_buffer(0, self.grid_vertex_buffer.slice(..));
             pass.draw(0..self.grid_vertex_count, 0..1);
         }
 
         // Draw world-axis gizmo at origin
-        if self.gizmo_vertex_count > 0 {
+        if self.helpers_enabled && self.gizmo_vertex_count > 0 {
             pass.set_vertex_buffer(0, self.gizmo_vertex_buffer.slice(..));
             pass.draw(0..self.gizmo_vertex_count, 0..1);
         }
 
         // Draw dynamic lines (e.g. transform gizmo at selected entity)
-        if self.dynamic_vertex_count > 0 {
+        if self.helpers_enabled && self.dynamic_vertex_count > 0 {
             pass.set_vertex_buffer(0, self.dynamic_vertex_buffer.slice(..));
             pass.draw(0..self.dynamic_vertex_count, 0..1);
         }
@@ -340,6 +342,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             gizmo_vertex_count: gizmo_count,
             dynamic_vertex_buffer,
             dynamic_vertex_count: 0,
+            helpers_enabled: true,
             max_dynamic_vertices: MAX_DYNAMIC_VERTICES,
             pending_dynamic_lines: Vec::new(),
             output_format,

@@ -39,6 +39,31 @@ fn parses_ssao_flag() {
 }
 
 #[test]
+fn parses_transparent_feature_variants() {
+    let enabled = parse_args(&args(&["aether-launcher", "--transparent", "on"])).unwrap();
+    assert!(enabled.transparent_enabled);
+
+    let disabled = parse_args(&args(&["aether-launcher", "--transparent", "off"])).unwrap();
+    assert!(!disabled.transparent_enabled);
+}
+
+#[test]
+fn parses_particle_billboard_fixture_switch() {
+    let enabled = parse_args(&args(&["aether-launcher", "--particles", "on"])).unwrap();
+    assert!(enabled.particles_enabled);
+    let disabled = parse_args(&args(&["aether-launcher", "--particles", "off"])).unwrap();
+    assert!(!disabled.particles_enabled);
+}
+
+#[test]
+fn debug_helpers_can_be_hidden_for_visual_acceptance_captures() {
+    let cli = parse_args(&args(&["aether-launcher", "--no-debug-helpers"])).unwrap();
+    assert!(!cli.debug_helpers_enabled);
+    let default = parse_args(&args(&["aether-launcher"])).unwrap();
+    assert!(default.debug_helpers_enabled);
+}
+
+#[test]
 fn parses_no_ibl_flag() {
     let cli = parse_args(&args(&["aether-launcher", "--no-ibl"])).unwrap();
     assert!(cli.no_ibl);
@@ -56,6 +81,9 @@ fn app_honors_ssr_cli_flag() {
         ssao_enabled: false,
         no_ibl: false,
         ssr_enabled: true,
+        transparent_enabled: false,
+        particles_enabled: false,
+        debug_helpers_enabled: true,
         width: None,
         height: None,
         time: aether_engine::time::TimeControl::default(),

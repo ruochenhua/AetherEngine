@@ -38,6 +38,65 @@ fn extract_returns_light_for_selected_light_entity() {
 }
 
 #[test]
+fn particle_emitter_controls_apply_as_one_undoable_config_change() {
+    let mut world = World::new();
+    let entity = world.spawn((
+        aether_engine::particles::ParticleEmitterConfig {
+            entity_bits: 77,
+            emission_rate: 12.0,
+            seed: 8,
+            ..Default::default()
+        },
+        Selected,
+    ));
+    let mut target = extract(&world).expect("emitter should be inspectable");
+    let InspectorTarget::ParticleEmitter { config, .. } = &mut target else {
+        panic!("expected particle emitter target");
+    };
+    config.emission_rate = 64.0;
+    config.burst = 5;
+    config.seed = 19;
+    config.paused = true;
+
+    let mut undo = Vec::new();
+    let mut redo = Vec::new();
+    apply(
+        &target,
+        &mut world,
+        &mut undo,
+        &mut redo,
+        &mut aether_engine::asset::AssetManager::new(),
+    )
+    .unwrap();
+
+    let updated = world
+        .query_one::<&aether_engine::particles::ParticleEmitterConfig>(entity)
+        .get()
+        .unwrap()
+        .clone();
+    assert_eq!(updated.emission_rate, 64.0);
+    assert_eq!(updated.burst, 5);
+    assert_eq!(updated.seed, 19);
+    assert!(updated.paused);
+    assert_eq!(updated.entity_bits, 77);
+    assert_eq!(undo.len(), 1, "the complete config edit is one undo step");
+
+    let redo_command = apply_undo(&mut world, &undo.pop().unwrap());
+    assert_eq!(
+        world
+            .query_one::<&aether_engine::particles::ParticleEmitterConfig>(entity)
+            .get()
+            .unwrap()
+            .emission_rate,
+        12.0
+    );
+    assert!(matches!(
+        redo_command,
+        EditorCommand::ParticleEmitter { .. }
+    ));
+}
+
+#[test]
 fn light_direction_roundtrip_through_rotation() {
     let direction = Vec3::new(0.2, -0.6, -0.8).normalize();
     let rotation = light_direction_to_rotation(direction);

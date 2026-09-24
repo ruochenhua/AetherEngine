@@ -35,6 +35,13 @@ pub(crate) fn process_post_ui_ops(app: &mut App) {
                 ));
             }
             app.camera = FlyCamera::default();
+            if let Err(error) = super::super::particle_runtime::load_scene(
+                &mut app.particle_runtime,
+                world,
+                &mut app.cli.time,
+            ) {
+                error!("Particle runtime reset for new scene failed: {error}");
+            }
             info!("New scene created");
         }
     }
@@ -62,6 +69,13 @@ pub(crate) fn process_post_ui_ops(app: &mut App) {
                 ) {
                     Ok(new_lighting) => {
                         *lighting = new_lighting;
+                        if let Err(error) = super::super::particle_runtime::load_scene(
+                            &mut app.particle_runtime,
+                            world,
+                            &mut app.cli.time,
+                        ) {
+                            error!("Particle runtime scene initialization failed: {error}");
+                        }
                         if let Some((pos, yaw, pitch, fov, speed, near, far)) =
                             read_camera_from_world(world)
                         {
@@ -145,7 +159,7 @@ pub(crate) fn process_post_ui_ops(app: &mut App) {
                 );
                 match aether_engine::scene::serializer::to_ron_string(&desc) {
                     Ok(ron) => {
-                        if let Err(e) = std::fs::write(&path, ron) {
+                        if let Err(e) = super::save::write_scene_atomic(&path, &ron) {
                             error!("Save scene error: {:?}", e);
                         } else {
                             info!("Saved scene to {:?}", path);

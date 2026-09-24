@@ -15,5 +15,5 @@ pub mod serializer;
 pub use config::{
     AtmosphereConfig, CameraConfig, CloudConfig, GodRayConfig, LightConfig, MaterialConfig,
     MeshRef, ObjectConfig, SceneDescription, TerrainConfig, TerrainGeometry, TerrainLayerConfig,
-    TerrainSource, TransformConfig, WaterConfig,
+    TerrainSource, TransformConfig, TransparentMaterialConfig, WaterConfig,
 };

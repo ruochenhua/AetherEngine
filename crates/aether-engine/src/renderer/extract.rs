@@ -8,16 +8,17 @@
 //! This module decouples ECS access from GPU command encoding: after extraction,
 //! no render pass needs a `&World` reference.
 
+mod optional;
+pub use optional::{extract_optional_pass_data, OptionalPassData};
+
 use crate::asset::mesh::{GpuMesh, InstanceData};
 use crate::asset::texture::CpuTexture;
 use crate::asset::Handle;
-use crate::ecs::components::{
-    Atmosphere, Clouds, GodRay, MeshHandle, Terrain, Transform, Visibility, Water,
-};
+use crate::ecs::components::{MeshHandle, Transform, Visibility};
 use crate::ecs::World;
 use crate::math::{CullingVisibility, Frustum, Mat4};
-use crate::renderer::lighting::LightingFrame;
 use crate::renderer::renderable::MaterialUniform;
+use crate::renderer::transparent::{TransparentBlendMode, TransparentMaterial};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -26,6 +27,25 @@ use std::sync::Arc;
 struct BatchKey {
     mesh: *const GpuMesh,
     material: MaterialBits,
+    transparent: Option<TransparentBits>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+struct TransparentBits {
+    blend: u8,
+    alpha_cutoff: Option<u32>,
+}
+
+impl From<&TransparentMaterial> for TransparentBits {
+    fn from(material: &TransparentMaterial) -> Self {
+        Self {
+            blend: match material.blend {
+                TransparentBlendMode::Alpha => 0,
+                TransparentBlendMode::Additive => 1,
+            },
+            alpha_cutoff: material.alpha_cutoff.map(f32::to_bits),
+        }
+    }
 }
 
 /// Bit-level representation of `MaterialUniform` so it can be hashed.
@@ -84,29 +104,21 @@ pub struct RenderBatch {
     pub orm_texture: Option<Handle<CpuTexture>>,
     /// Optional emissive texture handle shared by all instances.
     pub emissive_texture: Option<Handle<CpuTexture>>,
+    /// Optional general transparent material contract.
+    pub transparent_material: Option<TransparentMaterial>,
     /// Instances to draw.
     pub instances: Vec<InstanceData>,
 }
 
-/// Optional scene components consumed by conditional render passes.
-///
-/// Each field is `Option<Component>` because scenes may or may not contain
-/// terrain, water, atmosphere, clouds, or god rays. Passes read from this
-/// struct in `apply_frame` instead of querying the ECS World directly.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct OptionalPassData {
-    /// Unified extracted lighting frame shared by lighting and volumetric consumers.
-    pub lighting: LightingFrame,
-    /// Terrain component for `TerrainPass`.
-    pub terrain: Option<Terrain>,
-    /// Water component for `WaterPass`.
-    pub water: Option<Water>,
-    /// Atmosphere component for `AtmospherePass`.
-    pub atmosphere: Option<Atmosphere>,
-    /// Cloud component for `VolumetricCloudPass`.
-    pub clouds: Option<Clouds>,
-    /// God ray component for `GodRayPass`.
-    pub god_ray: Option<GodRay>,
+/// Keep only opaque batches for deferred geometry, shadows, and planar reflection.
+pub fn opaque_batches(batches: &Arc<[RenderBatch]>) -> Arc<[RenderBatch]> {
+    Arc::from(
+        batches
+            .iter()
+            .filter(|batch| batch.transparent_material.is_none())
+            .cloned()
+            .collect::<Vec<_>>(),
+    )
 }
 
 /// Extract render batches from the ECS World.
@@ -129,13 +141,14 @@ pub fn extract_render_batches_with_frustum_culling(
 ) -> Vec<RenderBatch> {
     let mut batches: HashMap<BatchKey, RenderBatch> = HashMap::with_capacity(world.len() as usize);
 
-    for (entity, transform, mesh_handle, material, visibility) in world
+    for (entity, transform, mesh_handle, material, visibility, transparent) in world
         .query::<(
             hecs::Entity,
             &Transform,
             &MeshHandle,
             &MaterialUniform,
             &Visibility,
+            Option<&TransparentMaterial>,
         )>()
         .iter()
     {
@@ -165,6 +178,7 @@ pub fn extract_render_batches_with_frustum_culling(
         let key = BatchKey {
             mesh: Arc::as_ptr(&mesh_handle.mesh),
             material: MaterialBits::from(*material),
+            transparent: transparent.map(TransparentBits::from),
         };
         let albedo_texture = texture_handle(material.albedo_texture_id);
         let normal_texture = texture_handle(material.normal_texture_id);
@@ -179,6 +193,7 @@ pub fn extract_render_batches_with_frustum_culling(
                 normal_texture,
                 orm_texture,
                 emissive_texture,
+                transparent_material: transparent.cloned(),
                 instances: Vec::new(),
             })
             .instances
@@ -192,28 +207,13 @@ fn texture_handle(id: u64) -> Option<Handle<CpuTexture>> {
     (id != 0).then(|| Handle::<CpuTexture>::new(id))
 }
 
-/// Extract optional pass data from the ECS World.
-///
-/// Each optional component is queried independently. Missing components result
-/// in `None`, which tells the corresponding pass to skip execution via
-/// `should_run`.
-pub fn extract_optional_pass_data(world: &World) -> OptionalPassData {
-    OptionalPassData {
-        lighting: crate::renderer::lighting::extract_lighting_frame(world, 0.0),
-        terrain: world.query::<&Terrain>().iter().next().cloned(),
-        water: world.query::<&Water>().iter().next().cloned(),
-        atmosphere: world.query::<&Atmosphere>().iter().next().cloned(),
-        clouds: world.query::<&Clouds>().iter().next().cloned(),
-        god_ray: world.query::<&GodRay>().iter().next().cloned(),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::asset::mesh::GpuMesh;
     use crate::asset::registry::BuiltinMeshRegistry;
     use crate::asset::terrain_material::TerrainMaterial;
+    use crate::ecs::components::{Atmosphere, Clouds, GodRay, Terrain, Water};
     use crate::ecs::components::{Name, Visibility};
     use crate::ecs::World;
     use crate::math::{Frustum, Vec3};
