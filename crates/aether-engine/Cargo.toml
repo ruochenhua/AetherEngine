@@ -17,6 +17,7 @@ wgpu = { workspace = true }
 winit = { workspace = true }
 hecs = { workspace = true }
 glam = { workspace = true }
+rapier3d = { workspace = true }
 bytemuck = { workspace = true }
 half = { workspace = true }
 

@@ -14,6 +14,9 @@ pub(crate) fn process_post_ui_ops(app: &mut App) {
             let ctx = app.ctx.as_ref().unwrap();
             world.clear();
             *lighting = SceneLoader::new_empty(world);
+            super::super::particle_runtime::physics_runtime::scene_switched(
+                &mut app.particle_runtime.physics,
+            );
             // Spawn a default cube so there's something to pick right away
             if let Some(cpu_mesh) = app.mesh_registry.get("cube") {
                 let gpu_mesh = Arc::new(GpuMesh::from_cpu(&ctx.device, &cpu_mesh));
@@ -36,7 +39,7 @@ pub(crate) fn process_post_ui_ops(app: &mut App) {
             }
             app.camera = FlyCamera::default();
             if let Err(error) = super::super::particle_runtime::load_scene(
-                &mut app.particle_runtime,
+                &mut app.particle_runtime.particles,
                 world,
                 &mut app.cli.time,
             ) {
@@ -69,26 +72,17 @@ pub(crate) fn process_post_ui_ops(app: &mut App) {
                 ) {
                     Ok(new_lighting) => {
                         *lighting = new_lighting;
+                        super::super::particle_runtime::physics_runtime::scene_switched(
+                            &mut app.particle_runtime.physics,
+                        );
                         if let Err(error) = super::super::particle_runtime::load_scene(
-                            &mut app.particle_runtime,
+                            &mut app.particle_runtime.particles,
                             world,
                             &mut app.cli.time,
                         ) {
                             error!("Particle runtime scene initialization failed: {error}");
                         }
-                        if let Some((pos, yaw, pitch, fov, speed, near, far)) =
-                            read_camera_from_world(world)
-                        {
-                            app.camera.position = pos;
-                            app.camera.yaw = yaw;
-                            app.camera.pitch = pitch;
-                            app.camera.fov = fov;
-                            app.camera.speed = speed;
-                            app.camera.base_speed = speed;
-                            app.camera.near = near;
-                            app.camera.far = far;
-                            app.camera.active = false;
-                        }
+                        update_camera_from_world(&mut app.camera, world);
                         info!("Opened scene from {:?}", path);
                         app.pending_terrain_pipeline_rebuild = true;
                     }

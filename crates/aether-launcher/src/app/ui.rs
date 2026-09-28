@@ -416,14 +416,12 @@ pub(crate) fn render(
                 entity, restart, ..
             } = target
             {
-                if let Err(message) =
-                    super::particle_runtime::configure_from_world(&mut app.particle_runtime, world)
-                {
+                if let Err(message) = app.particle_runtime.configure(world) {
                     error!("Particle emitter edit rejected: {message}");
                 } else if *restart {
                     let entity_bits = entity.to_bits().get();
                     if let Err(message) = super::particle_runtime::restart_emitter(
-                        &mut app.particle_runtime,
+                        &mut app.particle_runtime.particles,
                         &mut app.cli.time,
                         entity_bits,
                     ) {

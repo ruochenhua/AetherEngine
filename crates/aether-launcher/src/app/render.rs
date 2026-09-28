@@ -1,16 +1,17 @@
 //! Frame rendering for the launcher.
 
 use super::{App, LauncherState};
+#[path = "particle_fixture.rs"]
+mod particle_fixture;
 #[path = "render_target.rs"]
 mod render_target;
+#[path = "render/simulation.rs"]
+mod simulation;
 use aether_engine::renderer::{
-    extract::{extract_optional_pass_data, extract_render_batches},
     frame::{FrameConfig, RenderFrame},
     gizmo::{build_transform_gizmo, selected_entity_transform},
 };
 use render_target::FrameTarget;
-#[path = "particle_fixture.rs"]
-mod particle_fixture;
 use std::sync::Arc;
 use std::time::Instant;
 use tracing::{debug, error, info, trace};
@@ -137,7 +138,7 @@ pub(crate) fn frame(
             });
         }
         LauncherState::Running {
-            ref world,
+            ref mut world,
             ref mut lighting,
         } => {
             let aspect = ctx.config.width as f32 / ctx.config.height as f32;
@@ -150,30 +151,16 @@ pub(crate) fn frame(
             );
             lighting.light = lighting_frame.sun;
 
-            // Extract phase: ECS World → GPU-ready batches and optional pass data
             let t_extract_0 = Instant::now();
-            let batches = extract_render_batches(world);
-            let mut optional = extract_optional_pass_data(world);
-            if app.cli.particles_enabled {
-                if super::particle_runtime::is_static_billboard_fixture(app.cli.scene.as_deref()) {
-                    let texture = app
-                        .asset_manager
-                        .load::<aether_engine::asset::texture::CpuTexture>(
-                            "assets/models/cyborg/cyborg_diffuse.png",
-                        )
-                        .ok();
-                    optional.particles = Some(particle_fixture::billboard_frame(texture));
-                } else {
-                    match super::particle_runtime::advance(
-                        &mut app.particle_runtime,
-                        &mut app.cli.time,
-                        dt,
-                    ) {
-                        Ok(frame) => optional.particles = Some(frame),
-                        Err(error) => error!("Particle simulation failed: {error}"),
-                    }
-                }
-            }
+            let (batches, mut optional) = simulation::extract(
+                &mut app.particle_runtime.particles,
+                &mut app.particle_runtime.physics,
+                &mut app.cli,
+                &mut app.asset_manager,
+                app.freeze_time,
+                world,
+                dt,
+            );
             optional.lighting = lighting_frame;
             extract_ms = t_extract_0.elapsed().as_secs_f64() * 1000.0;
 

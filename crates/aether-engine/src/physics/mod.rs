@@ -1,17 +1,16 @@
-//! Physics module (reserved for Phase 4).
-//!
-//! Currently provides empty ECS components for physics data.
-//! The actual simulation system will be implemented in a future phase.
-//!
-//! ## Design
-//!
-//! - Phase 1-3: Components exist but have no simulation
-//! - Phase 4: Implement `physics_system` with rapier3d or custom solver
-
-/// Physics components (placeholder for Phase 4).
+//! Rapier-backed rigid-body simulation core.
 pub mod components;
-/// Physics system (placeholder for Phase 4).
+mod lifecycle;
+mod runtime;
 pub mod system;
-
-pub use components::{Collider, ColliderShape, RigidBody};
+mod types;
+mod validation;
+pub use components::{
+    Collider, ColliderList, ColliderShape, PhysicsDesc, RigidBody, TransformAuthority,
+};
+pub use runtime::PhysicsRuntime;
 pub use system::physics_system;
+pub use types::{PhysicsError, StepStats};
+
+#[cfg(test)]
+mod system_tests;

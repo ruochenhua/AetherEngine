@@ -7,6 +7,21 @@ use aether_engine::{
 };
 use std::sync::Arc;
 
+#[path = "physics_runtime.rs"]
+pub(crate) mod physics_runtime;
+
+#[derive(Default)]
+pub(crate) struct SimulationRuntime {
+    pub(crate) particles: ParticleRuntime,
+    pub(crate) physics: Option<aether_engine::physics::PhysicsRuntime>,
+}
+
+impl SimulationRuntime {
+    pub(crate) fn configure(&mut self, world: &World) -> Result<(), String> {
+        configure_from_world(&mut self.particles, world)
+    }
+}
+
 pub(super) fn configure_from_world(
     runtime: &mut ParticleRuntime,
     world: &World,

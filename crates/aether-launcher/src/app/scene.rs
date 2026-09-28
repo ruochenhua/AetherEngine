@@ -64,6 +64,20 @@ pub(crate) fn read_camera_from_world(
         })
 }
 
+pub(crate) fn update_camera_from_world(camera: &mut FlyCamera, world: &World) {
+    if let Some((pos, yaw, pitch, fov, speed, near, far)) = read_camera_from_world(world) {
+        camera.position = pos;
+        camera.yaw = yaw;
+        camera.pitch = pitch;
+        camera.fov = fov;
+        camera.speed = speed;
+        camera.base_speed = speed;
+        camera.near = near;
+        camera.far = far;
+        camera.active = false;
+    }
+}
+
 /// Write camera state to the first `(Transform, Camera)` entity.
 pub(crate) fn write_camera_to_world(camera: &FlyCamera, world: &mut World) {
     let target = world
@@ -114,26 +128,17 @@ pub(crate) fn open_cli_scene(app: &mut App, ctx: &RenderContext) {
             ) {
                 Ok(new_lighting) => {
                     *lighting = new_lighting;
+                    super::particle_runtime::physics_runtime::scene_switched(
+                        &mut app.particle_runtime.physics,
+                    );
                     if let Err(error) = super::particle_runtime::load_scene(
-                        &mut app.particle_runtime,
+                        &mut app.particle_runtime.particles,
                         world,
                         &mut app.cli.time,
                     ) {
                         error!("Particle runtime scene initialization failed: {error}");
                     }
-                    if let Some((pos, yaw, pitch, fov, speed, near, far)) =
-                        read_camera_from_world(world)
-                    {
-                        app.camera.position = pos;
-                        app.camera.yaw = yaw;
-                        app.camera.pitch = pitch;
-                        app.camera.fov = fov;
-                        app.camera.speed = speed;
-                        app.camera.base_speed = speed;
-                        app.camera.near = near;
-                        app.camera.far = far;
-                        app.camera.active = false;
-                    }
+                    update_camera_from_world(&mut app.camera, world);
                     // Queue a pipeline rebuild so the first frame after
                     // `resumed()` uses a scheduler that includes TerrainPass.
                     app.pending_terrain_pipeline_rebuild = true;
@@ -167,26 +172,17 @@ pub(crate) fn process_pending_load(app: &mut App) {
             ) {
                 Ok(new_lighting) => {
                     *lighting = new_lighting;
+                    super::particle_runtime::physics_runtime::scene_switched(
+                        &mut app.particle_runtime.physics,
+                    );
                     if let Err(error) = super::particle_runtime::load_scene(
-                        &mut app.particle_runtime,
+                        &mut app.particle_runtime.particles,
                         world,
                         &mut app.cli.time,
                     ) {
                         error!("Particle runtime scene initialization failed: {error}");
                     }
-                    if let Some((pos, yaw, pitch, fov, speed, near, far)) =
-                        read_camera_from_world(world)
-                    {
-                        app.camera.position = pos;
-                        app.camera.yaw = yaw;
-                        app.camera.pitch = pitch;
-                        app.camera.fov = fov;
-                        app.camera.speed = speed;
-                        app.camera.base_speed = speed;
-                        app.camera.near = near;
-                        app.camera.far = far;
-                        app.camera.active = false;
-                    }
+                    update_camera_from_world(&mut app.camera, world);
                     app.show_overlay = false;
                     app.pending_terrain_pipeline_rebuild = true;
                 }

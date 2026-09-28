@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>T6.2 Physics Lifecycle — Verification Report</title>
+  <style>
+    :root { color-scheme: light; --ink:#182230; --muted:#5d6b7b; --line:#dbe3ec; --paper:#f4f7fb; --accent:#2463eb; --ok:#18794e; --warn:#9a5b00; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    main { max-width:1000px; margin:36px auto; padding:0 22px 48px; }
+    header, section { background:#fff; border:1px solid var(--line); border-radius:14px; padding:24px 28px; margin:18px 0; }
+    h1 { margin:0 0 8px; font-size:30px; line-height:1.2; }
+    h2 { margin:0 0 14px; font-size:20px; }
+    p { margin:8px 0; }
+    .meta,.muted { color:var(--muted); }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin-top:20px; }
+    .metric { padding:14px 16px; border:1px solid var(--line); border-radius:10px; }
+    .metric strong { display:block; font-size:22px; }
+    .ok { color:var(--ok); font-weight:650; }
+    .warn { color:var(--warn); font-weight:650; }
+    ul { margin:8px 0 0; padding-left:22px; }
+    li { margin:6px 0; }
+    code { background:#edf2f8; border-radius:4px; padding:1px 5px; }
+    table { width:100%; border-collapse:collapse; }
+    th,td { padding:10px 12px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+    th { color:var(--muted); font-weight:600; }
+    @media (max-width:640px) { main{margin:16px auto;padding:0 12px 28px} header,section{padding:18px} h1{font-size:25px} }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <p class="meta">Aether Engine · Roadmap T6 · 2026-09-27</p>
+    <h1>T6.2 Physics Lifecycle</h1>
+    <p>完成 ECS 与 Rapier 物理世界之间的实体生命周期、变换同步，以及启动器的惰性接线。</p>
+    <div class="grid">
+      <div class="metric"><strong class="ok">18 / 18</strong>物理生命周期与数值测试</div>
+      <div class="metric"><strong class="ok">5 / 5</strong>启动器物理接线测试</div>
+      <div class="metric"><strong class="ok">299 + 41</strong>引擎与启动器单元测试</div>
+      <div class="metric"><strong class="warn">部分阻断</strong>强制 CI 的模块健康基线</div>
+    </div>
+  </header>
+
+  <section>
+    <h2>本次完成</h2>
+    <ul>
+      <li>建立 Entity ↔ RigidBodyHandle、Entity ↔ 多 ColliderHandle 的双向映射；支持每实体 1–4 个 collider，删除刚体时级联清理。</li>
+      <li>实现 <code>sync_in → step → sync_out</code>：Scene-authoritative 物体接收 ECS 位姿；Physics-authoritative 动态物体在模拟后写回 Transform；暂停时仍同步场景编辑，但不推进模拟或覆盖 ECS。</li>
+      <li>无物理实体时不创建 Rapier runtime；场景替换、reset、shutdown 清除旧句柄并重启步序。</li>
+      <li>物理与粒子共享同一个 <code>TimeControl</code> 发布帧，避免同一渲染帧重复推进；重复 Seek 帧幂等。</li>
+      <li>在任何状态修改前验证整帧样本和物理描述；重复实体、非法形状/变换、过期映射均返回带实体信息的错误。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>验证结果</h2>
+    <table>
+      <thead><tr><th>验证</th><th>结果</th><th>覆盖范围</th></tr></thead>
+      <tbody>
+        <tr><td>Physics focused</td><td class="ok">18 passed</td><td>重力数值、固定碰撞、动态位姿回写、显式 authority、暂停/恢复及暂停时非法样本拒绝、4-collider 上限、配置更新、Seek 回放与 10 秒 bit-stable、删除/reset/shutdown、非法尺度和 stale backend 原子保护。</td></tr>
+        <tr><td>Launcher focused</td><td class="ok">5 passed</td><td>惰性创建、复用粒子已发布的帧、空场景不分配物理 runtime、Seek 目标切换重放、场景切换释放 runtime。</td></tr>
+        <tr><td>Workspace tests</td><td class="ok">通过</td><td>Engine 299 单元测试、Launcher 41 单元测试，以及 workspace integration/doc tests。</td></tr>
+        <tr><td>Clippy / format</td><td class="ok">通过</td><td><code>cargo fmt --check</code>；<code>cargo clippy --workspace --all-targets -- -D warnings</code>。</td></tr>
+        <tr><td>CI module health</td><td class="warn">失败（历史 baseline drift）</td><td>当前源码相对历史 JSON 基线有多处既存 ECS、renderer、scene 与 launcher 行数差异；本次新增物理 Rust 文件均低于 500 行，且没有 physics 路径违规。没有更新基线。</td></tr>
+        <tr><td>Release / first-frame smoke</td><td class="ok">通过</td><td><code>cargo build -p aether-launcher --release</code> 成功；使用 Clouds 场景完成一次离屏首帧并正常退出。该截图只证明启动链路，不作为物理视觉验收。</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>边界与后续</h2>
+    <ul>
+      <li>本阶段没有新增场景序列化、运动学刚体配置、物理调试绘制或 ray cast；这些不属于当前生命周期切片。</li>
+      <li>当前已有场景没有配置物理实体，因此没有可用于视觉截图对比的物理验收场景；本次用针对性 runtime 测试验证行为，没有伪造视觉验收结果。</li>
+      <li>现有场景没有物理实体，Clouds 首帧截图不能覆盖本阶段物理效果；物理生命周期、场景切换与共享时钟由针对性 runtime 测试覆盖，专用 physics fixture 留待后续阶段。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>实现入口</h2>
+    <p><code>crates/aether-engine/src/physics/lifecycle.rs</code>、<code>runtime.rs</code>、<code>system_impl.rs</code>；启动器接线位于 <code>app/physics_runtime.rs</code> 与 <code>app/render/simulation.rs</code>。</p>
+    <p class="meta">本报告保留为 T6 后续 fixture、debug 与 picking 工作的参考记录。</p>
+  </section>
+</main>
+</body>
+</html>
