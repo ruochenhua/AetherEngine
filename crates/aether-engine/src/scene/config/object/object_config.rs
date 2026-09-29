@@ -1,4 +1,4 @@
-use super::{MaterialConfig, TransformConfig};
+use super::{MaterialConfig, PhysicsConfig, TransformConfig};
 use serde::{Deserialize, Serialize};
 
 /// Object (renderable entity) configuration.
@@ -18,6 +18,9 @@ pub struct ObjectConfig {
     /// Whether the object is rendered.
     #[serde(default = "default_visibility")]
     pub visible: bool,
+    /// Optional rigid-body and collider description.
+    #[serde(default)]
+    pub physics: Option<PhysicsConfig>,
 }
 
 fn default_visibility() -> bool {

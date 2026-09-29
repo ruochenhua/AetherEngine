@@ -15,11 +15,13 @@ use crate::ecs::components::{
     Water,
 };
 use crate::ecs::World;
+use crate::physics::{ColliderList, ColliderShape, RigidBody};
 use crate::renderer::light::LightingUniforms;
 use crate::renderer::renderable::MaterialUniform;
 use crate::scene::{
     AtmosphereConfig, CameraConfig, CloudConfig, GodRayConfig, LightConfig, MaterialConfig,
-    MeshRef, ObjectConfig, SceneDescription, TerrainConfig, TransformConfig, WaterConfig,
+    MeshRef, ObjectConfig, PhysicsBodyConfig, PhysicsColliderConfig, PhysicsColliderShapeConfig,
+    PhysicsConfig, SceneDescription, TerrainConfig, TransformConfig, WaterConfig,
 };
 use glam::Vec3;
 
@@ -187,16 +189,19 @@ fn extract_particle_emitters(world: &World) -> Vec<crate::particles::ParticleEmi
 
 fn extract_objects(world: &World) -> Vec<ObjectConfig> {
     let mut objects = Vec::new();
-    for (transform, mesh_handle, material, visibility, name, stored_config) in world
-        .query::<(
-            &Transform,
-            &MeshHandle,
-            &MaterialUniform,
-            &Visibility,
-            &Name,
-            Option<&MaterialConfig>,
-        )>()
-        .iter()
+    for (transform, mesh_handle, material, visibility, name, stored_config, body, colliders) in
+        world
+            .query::<(
+                &Transform,
+                &MeshHandle,
+                &MaterialUniform,
+                &Visibility,
+                &Name,
+                Option<&MaterialConfig>,
+                Option<&RigidBody>,
+                Option<&ColliderList>,
+            )>()
+            .iter()
     {
         let mesh_ref = match &mesh_handle.source {
             crate::ecs::components::MeshSource::Builtin(name) => MeshRef::Builtin(name.clone()),
@@ -220,6 +225,41 @@ fn extract_objects(world: &World) -> Vec<ObjectConfig> {
                 ..MaterialConfig::default()
             }),
             visible: visibility.0,
+            physics: body.zip(colliders).and_then(|(body, colliders)| {
+                let colliders = colliders
+                    .0
+                    .iter()
+                    .map(|collider| {
+                        let shape = match collider.shape {
+                            ColliderShape::Sphere(radius) => {
+                                PhysicsColliderShapeConfig::Sphere { radius }
+                            }
+                            ColliderShape::Box(half_extents) => PhysicsColliderShapeConfig::Box {
+                                half_extents: half_extents.to_array(),
+                            },
+                            ColliderShape::Capsule(radius, height) => {
+                                PhysicsColliderShapeConfig::Capsule { radius, height }
+                            }
+                            ColliderShape::Mesh => PhysicsColliderShapeConfig::Mesh,
+                        };
+                        Some(PhysicsColliderConfig {
+                            shape,
+                            is_trigger: collider.is_trigger,
+                            friction: collider.friction,
+                            restitution: collider.restitution,
+                        })
+                    })
+                    .collect::<Option<Vec<_>>>()?;
+                Some(PhysicsConfig {
+                    body: PhysicsBodyConfig {
+                        mass: body.mass,
+                        is_static: body.is_static,
+                        velocity: body.velocity.to_array(),
+                        angular_velocity: body.angular_velocity.to_array(),
+                    },
+                    colliders,
+                })
+            }),
         };
         objects.push(obj);
     }

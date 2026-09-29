@@ -128,9 +128,6 @@ pub(crate) fn open_cli_scene(app: &mut App, ctx: &RenderContext) {
             ) {
                 Ok(new_lighting) => {
                     *lighting = new_lighting;
-                    super::particle_runtime::physics_runtime::scene_switched(
-                        &mut app.particle_runtime.physics,
-                    );
                     if let Err(error) = super::particle_runtime::load_scene(
                         &mut app.particle_runtime.particles,
                         world,
@@ -173,7 +170,7 @@ pub(crate) fn process_pending_load(app: &mut App) {
                 Ok(new_lighting) => {
                     *lighting = new_lighting;
                     super::particle_runtime::physics_runtime::scene_switched(
-                        &mut app.particle_runtime.physics,
+                        &mut app.particle_runtime,
                     );
                     if let Err(error) = super::particle_runtime::load_scene(
                         &mut app.particle_runtime.particles,
@@ -183,7 +180,6 @@ pub(crate) fn process_pending_load(app: &mut App) {
                         error!("Particle runtime scene initialization failed: {error}");
                     }
                     update_camera_from_world(&mut app.camera, world);
-                    app.show_overlay = false;
                     app.pending_terrain_pipeline_rebuild = true;
                 }
                 Err(e) => {

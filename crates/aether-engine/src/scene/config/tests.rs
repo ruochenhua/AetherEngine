@@ -396,3 +396,5 @@ fn parse_scene_with_atmosphere_config() {
 }
 
 mod extra;
+#[path = "tests/physics.rs"]
+mod physics;

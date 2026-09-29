@@ -1,0 +1,20 @@
+SceneDescription(
+    name: "T6.3 Physics Stack",
+    camera: (position: (6.0, 5.0, 9.0), yaw: -2.16, pitch: -0.36, speed: 4.0, fov: 48.0),
+    lights: [(
+        light_type: Directional,
+        direction: (-0.45, -1.0, -0.35),
+        color: (1.0, 0.94, 0.84),
+        intensity: 1.4,
+    )],
+    ambient: 0.04,
+    objects: [
+        (name: "GroundVisual", mesh: Builtin("plane"), transform: (translation: (0.0, -0.02, 0.0), scale: (10.0, 1.0, 10.0)), material: (albedo: (0.30, 0.33, 0.37, 1.0), roughness: 0.9)),
+        (name: "GroundCollider", mesh: Builtin("cube"), visible: false, transform: (translation: (0.0, -0.15, 0.0)), material: (albedo: (0.3, 0.3, 0.3, 1.0)), physics: Some((body: (is_static: true), colliders: [(shape: Box(half_extents: (5.0, 0.1, 5.0)), friction: 0.8)]))),
+        (name: "StackBase", mesh: Builtin("cube"), transform: (translation: (0.0, 0.55, 0.0)), material: (albedo: (0.72, 0.20, 0.12, 1.0), roughness: 0.62), physics: Some((colliders: [(shape: Box(half_extents: (0.5, 0.5, 0.5)), friction: 0.7)]))),
+        (name: "StackMiddle", mesh: Builtin("cube"), transform: (translation: (0.0, 1.65, 0.0)), material: (albedo: (0.15, 0.42, 0.82, 1.0), roughness: 0.48), physics: Some((colliders: [(shape: Box(half_extents: (0.5, 0.5, 0.5)), friction: 0.7)]))),
+        (name: "StackTop", mesh: Builtin("cube"), transform: (translation: (0.0, 2.75, 0.0)), material: (albedo: (0.90, 0.62, 0.10, 1.0), roughness: 0.4), physics: Some((colliders: [(shape: Box(half_extents: (0.5, 0.5, 0.5)), friction: 0.7)]))),
+        (name: "SphereA", mesh: Builtin("sphere"), transform: (translation: (1.8, 2.5, 0.0), scale: (0.8, 0.8, 0.8)), material: (albedo: (0.13, 0.68, 0.34, 1.0), roughness: 0.3), physics: Some((colliders: [(shape: Sphere(radius: 0.5), friction: 0.55)]))),
+        (name: "SphereB", mesh: Builtin("sphere"), transform: (translation: (-1.8, 3.2, 0.0), scale: (0.8, 0.8, 0.8)), material: (albedo: (0.66, 0.20, 0.72, 1.0), roughness: 0.3), physics: Some((colliders: [(shape: Sphere(radius: 0.5), friction: 0.55)]))),
+    ],
+)

@@ -1,0 +1,20 @@
+SceneDescription(
+    name: "T6.3 Physics Ramp",
+    camera: (position: (6.5, 4.0, 8.0), yaw: -2.25, pitch: -0.28, speed: 4.0, fov: 48.0),
+    lights: [(
+        light_type: Directional,
+        direction: (-0.4, -1.0, -0.3),
+        color: (0.84, 0.92, 1.0),
+        intensity: 1.5,
+    )],
+    ambient: 0.04,
+    objects: [
+        (name: "GroundVisual", mesh: Builtin("plane"), transform: (translation: (0.0, -0.02, 0.0), scale: (10.0, 1.0, 10.0)), material: (albedo: (0.30, 0.33, 0.37, 1.0), roughness: 0.9)),
+        (name: "GroundCollider", mesh: Builtin("cube"), visible: false, transform: (translation: (0.0, -0.15, 0.0)), material: (albedo: (0.3, 0.3, 0.3, 1.0)), physics: Some((body: (is_static: true), colliders: [(shape: Box(half_extents: (5.0, 0.1, 5.0)), friction: 0.8)]))),
+        (name: "RampVisual", mesh: Builtin("cube"), transform: (translation: (0.0, 1.0, 0.0), rotation: (0.0, 0.0, -0.17364818, 0.9848077), scale: (5.0, 0.55, 1.0)), material: (albedo: (0.50, 0.55, 0.62, 1.0), roughness: 0.72)),
+        (name: "RampCollider", mesh: Builtin("cube"), visible: false, transform: (translation: (0.0, 1.0, 0.0), rotation: (0.0, 0.0, -0.17364818, 0.9848077)), material: (albedo: (0.3, 0.3, 0.3, 1.0)), physics: Some((body: (is_static: true), colliders: [(shape: Box(half_extents: (2.5, 0.275, 0.5)), friction: 0.65)]))),
+        (name: "RampSphereA", mesh: Builtin("sphere"), transform: (translation: (-1.5, 2.1, 0.0), scale: (0.7, 0.7, 0.7)), material: (albedo: (0.90, 0.24, 0.12, 1.0), roughness: 0.3), physics: Some((colliders: [(shape: Sphere(radius: 0.5), friction: 0.35)]))),
+        (name: "RampSphereB", mesh: Builtin("sphere"), transform: (translation: (-2.3, 2.8, 0.0), scale: (0.7, 0.7, 0.7)), material: (albedo: (0.12, 0.50, 0.90, 1.0), roughness: 0.3), physics: Some((colliders: [(shape: Sphere(radius: 0.5), friction: 0.35)]))),
+        (name: "RampSphereC", mesh: Builtin("sphere"), transform: (translation: (-3.0, 3.5, 0.0), scale: (0.7, 0.7, 0.7)), material: (albedo: (0.20, 0.76, 0.38, 1.0), roughness: 0.3), physics: Some((colliders: [(shape: Sphere(radius: 0.5), friction: 0.35)]))),
+    ],
+)

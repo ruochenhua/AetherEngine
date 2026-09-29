@@ -22,6 +22,7 @@ pub(crate) struct CliArgs {
     pub(crate) transparent_enabled: bool,
     pub(crate) particles_enabled: bool,
     pub(crate) debug_helpers_enabled: bool,
+    pub(crate) physics_debug_enabled: bool,
     /// Physical pixel width for the window / screenshots.
     pub(crate) width: Option<u32>,
     /// Physical pixel height for the window / screenshots.

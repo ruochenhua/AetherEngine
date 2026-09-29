@@ -160,7 +160,9 @@ impl App {
             },
             mesh_registry: BuiltinMeshRegistry::new(),
             asset_manager: AssetManager::new(),
-            particle_runtime: particle_runtime::SimulationRuntime::default(),
+            particle_runtime: particle_runtime::SimulationRuntime::new(
+                no_gui_overlay || cli.time.mode == aether_engine::time::TimeMode::Seek,
+            ),
             texture_cache: None,
             scheduler: None,
             has_terrain_pipeline: false,

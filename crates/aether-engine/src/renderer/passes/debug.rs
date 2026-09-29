@@ -174,7 +174,7 @@ impl Pass for DebugLinePass {
         }
 
         // Draw dynamic lines (e.g. transform gizmo at selected entity)
-        if self.helpers_enabled && self.dynamic_vertex_count > 0 {
+        if self.dynamic_vertex_count > 0 {
             pass.set_vertex_buffer(0, self.dynamic_vertex_buffer.slice(..));
             pass.draw(0..self.dynamic_vertex_count, 0..1);
         }
@@ -196,36 +196,7 @@ impl DebugLinePass {
         output_format: wgpu::TextureFormat,
         depth_format: wgpu::TextureFormat,
     ) -> Self {
-        let shader_source = r#"
-struct VertexInput {
-    @location(0) position: vec3<f32>,
-    @location(1) color: vec4<f32>,
-};
-
-struct VertexOutput {
-    @builtin(position) clip_position: vec4<f32>,
-    @location(0) color: vec4<f32>,
-};
-
-struct DebugUniform {
-    view_proj: mat4x4<f32>,
-};
-
-@group(0) @binding(0) var<uniform> uniforms: DebugUniform;
-
-@vertex
-fn vs_main(in: VertexInput) -> VertexOutput {
-    var out: VertexOutput;
-    out.clip_position = uniforms.view_proj * vec4<f32>(in.position, 1.0);
-    out.color = in.color;
-    return out;
-}
-
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return in.color;
-}
-"#;
+        let shader_source = include_str!("debug/shader.wgsl");
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Debug Line Shader"),
@@ -324,7 +295,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             usage: wgpu::BufferUsages::VERTEX,
         });
 
-        const MAX_DYNAMIC_VERTICES: u32 = 1024;
+        const MAX_DYNAMIC_VERTICES: u32 = 32768;
         let dynamic_vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Debug Dynamic VB"),
             size: (MAX_DYNAMIC_VERTICES * std::mem::size_of::<DebugVertex>() as u32) as u64,

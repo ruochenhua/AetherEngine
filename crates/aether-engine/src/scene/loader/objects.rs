@@ -1,5 +1,6 @@
 //! Object spawning helpers for `SceneLoader`.
 
+use crate::physics::{Collider, ColliderList, ColliderShape, RigidBody};
 use crate::{
     asset::{
         mesh::{CpuMesh, GpuMesh},
@@ -10,7 +11,10 @@ use crate::{
     ecs::World,
     renderer::renderable::MaterialUniform,
     renderer::transparent::TransparentMaterial,
-    scene::{material::MaterialResolver, MaterialConfig, MeshRef, SceneDescription},
+    scene::{
+        material::MaterialResolver, MaterialConfig, MeshRef, PhysicsColliderShapeConfig,
+        PhysicsConfig, SceneDescription,
+    },
 };
 use glam::{Quat, Vec3};
 use std::collections::HashMap;
@@ -73,6 +77,17 @@ pub(super) fn build_objects(
             scale: Vec3::from_array(obj.transform.scale),
         };
 
+        if let Some(physics) = &obj.physics {
+            validate_physics_config(&obj.name, physics, &transform)?;
+        }
+
+        if obj.physics.is_some() && matches!(obj.mesh, MeshRef::File(_)) {
+            anyhow::bail!(
+                "Physics on file meshes is not supported yet (object '{}'); use a built-in mesh",
+                obj.name
+            );
+        }
+
         // If the loaded file mesh defines per-material submeshes, spawn one
         // entity per submesh so each part can use its own albedo texture.
         // Otherwise fall back to the single material defined in the scene.
@@ -95,7 +110,7 @@ pub(super) fn build_objects(
                     let resolution = material_resolver.resolve(&material_config, assets)?;
                     let material = MaterialUniform::from_resolution(&resolution);
 
-                    world.spawn((
+                    let entity = world.spawn((
                         transform.clone(),
                         MeshHandle::new(
                             gpu_mesh,
@@ -107,6 +122,7 @@ pub(super) fn build_objects(
                         Visibility(obj.visible),
                         Name(format!("{}::{}", obj.name, submesh.name)),
                     ));
+                    attach_physics(world, entity, obj.physics.as_ref())?;
                 }
                 continue;
             }
@@ -135,7 +151,7 @@ pub(super) fn build_objects(
             transparent_material.validate().map_err(|error| {
                 anyhow::anyhow!("Invalid transparent material '{}': {:?}", obj.name, error)
             })?;
-            world.spawn((
+            let entity = world.spawn((
                 transform,
                 mesh_handle,
                 obj.material.clone(),
@@ -144,8 +160,9 @@ pub(super) fn build_objects(
                 Visibility(obj.visible),
                 Name(obj.name.clone()),
             ));
+            attach_physics(world, entity, obj.physics.as_ref())?;
         } else {
-            world.spawn((
+            let entity = world.spawn((
                 transform,
                 mesh_handle,
                 obj.material.clone(),
@@ -153,6 +170,111 @@ pub(super) fn build_objects(
                 Visibility(obj.visible),
                 Name(obj.name.clone()),
             ));
+            attach_physics(world, entity, obj.physics.as_ref())?;
+        }
+    }
+    Ok(())
+}
+
+fn attach_physics(
+    world: &mut World,
+    entity: crate::ecs::Entity,
+    config: Option<&PhysicsConfig>,
+) -> anyhow::Result<()> {
+    let Some(config) = config else {
+        return Ok(());
+    };
+    let colliders = config
+        .colliders
+        .iter()
+        .map(|collider| {
+            let shape = match collider.shape {
+                PhysicsColliderShapeConfig::Sphere { radius } => ColliderShape::Sphere(radius),
+                PhysicsColliderShapeConfig::Box { half_extents } => {
+                    ColliderShape::Box(Vec3::from_array(half_extents))
+                }
+                PhysicsColliderShapeConfig::Capsule { radius, height } => {
+                    ColliderShape::Capsule(radius, height)
+                }
+                PhysicsColliderShapeConfig::Mesh => ColliderShape::Mesh,
+            };
+            Collider {
+                shape,
+                is_trigger: collider.is_trigger,
+                friction: collider.friction,
+                restitution: collider.restitution,
+            }
+        })
+        .collect();
+    world.insert(
+        entity,
+        (
+            RigidBody {
+                velocity: Vec3::from_array(config.body.velocity),
+                angular_velocity: Vec3::from_array(config.body.angular_velocity),
+                mass: config.body.mass,
+                is_static: config.body.is_static,
+            },
+            ColliderList(colliders),
+        ),
+    )?;
+    Ok(())
+}
+
+fn validate_physics_config(
+    name: &str,
+    config: &PhysicsConfig,
+    transform: &Transform,
+) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        !config.colliders.is_empty() && config.colliders.len() <= 4,
+        "Invalid physics on object '{name}': expected 1 to 4 colliders"
+    );
+    anyhow::ensure!(
+        config.body.mass.is_finite()
+            && (config.body.is_static || config.body.mass > 0.0)
+            && config.body.velocity.iter().all(|value| value.is_finite())
+            && config
+                .body
+                .angular_velocity
+                .iter()
+                .all(|value| value.is_finite()),
+        "Invalid physics on object '{name}': mass and velocities must be finite; dynamic mass must be positive"
+    );
+    anyhow::ensure!(
+        transform.translation.is_finite()
+            && transform.rotation.is_finite()
+            && transform.rotation.length_squared() > f32::EPSILON
+            && transform.scale.is_finite()
+            && transform.scale.min_element() > 0.0
+            && (transform.scale.x - transform.scale.y).abs() <= 1.0e-5
+            && (transform.scale.x - transform.scale.z).abs() <= 1.0e-5,
+        "Invalid physics transform on object '{name}': translation/rotation must be finite and scale must be positive, finite, and uniform"
+    );
+    for collider in &config.colliders {
+        anyhow::ensure!(
+            collider.friction.is_finite()
+                && collider.friction >= 0.0
+                && collider.restitution.is_finite()
+                && (0.0..=1.0).contains(&collider.restitution),
+            "Invalid physics material on object '{name}': friction must be non-negative and restitution in [0, 1]"
+        );
+        match collider.shape {
+            PhysicsColliderShapeConfig::Sphere { radius } => anyhow::ensure!(
+                radius.is_finite() && radius > 0.0,
+                "Invalid sphere collider on object '{name}': radius must be positive and finite"
+            ),
+            PhysicsColliderShapeConfig::Box { half_extents } => anyhow::ensure!(
+                half_extents
+                    .iter()
+                    .all(|extent| extent.is_finite() && *extent > 0.0),
+                "Invalid box collider on object '{name}': half extents must be positive and finite"
+            ),
+            PhysicsColliderShapeConfig::Capsule { .. } | PhysicsColliderShapeConfig::Mesh => {
+                anyhow::bail!(
+                    "Unsupported physics collider on object '{name}': T6 supports Box and Sphere"
+                )
+            }
         }
     }
     Ok(())

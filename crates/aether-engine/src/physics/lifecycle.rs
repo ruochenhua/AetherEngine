@@ -24,16 +24,36 @@ impl PhysicsRuntime {
         }
         validate_desc(entity_bits, transform, desc)?;
 
-        let collider_builders = desc
+        let mut collider_builders = desc
             .colliders
             .iter()
             .map(|collider| collider_builder(entity_bits, transform.scale, collider))
             .collect::<Result<Vec<_>, _>>()?;
+        if !desc.body.is_static {
+            let unit_density_mass = collider_builders
+                .iter()
+                .map(|builder| builder.build().mass_properties().mass())
+                .sum::<f32>();
+            if !unit_density_mass.is_finite() || unit_density_mass <= 0.0 {
+                return Err(PhysicsError::InvalidRigidBody {
+                    entity_bits,
+                    reason: "collider mass properties must be finite and positive",
+                });
+            }
+            let density = desc.body.mass / unit_density_mass;
+            for builder in &mut collider_builders {
+                *builder = builder.clone().density(density);
+            }
+        } else {
+            for builder in &mut collider_builders {
+                *builder = builder.clone().density(0.0);
+            }
+        }
         let pose = transform_pose(transform);
         let body_builder = if desc.body.is_static {
             RigidBodyBuilder::fixed()
         } else {
-            RigidBodyBuilder::dynamic().additional_mass(desc.body.mass)
+            RigidBodyBuilder::dynamic()
         };
         let body = body_builder
             .position(pose)
@@ -41,11 +61,17 @@ impl PhysicsRuntime {
             .angvel(super::validation::vector3(desc.body.angular_velocity))
             .build();
         let body_handle = self.bodies.insert(body);
+        self.allocation_stats.body_handles_created += 1;
         let collider_handles = collider_builders
             .into_iter()
             .map(|builder| {
-                self.colliders
-                    .insert_with_parent(builder.build(), body_handle, &mut self.bodies)
+                let handle = self.colliders.insert_with_parent(
+                    builder.build(),
+                    body_handle,
+                    &mut self.bodies,
+                );
+                self.allocation_stats.collider_handles_created += 1;
+                handle
             })
             .collect::<Vec<_>>();
 
@@ -66,6 +92,7 @@ impl PhysicsRuntime {
                 collider_handles,
             },
         );
+        self.query_pipeline.update(&self.colliders);
         Ok(())
     }
 
@@ -157,6 +184,7 @@ impl PhysicsRuntime {
                 }
             }
         }
+        self.query_pipeline.update(&self.colliders);
         Ok(())
     }
 
@@ -313,6 +341,7 @@ impl PhysicsRuntime {
         for handle in state.collider_handles {
             self.collider_to_entity.remove(&handle);
         }
+        self.query_pipeline.update(&self.colliders);
         Ok(())
     }
 
@@ -345,6 +374,7 @@ impl PhysicsRuntime {
         self.impulse_joints = rapier3d::prelude::ImpulseJointSet::new();
         self.multibody_joints = rapier3d::prelude::MultibodyJointSet::new();
         self.ccd_solver = rapier3d::prelude::CCDSolver::new();
+        self.query_pipeline = rapier3d::prelude::QueryPipeline::new();
         self.entity_to_body.clear();
         self.entity_to_colliders.clear();
         self.body_to_entity.clear();

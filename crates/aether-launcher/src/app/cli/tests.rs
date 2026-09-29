@@ -64,6 +64,16 @@ fn debug_helpers_can_be_hidden_for_visual_acceptance_captures() {
 }
 
 #[test]
+fn parses_physics_debug_on_and_off() {
+    let enabled = parse_args(&args(&["aether-launcher", "--physics-debug", "on"]))
+        .expect("physics debug on should parse");
+    assert!(enabled.physics_debug_enabled);
+    let disabled = parse_args(&args(&["aether-launcher", "--physics-debug", "off"]))
+        .expect("physics debug off should parse");
+    assert!(!disabled.physics_debug_enabled);
+}
+
+#[test]
 fn parses_no_ibl_flag() {
     let cli = parse_args(&args(&["aether-launcher", "--no-ibl"])).unwrap();
     assert!(cli.no_ibl);
@@ -84,6 +94,7 @@ fn app_honors_ssr_cli_flag() {
         transparent_enabled: false,
         particles_enabled: false,
         debug_helpers_enabled: true,
+        physics_debug_enabled: false,
         width: None,
         height: None,
         time: aether_engine::time::TimeControl::default(),

@@ -1,8 +1,13 @@
 // Editor UI operations for scene management.
 
+#[path = "playback.rs"]
+mod playback;
+
 use super::*;
 
 pub(crate) fn process_post_ui_ops(app: &mut App) {
+    playback::process_pending(app);
+
     // New scene
     if app.pending_new_scene {
         app.pending_new_scene = false;
@@ -15,7 +20,7 @@ pub(crate) fn process_post_ui_ops(app: &mut App) {
             world.clear();
             *lighting = SceneLoader::new_empty(world);
             super::super::particle_runtime::physics_runtime::scene_switched(
-                &mut app.particle_runtime.physics,
+                &mut app.particle_runtime,
             );
             // Spawn a default cube so there's something to pick right away
             if let Some(cpu_mesh) = app.mesh_registry.get("cube") {
@@ -73,7 +78,7 @@ pub(crate) fn process_post_ui_ops(app: &mut App) {
                     Ok(new_lighting) => {
                         *lighting = new_lighting;
                         super::super::particle_runtime::physics_runtime::scene_switched(
-                            &mut app.particle_runtime.physics,
+                            &mut app.particle_runtime,
                         );
                         if let Err(error) = super::super::particle_runtime::load_scene(
                             &mut app.particle_runtime.particles,

@@ -1,10 +1,12 @@
 //! egui UI rendering for the launcher.
 
+mod physics_panel;
+mod renderer_controls;
+
 use super::{App, LauncherState};
 use crate::inspector::{self, InspectorTarget};
 use aether_engine::ecs::components::{Camera, MeshHandle, Name};
 use aether_engine::ecs::Entity;
-use aether_engine::renderer::passes::{fxaa::FxaaQuality, tone_mapping::ToneMappingMode};
 use tracing::error;
 
 #[derive(Clone)]
@@ -48,25 +50,40 @@ pub(crate) fn render(
     let fps = app.fps;
     let gpu_info = &app.gpu_info;
     let gpu_timer_supported = app.gpu_timer_supported;
-    let ssao_enabled = &mut app.ssao_enabled;
-    let ssao_radius = &mut app.ssao_radius;
-    let ssao_bias = &mut app.ssao_bias;
-    let ssao_intensity = &mut app.ssao_intensity;
-    let shadow_enabled = &mut app.shadow_enabled;
-    let ibl_enabled = &mut app.ibl_enabled;
-    let ssr_enabled = &mut app.ssr_enabled;
-    let tone_mapping_mode = &mut app.tone_mapping_mode;
-    let bloom_enabled = &mut app.bloom_enabled;
-    let bloom_threshold = &mut app.bloom_threshold;
-    let bloom_intensity = &mut app.bloom_intensity;
-    let fxaa_enabled = &mut app.fxaa_enabled;
-    let fxaa_quality = &mut app.fxaa_quality;
-    let fxaa_edge_threshold = &mut app.fxaa_edge_threshold;
+    let mut render_options = renderer_controls::RenderOptions {
+        ssao_enabled: &mut app.ssao_enabled,
+        ssao_radius: &mut app.ssao_radius,
+        ssao_bias: &mut app.ssao_bias,
+        ssao_intensity: &mut app.ssao_intensity,
+        shadow_enabled: &mut app.shadow_enabled,
+        ibl_enabled: &mut app.ibl_enabled,
+        ssr_enabled: &mut app.ssr_enabled,
+        tone_mapping_mode: &mut app.tone_mapping_mode,
+        bloom_enabled: &mut app.bloom_enabled,
+        bloom_threshold: &mut app.bloom_threshold,
+        bloom_intensity: &mut app.bloom_intensity,
+        fxaa_enabled: &mut app.fxaa_enabled,
+        fxaa_quality: &mut app.fxaa_quality,
+        fxaa_edge_threshold: &mut app.fxaa_edge_threshold,
+    };
     let ssr_debug_mode = app.ssr_debug_mode;
     let show_overlay = &mut app.show_overlay;
     let fullscreen_3d = &mut app.fullscreen_3d;
     let debug_mode = app.debug_mode;
     let pending_select_entity = &mut app.pending_select_entity;
+    let playback_state = app.particle_runtime.playback;
+    let playback_action = &mut app.particle_runtime.pending_action;
+    let physics_debug_enabled = &mut app.cli.physics_debug_enabled;
+    let physics_body_count = app
+        .particle_runtime
+        .physics
+        .as_ref()
+        .map_or(0, aether_engine::physics::PhysicsRuntime::entity_count);
+    let physics_collider_count = app
+        .particle_runtime
+        .physics
+        .as_ref()
+        .map_or(0, aether_engine::physics::PhysicsRuntime::collider_count);
 
     // Extract inspector data before UI (mutable borrow needed for editing)
     let mut inspector_target: Option<InspectorTarget> = None;
@@ -233,162 +250,90 @@ pub(crate) fn render(
                             .default_size(240.0)
                             .show_inside(ui, |ui| {
                                 egui::ScrollArea::vertical().show(ui, |ui| {
+                                    physics_panel::render(
+                                        ui,
+                                        playback_state,
+                                        playback_action,
+                                        physics_debug_enabled,
+                                        physics_body_count,
+                                        physics_collider_count,
+                                    );
+
                                     // Inspector
                                     if let Some(ref mut target) = inspector_target.as_mut() {
                                         inspector::render(ui, target);
                                     }
 
-                                    ui.heading("Scene Info");
-                                    ui.separator();
-                                    ui.label(format!("GPU: {}", gpu_info));
-                                    ui.label(format!(
-                                        "GPU Timer: {}",
-                                        if gpu_timer_supported {
-                                            "supported"
-                                        } else {
-                                            "unsupported"
-                                        }
-                                    ));
-                                    ui.label(format!("Scenes: {}", scene_entries.len()));
-                                    ui.separator();
-                                    ui.label(format!("FPS: {:.1}", fps));
-                                    ui.label(format!("Frame: {:.2} ms", dt * 1000.0));
-                                    ui.label(format!("Entities: {}", world.len()));
-                                    let p = camera.position;
-                                    ui.label(format!(
-                                        "Camera: ({:.1}, {:.1}, {:.1})",
-                                        p.x, p.y, p.z
-                                    ));
-                                    ui.label(format!("Speed: {:.1}", camera.speed));
-                                    let mode_names = [
-                                        "Full",
-                                        "Ambient",
-                                        "Diffuse",
-                                        "Specular",
-                                        "Normals",
-                                        "NdotL",
-                                        "Shadow",
-                                        "Direct",
-                                        "IBL",
-                                        "Alpha(P)",
-                                        "Alpha(N)",
-                                        "NDC(F2)",
-                                        "EnvFix(F3)",
-                                        "VDir(F4)",
-                                        "SSAO(F5)",
-                                        "CSM(F7)",
-                                    ];
-                                    let mode_idx = debug_mode.clamp(0, 15) as usize;
-                                    ui.label(format!(
-                                        "Debug: [{}] {}",
-                                        mode_idx, mode_names[mode_idx]
-                                    ));
-                                    ui.label(format!("SSR Debug: {} (F6)", ssr_debug_mode));
-                                    ui.separator();
-
-                                    ui.heading("Features");
-                                    ui.checkbox(ssao_enabled, "SSAO");
-                                    if *ssao_enabled {
-                                        ui.add(
-                                            egui::Slider::new(ssao_radius, 0.01..=2.0)
-                                                .logarithmic(true)
-                                                .text("SSAO Radius (world)"),
-                                        );
-                                        ui.add(
-                                            egui::Slider::new(ssao_bias, 0.001..=0.2)
-                                                .logarithmic(true)
-                                                .text("SSAO Bias (world)"),
-                                        );
-                                        ui.add(
-                                            egui::Slider::new(ssao_intensity, 0.0..=4.0)
-                                                .text("SSAO Intensity"),
-                                        );
-                                    }
-                                    ui.checkbox(shadow_enabled, "Shadow Map");
-                                    ui.checkbox(ibl_enabled, "IBL");
-                                    ui.checkbox(ssr_enabled, "SSR");
-                                    egui::ComboBox::from_label("Tone Mapping")
-                                        .selected_text(format!("{:?}", *tone_mapping_mode))
-                                        .show_ui(ui, |ui| {
-                                            ui.selectable_value(
-                                                tone_mapping_mode,
-                                                ToneMappingMode::Off,
-                                                "Off",
-                                            );
-                                            ui.selectable_value(
-                                                tone_mapping_mode,
-                                                ToneMappingMode::Reinhard,
-                                                "Reinhard",
-                                            );
-                                            ui.selectable_value(
-                                                tone_mapping_mode,
-                                                ToneMappingMode::ACES,
-                                                "ACES",
-                                            );
+                                    egui::CollapsingHeader::new("Scene Info")
+                                        .default_open(false)
+                                        .show(ui, |ui| {
+                                            ui.label(format!("GPU: {}", gpu_info));
+                                            ui.label(format!(
+                                                "GPU Timer: {}",
+                                                if gpu_timer_supported {
+                                                    "supported"
+                                                } else {
+                                                    "unsupported"
+                                                }
+                                            ));
+                                            ui.label(format!("Scenes: {}", scene_entries.len()));
+                                            ui.separator();
+                                            ui.label(format!("FPS: {:.1}", fps));
+                                            ui.label(format!("Frame: {:.2} ms", dt * 1000.0));
+                                            ui.label(format!("Entities: {}", world.len()));
+                                            let p = camera.position;
+                                            ui.label(format!(
+                                                "Camera: ({:.1}, {:.1}, {:.1})",
+                                                p.x, p.y, p.z
+                                            ));
+                                            ui.label(format!("Speed: {:.1}", camera.speed));
+                                            let mode_names = [
+                                                "Full",
+                                                "Ambient",
+                                                "Diffuse",
+                                                "Specular",
+                                                "Normals",
+                                                "NdotL",
+                                                "Shadow",
+                                                "Direct",
+                                                "IBL",
+                                                "Alpha(P)",
+                                                "Alpha(N)",
+                                                "NDC(F2)",
+                                                "EnvFix(F3)",
+                                                "VDir(F4)",
+                                                "SSAO(F5)",
+                                                "CSM(F7)",
+                                            ];
+                                            let mode_idx = debug_mode.clamp(0, 15) as usize;
+                                            ui.label(format!(
+                                                "Debug: [{}] {}",
+                                                mode_idx, mode_names[mode_idx]
+                                            ));
+                                            ui.label(format!("SSR Debug: {} (F6)", ssr_debug_mode));
                                         });
-                                    ui.checkbox(bloom_enabled, "Bloom");
-                                    if *bloom_enabled {
-                                        ui.add(
-                                            egui::Slider::new(bloom_threshold, 0.0..=3.0)
-                                                .text("Bloom Threshold"),
-                                        );
-                                        ui.add(
-                                            egui::Slider::new(bloom_intensity, 0.0..=2.0)
-                                                .text("Bloom Intensity"),
-                                        );
-                                    }
-                                    ui.checkbox(fxaa_enabled, "FXAA");
-                                    if *fxaa_enabled {
-                                        egui::ComboBox::from_label("FXAA Quality")
-                                            .selected_text(format!("{:?}", *fxaa_quality))
-                                            .show_ui(ui, |ui| {
-                                                ui.selectable_value(
-                                                    fxaa_quality,
-                                                    FxaaQuality::Low,
-                                                    "Low",
-                                                );
-                                                ui.selectable_value(
-                                                    fxaa_quality,
-                                                    FxaaQuality::Medium,
-                                                    "Medium",
-                                                );
-                                                ui.selectable_value(
-                                                    fxaa_quality,
-                                                    FxaaQuality::High,
-                                                    "High",
-                                                );
-                                            });
 
-                                        let mut custom = fxaa_edge_threshold.is_some();
-                                        ui.checkbox(&mut custom, "Custom Edge Threshold");
-                                        if custom {
-                                            let threshold =
-                                                fxaa_edge_threshold.get_or_insert_with(|| {
-                                                    match *fxaa_quality {
-                                                        FxaaQuality::Low => 0.063,
-                                                        FxaaQuality::Medium => 0.031,
-                                                        FxaaQuality::High => 0.016,
-                                                    }
-                                                });
-                                            ui.add(
-                                                egui::Slider::new(threshold, 0.001..=0.1)
-                                                    .logarithmic(true)
-                                                    .text("Edge Threshold"),
-                                            );
-                                        } else {
-                                            *fxaa_edge_threshold = None;
-                                        }
-                                    }
-                                    ui.separator();
+                                    egui::CollapsingHeader::new("Render Features")
+                                        .default_open(true)
+                                        .show(ui, |ui| {
+                                            renderer_controls::render(ui, &mut render_options);
+                                        });
 
-                                    ui.heading("Input Debug");
-                                    let (mdx, mdy) = app.input.mouse_delta();
-                                    ui.label(format!("Mouse delta: ({:.1}, {:.1})", mdx, mdy));
-                                    ui.label(format!("Alt held: {}", app.input.alt_held()));
-                                    ui.label(format!(
-                                        "Left held: {}",
-                                        app.input.mouse_held(winit::event::MouseButton::Left)
-                                    ));
+                                    egui::CollapsingHeader::new("Input Debug")
+                                        .default_open(false)
+                                        .show(ui, |ui| {
+                                            let (mdx, mdy) = app.input.mouse_delta();
+                                            ui.label(format!(
+                                                "Mouse delta: ({:.1}, {:.1})",
+                                                mdx, mdy
+                                            ));
+                                            ui.label(format!("Alt held: {}", app.input.alt_held()));
+                                            ui.label(format!(
+                                                "Left held: {}",
+                                                app.input
+                                                    .mouse_held(winit::event::MouseButton::Left)
+                                            ));
+                                        });
                                 });
                             });
                     }

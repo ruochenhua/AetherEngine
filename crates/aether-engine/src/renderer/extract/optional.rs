@@ -22,6 +22,8 @@ pub struct OptionalPassData {
     pub god_ray: Option<GodRay>,
     /// Immutable particle snapshot consumed by the transparent billboard renderer.
     pub particles: Option<Arc<crate::particles::ParticleFrame>>,
+    /// Optional collider wireframe snapshot, absent when physics debug is off.
+    pub physics_debug_frame: Option<crate::physics::PhysicsDebugFrame>,
 }
 
 /// Extract optional pass data from the ECS World.
@@ -34,5 +36,6 @@ pub fn extract_optional_pass_data(world: &World) -> OptionalPassData {
         clouds: world.query::<&Clouds>().iter().next().cloned(),
         god_ray: world.query::<&GodRay>().iter().next().cloned(),
         particles: None,
+        physics_debug_frame: None,
     }
 }

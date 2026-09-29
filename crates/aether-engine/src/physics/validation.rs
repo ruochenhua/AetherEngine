@@ -132,7 +132,9 @@ pub(super) fn collider_builder(
     Ok(shape
         .friction(collider.friction)
         .restitution(collider.restitution)
-        .density(0.0)
+        // Dynamic-body creation rescales unit-density collider mass properties
+        // to preserve the body's requested total mass and derive its inertia.
+        .density(1.0)
         .sensor(collider.is_trigger))
 }
 

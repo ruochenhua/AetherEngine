@@ -6,8 +6,14 @@ use crate::ecs::{components::Transform, World};
 use crate::time::{FrameTime, TimeSample};
 use glam::Vec3;
 
+#[path = "system_debug_tests.rs"]
+mod debug;
+#[path = "system_deterministic_tests.rs"]
+mod deterministic;
 #[path = "system_edge_tests.rs"]
 mod edge;
+#[path = "system_ramp_tests.rs"]
+mod ramp;
 
 fn sample(step_index: u64) -> TimeSample {
     let dt = 1.0 / 60.0;

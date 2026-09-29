@@ -3,6 +3,8 @@
 use super::{App, LauncherState};
 #[path = "particle_fixture.rs"]
 mod particle_fixture;
+#[path = "render/physics_debug.rs"]
+mod physics_debug;
 #[path = "render_target.rs"]
 mod render_target;
 #[path = "render/simulation.rs"]
@@ -157,7 +159,9 @@ pub(crate) fn frame(
                 &mut app.particle_runtime.physics,
                 &mut app.cli,
                 &mut app.asset_manager,
-                app.freeze_time,
+                app.freeze_time
+                    || app.particle_runtime.playback
+                        != super::particle_runtime::physics_runtime::PlaybackState::Playing,
                 world,
                 dt,
             );
@@ -184,6 +188,14 @@ pub(crate) fn frame(
             } else {
                 vec![]
             };
+            let mut dynamic_lines = if app.cli.debug_helpers_enabled {
+                gizmo_lines
+            } else {
+                vec![]
+            };
+            if let Some(debug_frame) = &optional.physics_debug_frame {
+                physics_debug::append_lines(&mut dynamic_lines, debug_frame);
+            }
 
             // Build per-frame configuration channel — all controllable pass
             // parameters flow through RenderFrame::config.
@@ -208,7 +220,7 @@ pub(crate) fn frame(
                 fxaa_edge_threshold: app.fxaa_edge_threshold,
                 screen_width: ctx.config.width,
                 screen_height: ctx.config.height,
-                dynamic_lines: gizmo_lines,
+                dynamic_lines,
                 debug_helpers_enabled: app.cli.debug_helpers_enabled,
             };
 

@@ -14,9 +14,23 @@ pub(crate) mod physics_runtime;
 pub(crate) struct SimulationRuntime {
     pub(crate) particles: ParticleRuntime,
     pub(crate) physics: Option<aether_engine::physics::PhysicsRuntime>,
+    pub(crate) playback: physics_runtime::PlaybackState,
+    pub(crate) scene_snapshot: Option<physics_runtime::SceneSimulationSnapshot>,
+    pub(crate) pending_action: Option<physics_runtime::PlaybackAction>,
 }
 
 impl SimulationRuntime {
+    pub(crate) fn new(auto_play: bool) -> Self {
+        Self {
+            playback: if auto_play {
+                physics_runtime::PlaybackState::Playing
+            } else {
+                physics_runtime::PlaybackState::Stopped
+            },
+            ..Self::default()
+        }
+    }
+
     pub(crate) fn configure(&mut self, world: &World) -> Result<(), String> {
         configure_from_world(&mut self.particles, world)
     }
@@ -123,6 +137,18 @@ pub(super) fn is_static_billboard_fixture(scene_path: Option<&str>) -> bool {
 mod tests {
     use super::*;
     use aether_engine::{particles::FrameStatus, time::TimeMode};
+
+    #[test]
+    fn editor_transport_starts_stopped_while_automated_runs_autoplay() {
+        assert_eq!(
+            SimulationRuntime::new(false).playback,
+            physics_runtime::PlaybackState::Stopped
+        );
+        assert_eq!(
+            SimulationRuntime::new(true).playback,
+            physics_runtime::PlaybackState::Playing
+        );
+    }
 
     fn configured_world() -> World {
         let mut world = World::new();

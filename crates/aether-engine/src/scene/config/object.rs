@@ -14,7 +14,11 @@ pub enum MeshRef {
 
 /// Object entity configuration kept separate from the mesh/transform types.
 pub mod object_config;
+pub mod physics;
 pub use object_config::ObjectConfig;
+pub use physics::{
+    PhysicsBodyConfig, PhysicsColliderConfig, PhysicsColliderShapeConfig, PhysicsConfig,
+};
 
 /// Transform data for an object.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

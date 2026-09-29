@@ -30,6 +30,7 @@ pub(crate) fn parse_args(args: &[String]) -> Result<CliArgs, CliError> {
         transparent_enabled: false,
         particles_enabled: false,
         debug_helpers_enabled: true,
+        physics_debug_enabled: false,
         width: None,
         height: None,
         time: TimeControl::default(),
@@ -62,6 +63,14 @@ pub(crate) fn parse_args(args: &[String]) -> Result<CliArgs, CliError> {
             }
             "--no-gui-overlay" => cli.no_gui_overlay = true,
             "--no-debug-helpers" => cli.debug_helpers_enabled = false,
+            "--physics-debug" => {
+                let value = next_value(args, &mut i, "--physics-debug")?;
+                cli.physics_debug_enabled = match value {
+                    "on" => true,
+                    "off" => false,
+                    _ => return Err(error(format!("unsupported --physics-debug value {value}"))),
+                };
+            }
             "--debug-mode" => {
                 i += 1;
                 if i < args.len() {

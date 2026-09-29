@@ -180,6 +180,62 @@ fn serialize_world_full_roundtrip() {
 }
 
 #[test]
+fn serialize_world_preserves_physics_components() {
+    let device = headless_device();
+    let registry = BuiltinMeshRegistry::new();
+    let mut world = World::new();
+    spawn_object_entity(&mut world, &device, &registry, "PhysicsCube", "cube");
+    let entity = world
+        .query::<(crate::ecs::Entity, &Name)>()
+        .iter()
+        .find_map(|(entity, name)| (name.0 == "PhysicsCube").then_some(entity))
+        .expect("physics object should exist");
+    world
+        .insert(
+            entity,
+            (
+                crate::physics::RigidBody {
+                    mass: 2.0,
+                    velocity: Vec3::new(1.0, 2.0, 3.0),
+                    ..Default::default()
+                },
+                crate::physics::ColliderList(vec![
+                    crate::physics::Collider {
+                        shape: crate::physics::ColliderShape::Sphere(0.75),
+                        friction: 0.8,
+                        ..Default::default()
+                    },
+                    crate::physics::Collider {
+                        shape: crate::physics::ColliderShape::Capsule(0.25, 0.9),
+                        ..Default::default()
+                    },
+                ]),
+            ),
+        )
+        .unwrap();
+
+    let scene = serialize_world(&world, &LightingUniforms::default(), "PhysicsScene");
+    let physics = scene.objects[0]
+        .physics
+        .as_ref()
+        .expect("physics should survive scene serialization");
+    assert_eq!(physics.body.mass, 2.0);
+    assert_eq!(physics.body.velocity, [1.0, 2.0, 3.0]);
+    assert_eq!(physics.colliders.len(), 2);
+    assert_eq!(
+        physics.colliders[0].shape,
+        crate::scene::PhysicsColliderShapeConfig::Sphere { radius: 0.75 }
+    );
+    assert_eq!(
+        physics.colliders[1].shape,
+        crate::scene::PhysicsColliderShapeConfig::Capsule {
+            radius: 0.25,
+            height: 0.9,
+        }
+    );
+}
+
+#[test]
 fn extract_object_spawned_with_selected_directly() {
     use crate::ecs::components::Selected;
     let device = headless_device();
@@ -247,6 +303,7 @@ fn serialize_to_ron_roundtrips() {
             transform: TransformConfig::default(),
             material: MaterialConfig::default(),
             visible: true,
+            physics: None,
         }],
     };
 

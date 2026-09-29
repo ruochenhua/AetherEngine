@@ -267,7 +267,7 @@ T8.1 ── T8.2 MaterialAsset ── T8.3 Prefab ── T8.4 hot reload</pre>
     <tbody>
       <tr><td>T6.1 Physics core</td><td><code>PhysicsRuntime</code> 由 App/Launcher 持有；<code>physics_system(&amp;mut PhysicsRuntime, &amp;mut World, FixedStep) -&gt; Result&lt;StepStats, PhysicsError&gt;</code>；60Hz，最多 4 substeps。</td><td>Rapier dependency、gravity、dynamic/fixed、Box/Sphere collider；Transform 是同步后的渲染权威。</td><td>无 GPU 的 fixed-step 与数值阈值（position 1e-4m、velocity 1e-4m/s）；invalid shape 明确 error。</td></tr>
       <tr><td>T6.2 Sync/lifecycle</td><td><code>Entity -&gt; RigidBodyHandle</code> map；顺序固定 sync_in→step→sync_out→extract；entity 删除/scene reset 必须移除 handle。</td><td>create/update/delete、nonuniform scale 规则（拒绝或取最大轴并 warning）；picking/debug draw 放在本 slice 之后。</td><td>entity map、delete、scene switch、pause/resume、deterministic 10s replay 集成测试。</td></tr>
-      <tr><td>T6.3 Fixture</td><td>只运行带 physics component 的 entity；无组件场景零 Rapier allocation。</td><td>箱体堆叠/斜坡两个 fixture；HTML 显示 debug collider 与 mesh 对齐。</td><td>100 dynamic Box/Sphere 10s 无 panic/leak；VisualCase 固定 simulation_time。</td></tr>
+      <tr><td>T6.3 Fixture</td><td>只运行带 physics component 的 entity；无组件场景零 Rapier allocation。</td><td>箱体堆叠/斜坡两个 fixture；HTML 展示物理结果、状态哈希与运行时分配统计。</td><td>100 dynamic Box/Sphere 10s 无 panic/leak；VisualCase 固定 simulation_time；debug collider 与 mesh 对齐归 T6.4。</td></tr>
     </tbody>
   </table>
 
@@ -406,7 +406,7 @@ start_color, end_color, blend_mode, seed</pre><p>模拟器以固定时间步更�
     <div class="task-grid">
       <section><h4>接口与时间模型（摘要）</h4><p>采用 <code>rapier3d</code> 作为 Physics Adapter。保留现有 <code>RigidBody</code>、<code>Collider</code> 和 <code>ColliderShape</code> 组件作为场景接口；运行时由 Launcher/App 持有 <code>PhysicsRuntime</code>，不假设 ECS World 有资源容器。</p><p>使用 60 Hz fixed timestep、accumulator、单帧最多 4 个 substep。物理系统在 ECS extract 之前运行，物理同步后的 Transform 是渲染唯一来源。</p></section>
       <section><h4>实现任务</h4><ol><li>完成 RigidBody / Collider 到 Rapier 的创建和同步。</li><li>实现 gravity、dynamic、fixed body。</li><li>物理步进后写回 Transform。</li><li>处理实体创建、删除、场景切换和重建。</li><li>提供 collider debug draw。</li><li>让鼠标 picking 能读取物理 ray cast 结果。</li></ol></section>
-      <section><h4>测试与验收</h4><ul><li>无 GPU 的 fixed timestep、重力、碰撞和删除同步单测。</li><li>场景加载/切换不残留 body 的集成测试。</li><li>专项场景：箱体堆叠、斜坡滚动、拾取/射线。</li><li>HTML 截图确认物理结果和 debug collider 对齐。</li></ul></section>
+      <section><h4>测试与验收</h4><ul><li>无 GPU 的 fixed timestep、重力、碰撞和删除同步单测。</li><li>场景加载/切换不残留 body 的集成测试。</li><li>T6.3 专项场景：箱体堆叠、斜坡滚动；100 个动态 Box/Sphere 固定时间回放并比较状态哈希。</li><li>T6.3 HTML 截图只确认物理结果；debug collider 与 mesh 对齐及 picking/ray cast 验收放在 T6.4。</li></ul></section>
       <section><h4>范围边界</h4><p>不做车辆、布料、破碎、网络同步和复杂关节。物理系统先服务于引擎演示和交互，不改变当前静态场景默认行为。</p></section>
     </div>
   </article>
@@ -681,7 +681,7 @@ fn extract_visibility(world: &amp;World, camera: &amp;Camera, policy: CullingPol
       <tr><td>T3</td><td><code>t3_pbr_material_grid</code></td><td>old-default/new-textures</td><td>normal/ORM/emissive 变化可被镜头看清。</td></tr>
       <tr><td>T4</td><td><code>t4_transparent_overlap</code></td><td>opaque/alpha/additive/water 四格</td><td>near/far 顺序、opaque depth、Water 特殊路径均可读。</td></tr>
       <tr><td>T5</td><td><code>t5_particle_fire_seek_0p50</code></td><td>同 simulation_time 两次</td><td>火焰位置/大小/alpha 稳定，不能凭随机漂移通过。</td></tr>
-      <tr><td>T6</td><td><code>t6_physics_stack_seek_10s</code></td><td>physics off/on</td><td>碰撞堆叠、debug collider、mesh 对齐。</td></tr>
+      <tr><td>T6</td><td><code>t6_physics_stack_seek_10s</code></td><td>physics off/on</td><td>T6.3 碰撞堆叠与确定性；T6.4 debug collider、mesh 对齐与 picking。</td></tr>
       <tr><td>T7</td><td><code>t7_gltf_actor_seek_0_25_50_75</code></td><td>四个 seek 时间点</td><td>姿势无爆骨、脚本/Inspector 不影响采样。</td></tr>
       <tr><td>T8</td><td><code>t8_prefab_reload</code></td><td>old/new asset、reload success/failure</td><td>失败保留旧图，Prefab overrides 清楚。</td></tr>
       <tr><td>T9</td><td><code>t9_scale_benchmark_1k_10k</code></td><td>culling/instancing off/on</td><td>报告包含设备、commit、p50/p95；不可见物体不画。</td></tr>

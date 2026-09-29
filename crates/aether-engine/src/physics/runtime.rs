@@ -1,4 +1,6 @@
-use super::types::{PhysicsError, StepStats};
+use super::types::{
+    PhysicsAllocationStats, PhysicsDebugFrame, PhysicsError, PhysicsHit, StepStats,
+};
 use super::validation::{is_replay_frame, validate_samples, vector3};
 use super::{Collider, PhysicsDesc, RigidBody, TransformAuthority};
 use crate::ecs::components::Transform;
@@ -7,7 +9,7 @@ use glam::Vec3;
 use rapier3d::prelude::{
     BroadPhaseMultiSap, CCDSolver, ColliderHandle, ColliderSet, ImpulseJointSet,
     IntegrationParameters, IslandManager, MultibodyJointSet, NarrowPhase, PhysicsPipeline,
-    RigidBodyHandle, RigidBodySet,
+    QueryFilter, QueryPipeline, RigidBodyHandle, RigidBodySet,
 };
 use std::collections::{BTreeMap, HashMap};
 
@@ -33,6 +35,7 @@ pub struct PhysicsRuntime {
     pub(super) impulse_joints: ImpulseJointSet,
     pub(super) multibody_joints: MultibodyJointSet,
     pub(super) ccd_solver: CCDSolver,
+    pub(super) query_pipeline: QueryPipeline,
     pub(super) entity_to_body: BTreeMap<u64, RigidBodyHandle>,
     pub(super) entity_to_colliders: BTreeMap<u64, Vec<ColliderHandle>>,
     pub(super) body_to_entity: HashMap<RigidBodyHandle, u64>,
@@ -43,6 +46,8 @@ pub struct PhysicsRuntime {
     pub(super) fixed_dt: Option<f32>,
     pub(super) paused: bool,
     pub(super) last_seek_frame: Option<FrameTime>,
+    pub(super) allocation_stats: PhysicsAllocationStats,
+    pub(super) debug_enabled: bool,
 }
 
 impl Default for PhysicsRuntime {
@@ -65,6 +70,7 @@ impl PhysicsRuntime {
             impulse_joints: ImpulseJointSet::new(),
             multibody_joints: MultibodyJointSet::new(),
             ccd_solver: CCDSolver::new(),
+            query_pipeline: QueryPipeline::new(),
             entity_to_body: BTreeMap::new(),
             entity_to_colliders: BTreeMap::new(),
             body_to_entity: HashMap::new(),
@@ -75,6 +81,8 @@ impl PhysicsRuntime {
             fixed_dt: None,
             paused: false,
             last_seek_frame: None,
+            allocation_stats: PhysicsAllocationStats::default(),
+            debug_enabled: false,
         }
     }
 
@@ -134,6 +142,7 @@ impl PhysicsRuntime {
                 &(),
                 &(),
             );
+            self.query_pipeline.update(&self.colliders);
             self.last_step_index = sample.step_index;
             self.fixed_dt = Some(sample.dt);
             simulated_time += sample.dt;
@@ -160,5 +169,71 @@ impl PhysicsRuntime {
     /// Returns the number of bodies currently owned by the runtime.
     pub fn body_count(&self) -> usize {
         self.entity_to_body.len()
+    }
+
+    /// Returns cumulative Rapier handle creation counts for this runtime.
+    pub fn allocation_stats(&self) -> PhysicsAllocationStats {
+        self.allocation_stats
+    }
+
+    /// Casts a validated world-space ray through the current collider snapshot.
+    pub fn cast_ray(
+        &self,
+        ray: &crate::renderer::picking::Ray,
+        max_toi: f32,
+        filter: QueryFilter<'_>,
+    ) -> Result<Option<PhysicsHit>, PhysicsError> {
+        let direction_length_squared = ray.dir.length_squared();
+        if !ray.origin.is_finite()
+            || !ray.dir.is_finite()
+            || !direction_length_squared.is_finite()
+            || direction_length_squared <= f32::EPSILON
+            || !max_toi.is_finite()
+            || max_toi <= 0.0
+        {
+            return Err(PhysicsError::InvalidRay);
+        }
+
+        let ray = rapier3d::prelude::Ray::new(
+            rapier3d::na::Point3::new(ray.origin.x, ray.origin.y, ray.origin.z),
+            vector3(ray.dir / direction_length_squared.sqrt()),
+        );
+        let Some((collider_handle, intersection)) = self.query_pipeline.cast_ray_and_get_normal(
+            &self.bodies,
+            &self.colliders,
+            &ray,
+            max_toi,
+            true,
+            filter,
+        ) else {
+            return Ok(None);
+        };
+        let entity_bits = self
+            .collider_to_entity
+            .get(&collider_handle)
+            .copied()
+            .or_else(|| {
+                self.colliders
+                    .get(collider_handle)
+                    .and_then(|collider| collider.parent())
+                    .and_then(|body| self.body_to_entity.get(&body).copied())
+            })
+            .ok_or(PhysicsError::StaleHandle { entity_bits: 0 })?;
+        let normal = intersection.normal;
+        Ok(Some(PhysicsHit {
+            entity_bits,
+            toi: intersection.time_of_impact,
+            normal: Vec3::new(normal.x, normal.y, normal.z),
+        }))
+    }
+
+    /// Enables or disables collider wireframe extraction without changing simulation state.
+    pub fn set_debug_enabled(&mut self, enabled: bool) {
+        self.debug_enabled = enabled;
+    }
+
+    /// Extracts collider wireframes only when debug visualization is enabled.
+    pub fn debug_frame(&self) -> Option<PhysicsDebugFrame> {
+        super::debug::extract_debug_frame(self)
     }
 }
