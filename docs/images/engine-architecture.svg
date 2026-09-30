@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="510" viewBox="0 0 1200 510" role="img" aria-labelledby="title desc">
+  <title id="title">Aether Engine architecture overview</title>
+  <desc id="desc">RON scenes load into the ECS world, which feeds render extraction and a typed render scheduler. The editor and simulation interact with the same world.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0 10 5 0 10z" fill="#68778B"/></marker>
+  </defs>
+  <rect width="1200" height="510" rx="24" fill="#F4F6F8"/>
+  <g font-family="Inter, SF Pro Display, Segoe UI, sans-serif">
+    <text x="44" y="54" fill="#182334" font-size="25" font-weight="700">Aether Engine · Runtime flow</text>
+    <text x="44" y="82" fill="#67768A" font-size="15">Scene data stays editable; render data is extracted for GPU execution.</text>
+
+    <g fill="#FFFFFF" stroke="#D9E0E8" stroke-width="2">
+      <rect x="40" y="132" width="190" height="112" rx="16"/>
+      <rect x="276" y="132" width="190" height="112" rx="16"/>
+      <rect x="512" y="132" width="190" height="112" rx="16"/>
+      <rect x="748" y="132" width="190" height="112" rx="16"/>
+      <rect x="984" y="132" width="176" height="112" rx="16"/>
+    </g>
+    <g fill="#182334" font-size="17" font-weight="650" text-anchor="middle">
+      <text x="135" y="176">RON 场景</text><text x="135" y="205" fill="#67768A" font-size="13" font-weight="450">对象 · 材质 · 灯光</text>
+      <text x="371" y="176">Scene Loader</text><text x="371" y="205" fill="#67768A" font-size="13" font-weight="450">解析并创建实体</text>
+      <text x="607" y="176">ECS World</text><text x="607" y="205" fill="#67768A" font-size="13" font-weight="450">场景数据的统一来源</text>
+      <text x="843" y="176">Extract</text><text x="843" y="205" fill="#67768A" font-size="13" font-weight="450">生成渲染批次</text>
+      <text x="1072" y="176">Typed Passes</text><text x="1072" y="205" fill="#67768A" font-size="13" font-weight="450">调度并提交给 wgpu</text>
+    </g>
+    <g stroke="#68778B" stroke-width="3" fill="none" marker-end="url(#arrow)">
+      <path d="M232 188h36"/><path d="M468 188h36"/><path d="M704 188h36"/><path d="M940 188h36"/>
+      <path d="M418 326v-62h165v-17"/><path d="M782 326v-62h-150v-17"/>
+    </g>
+    <g fill="#FFFFFF" stroke="#BFD4E5" stroke-width="2">
+      <rect x="278" y="326" width="280" height="116" rx="16"/>
+      <rect x="644" y="326" width="280" height="116" rx="16"/>
+    </g>
+    <g fill="#182334" text-anchor="middle">
+      <text x="418" y="368" font-size="17" font-weight="650">Launcher 编辑器</text>
+      <text x="418" y="397" fill="#67768A" font-size="13">Hierarchy · Inspector · Gizmo</text>
+      <text x="784" y="368" font-size="17" font-weight="650">模拟运行时</text>
+      <text x="784" y="397" fill="#67768A" font-size="13">Rapier3D · 固定步长 · CPU 粒子</text>
+    </g>
+    <text x="600" y="477" fill="#67768A" font-size="13" text-anchor="middle">编辑器修改 ECS 场景；物理和粒子推进模拟状态；渲染 Extract 读取最新状态。</text>
+  </g>
+</svg>

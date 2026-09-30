@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="330" viewBox="0 0 1200 330" role="img" aria-labelledby="title desc">
+  <title id="title">Particle simulation and rendering flow</title>
+  <desc id="desc">Emitter settings and fixed time samples drive the CPU particle runtime, which publishes deterministic particles for camera-facing billboard rendering.</desc>
+  <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0 10 5 0 10z" fill="#68778B"/></marker></defs>
+  <rect width="1200" height="330" rx="24" fill="#F4F6F8"/>
+  <g font-family="Inter, SF Pro Display, Segoe UI, sans-serif">
+    <text x="42" y="52" fill="#182334" font-size="25" font-weight="700">粒子：固定时间样本到屏幕空间效果</text>
+    <text x="42" y="80" fill="#67768A" font-size="15">同一配置和时间样本可重放相同的 CPU 模拟结果。</text>
+    <g stroke="#68778B" stroke-width="3" fill="none" marker-end="url(#arrow)"><path d="M300 184h88"/><path d="M616 184h88"/></g>
+    <g stroke-width="2">
+      <rect x="42" y="126" width="258" height="118" rx="16" fill="#FFFFFF" stroke="#D9E0E8"/>
+      <rect x="388" y="126" width="228" height="118" rx="16" fill="#EAF5F3" stroke="#C7E3DC"/>
+      <rect x="704" y="126" width="280" height="118" rx="16" fill="#EAF2FA" stroke="#C7D9EA"/>
+    </g>
+    <g text-anchor="middle" fill="#182334">
+      <text x="171" y="169" font-size="17" font-weight="700">Emitter 配置</text><text x="171" y="200" font-size="13" fill="#56657A">速率 · 生命周期 · 初始状态</text>
+      <text x="502" y="169" font-size="17" font-weight="700">CPU Runtime</text><text x="502" y="200" font-size="13" fill="#56657A">固定步长更新粒子状态</text>
+      <text x="844" y="169" font-size="17" font-weight="700">Billboard Pass</text><text x="844" y="200" font-size="13" fill="#56657A">相机朝向 · 深度排序 · 合成</text>
+    </g>
+    <g fill="#2C8FA0"><circle cx="1042" cy="157" r="6"/><circle cx="1075" cy="180" r="9"/><circle cx="1038" cy="211" r="5"/><circle cx="1107" cy="153" r="4"/><circle cx="1111" cy="213" r="7"/></g>
+    <text x="600" y="292" text-anchor="middle" fill="#67768A" font-size="13">Playback / seek 使用时间控制样本；重复样本序列可用于稳定对比和自动化检查。</text>
+  </g>
+</svg>

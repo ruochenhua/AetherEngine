@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="430" viewBox="0 0 1200 430" role="img" aria-labelledby="title desc">
+  <title id="title">Aether Engine rendering overview</title>
+  <desc id="desc">A simplified view of geometry, lighting, environment and screen-space effects, composition, and post-processing.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0 10 5 0 10z" fill="#68778B"/></marker>
+  </defs>
+  <rect width="1200" height="430" rx="24" fill="#F4F6F8"/>
+  <g font-family="Inter, SF Pro Display, Segoe UI, sans-serif">
+    <text x="42" y="52" fill="#182334" font-size="25" font-weight="700">从场景数据到最终画面</text>
+    <text x="42" y="80" fill="#67768A" font-size="15">概念分组图；具体 Pass 会随场景配置启用或省略。</text>
+    <g stroke="#68778B" stroke-width="3" fill="none" marker-end="url(#arrow)">
+      <path d="M226 208h30"/><path d="M458 208h30"/><path d="M690 208h30"/><path d="M922 208h30"/>
+    </g>
+    <g stroke-width="2">
+      <rect x="38" y="126" width="188" height="168" rx="16" fill="#FFFFFF" stroke="#D9E0E8"/>
+      <rect x="270" y="126" width="188" height="168" rx="16" fill="#EAF2FA" stroke="#C7D9EA"/>
+      <rect x="502" y="126" width="188" height="168" rx="16" fill="#EAF5F3" stroke="#C7E3DC"/>
+      <rect x="734" y="126" width="188" height="168" rx="16" fill="#F5F0FA" stroke="#DDD1EA"/>
+      <rect x="966" y="126" width="196" height="168" rx="16" fill="#FFF4E9" stroke="#EEDBC7"/>
+    </g>
+    <g text-anchor="middle" fill="#182334">
+      <text x="132" y="166" font-size="16" font-weight="700">几何与阴影</text>
+      <text x="132" y="202" font-size="13" fill="#56657A">GBuffer</text><text x="132" y="227" font-size="13" fill="#56657A">Terrain · Shadow Map</text>
+      <text x="364" y="166" font-size="16" font-weight="700">表面光照</text>
+      <text x="364" y="202" font-size="13" fill="#56657A">PBR · Direct Light</text><text x="364" y="227" font-size="13" fill="#56657A">IBL · SSAO</text>
+      <text x="596" y="166" font-size="16" font-weight="700">环境与反射</text>
+      <text x="596" y="202" font-size="13" fill="#56657A">Atmosphere · Clouds</text><text x="596" y="227" font-size="13" fill="#56657A">SSR · God Rays</text>
+      <text x="828" y="166" font-size="16" font-weight="700">合成</text>
+      <text x="828" y="202" font-size="13" fill="#56657A">Transparency · Water</text><text x="828" y="227" font-size="13" fill="#56657A">Composite</text>
+      <text x="1064" y="166" font-size="16" font-weight="700">后处理与输出</text>
+      <text x="1064" y="202" font-size="13" fill="#56657A">Bloom · Tone Mapping</text><text x="1064" y="227" font-size="13" fill="#56657A">FXAA · Debug Overlay</text>
+    </g>
+    <rect x="42" y="330" width="1116" height="58" rx="12" fill="#E8EDF2"/>
+    <text x="64" y="354" fill="#334257" font-size="13" font-weight="700">屏幕空间边界</text>
+    <text x="64" y="376" fill="#56657A" font-size="13">SSAO 和 SSR 只利用当前可见帧的缓冲与颜色，画面之外的几何体不会出现在它们的结果中。</text>
+  </g>
+</svg>

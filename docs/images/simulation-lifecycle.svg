@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="340" viewBox="0 0 1200 340" role="img" aria-labelledby="title desc">
+  <title id="title">Physics play, pause, resume, and reset lifecycle</title>
+  <desc id="desc">Play advances a fixed-step simulation, Pause freezes it, Play resumes, and Stop restores the initial scene state.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0 10 5 0 10z" fill="#68778B"/></marker>
+  </defs>
+  <rect width="1200" height="340" rx="24" fill="#F4F6F8"/>
+  <g font-family="Inter, SF Pro Display, Segoe UI, sans-serif">
+    <text x="42" y="52" fill="#182334" font-size="25" font-weight="700">物理场景的可重复播放</text>
+    <text x="42" y="80" fill="#67768A" font-size="15">Stop 会重置到 Play 前捕获的场景姿态，便于再次观察同一过程。</text>
+    <g fill="none" stroke="#68778B" stroke-width="3" marker-end="url(#arrow)">
+      <path d="M248 184h96"/><path d="M538 184h96"/><path d="M828 184h96"/>
+      <path d="M1052 240v52H148v-56"/>
+    </g>
+    <g stroke-width="2">
+      <rect x="42" y="132" width="206" height="104" rx="16" fill="#FFFFFF" stroke="#D9E0E8"/>
+      <rect x="344" y="132" width="194" height="104" rx="16" fill="#EAF5F3" stroke="#C7E3DC"/>
+      <rect x="634" y="132" width="194" height="104" rx="16" fill="#FFF4E9" stroke="#EEDBC7"/>
+      <rect x="924" y="132" width="218" height="104" rx="16" fill="#EAF2FA" stroke="#C7D9EA"/>
+    </g>
+    <g text-anchor="middle" fill="#182334">
+      <text x="145" y="172" font-size="17" font-weight="700">初始场景</text><text x="145" y="201" font-size="13" fill="#56657A">捕获起始姿态</text>
+      <text x="441" y="172" font-size="17" font-weight="700">Play</text><text x="441" y="201" font-size="13" fill="#56657A">固定步长推进</text>
+      <text x="731" y="172" font-size="17" font-weight="700">Pause</text><text x="731" y="201" font-size="13" fill="#56657A">冻结当前状态</text>
+      <text x="1033" y="172" font-size="17" font-weight="700">Stop / Reset</text><text x="1033" y="201" font-size="13" fill="#56657A">恢复起始姿态</text>
+    </g>
+    <text x="590" y="318" text-anchor="middle" fill="#67768A" font-size="13">从暂停状态再次 Play 会继续；Stop 后再 Play 会从初始状态重新开始。</text>
+  </g>
+</svg>

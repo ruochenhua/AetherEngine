@@ -1,193 +1,83 @@
-# Aether Engine
+<p align="center">
+  <img src="assets/branding/aether-engine-icon.png" alt="Aether Engine 图标" width="112">
+  <br>
+  <strong>AETHER ENGINE</strong>
+</p>
 
-[English](README.md) | [简体中文](README.zh-CN.md)
-
-一个基于 **Rust** 和 **wgpu** 构建的现代渲染引擎，用于学习从 Deferred PBR 到实时光线追踪的实时图形技术。
-
-> **这是一个 AI-first 的代码库。** 每一项架构决策——模块边界、接口设计、测试策略、贡献流程——都以 AI Agent 作为主要开发者、人类作为审阅者来优化。详见下方 [🤖 AI 优先设计](#-ai-优先设计)。
-
-## 🌟 特性
-
-- **现代架构**：ECS (hecs) + 类型安全的 Pass 调度（PipelineBuilder / Scheduler）
-- **跨平台**：wgpu 自动适配 Vulkan/Metal/DX12
-- **延迟着色**：基于 G-Buffer 的 Cook-Torrance PBR（GGX NDF + Smith G + Schlick Fresnel），支持分通道调试
-- **UE 风格飞行相机**：右键漫游，WASD + QE 移动，滚轮调速
-- **调试工具**：世界网格、RGB 三轴指示器、光照分通道可视化
-- **场景编辑器**：鼠标点击拾取物体、变换 Gizmo（平移 / 旋转 / 缩放）、场景层级面板、属性检查器（位置 / 旋转 / 缩放 / 材质）、撤销/重做、删除、打开/导入/保存场景（RON）、全屏视口切换
-- **AI 优先**：每个模块适配单次 AI 上下文窗口；添加 Pass = 一个文件 + 一行注册
-- **测试驱动**：每次改动都走 red-green-refactor；资源连接错误在构建期暴露
-
-## 🚀 快速开始
-
-```bash
-# 克隆仓库
-git clone https://github.com/ruochenhua/AetherEngine.git
-cd AetherEngine
-
-# 构建
-cargo build
-
-# 启动 Launcher（推荐入口）
-cargo run -p aether-launcher
-```
-
-## 🎮 操控
-
-| 按键 | 功能 |
-|------|------|
-| `Alt + 左键拖拽` | 旋转视角 / 环绕相机 |
-| `W A S D` | 前 / 左 / 后 / 右 |
-| `Q` / `E` | 下降 / 上升（世界空间） |
-| `滚轮` | 调节移动速度 |
-| `0` – `9` | 光照调试：完整 / 环境光 / 漫反射 / 高光 / 法线 / NdotL / Shadow / Direct / IBL / Alpha |
-| `F1` – `F5` | IBL/Skybox/SSAO 调试：NormalAlpha / NDC / EnvFix / VDir / SSAO |
-| `左键点击` | 在视口中拾取物体 |
-| `⛶ 全屏` | 切换全屏视口（隐藏侧边面板） |
-
-> **注意：** 当 egui 输入框拥有键盘焦点时，调试热键（`0`–`9`、`F1`–`F5`）会自动被屏蔽，避免在编辑数值时意外切换渲染模式。
-
-## 🤖 AI 优先设计
-
-Aether Engine 不只是**借助** AI 构建——它是**为 AI** 而设计的。每一项设计选择都从 AI Agent 的能力和局限出发来评估。
-
-### 核心原则
-
-| 原则 | 含义 |
-|------|------|
-| **单文件模块** | 每个模块 < 500 行。AI 可以在一个上下文窗口中阅读、理解、重新生成一个模块。 |
-| **声明式优于命令式** | 管线结构通过 `PipelineBuilder::add(pass)` 声明，而非隐藏在 600 行的渲染循环里。 |
-| **类型安全的资源连接** | `ResHandle<GPosition>` vs `ResHandle<GNormal>` —— 编译器在渲染前就能发现纹理语义混用。 |
-| **构建时失败** | 缺少资源生产者 → `build()` 时 panic。TDD 第一轮就能抓到。不会出现运行时黑屏调试。 |
-| **模板驱动创建** | 添加新 Pass = 复制 `passes/template.rs` → 填写签名 + shader → 在 `build_pipeline()` 中注册一行。 |
-| **扁平依赖图** | 没有深层继承。Pass 只依赖 `Pass` trait。System 只依赖 `System` trait。 |
-| **人在审阅，AI 在编写** | AI 写 PR；人审阅架构契合度和视觉效果。测试证明代码正确。 |
-
-### 模块依赖图
-
-```
-main.rs (薄编排层，~80 行)
-  │
-  ├── PipelineBuilder ──→ Scheduler ──→ [Passes 按拓扑序执行]
-  │     ↑                                    │
-  │     └── ShadowPass.init()               │
-  │     └── GBufferPass.init()              │
-  │     └── LightingPass.init()             │
-  │     └── DebugLinePass.init()            │
-  │                                          │
-  ├── SceneLoader ──→ SceneResources { renderables, lighting }
-  ├── FlyCamera ──→ view/proj 矩阵
-  ├── InputManager ──→ 键盘/鼠标状态
-  └── egui ──→ 调试面板
-```
-
-**依赖规则：**
-- `main.rs` 依赖所有公开 API —— 但只通过薄编排调用
-- Pass 模块仅依赖 `Pass` trait + `wgpu` + 自己的 shader
-- 添加 Pass：创建 `passes/new_pass.rs` → 在 `build_pipeline()` 加一行 → 在主循环加一行 setter
-- Scheduler、PipelineBuilder、ResourceTable 是**一次写完不再改**的基础设施
-
-### AI 如何添加新 Pass（以 SSAO 为例）
-
-```
-1. 复制     passes/template.rs       → passes/ssao.rs
-2. 填写     signature()              → reads: GPosition, GNormal; writes: AOTexture
-3. 填写     init() / resolve()       → 创建 pipeline + bind groups
-4. 填写     execute()                → 录制命令
-5. 注册     builder.add(SSAOPass::init(device))  ← 一行
-6. 添加     ssao_pass.set_config(...)            ← 主循环中一行
-7. 运行测试 → 修复构建期错误 → PR
-```
-
-**触及文件：2 个**（新 pass 文件、main.rs）。**需审阅文件：1 个**（新 pass）。
-
-### 开发规范
-
-- **测试先行**：先写失败的测试 → 最小代码通过 → 重构。绝不在实现之前写测试。
-- **公开接口测试**：测试通过公开 API 验证行为。绝不测试私有函数。
-- **构建期错误优于运行时错误**：优先使用让非法状态不可表达的类型。
-- **无隐式耦合**：如果 Pass B 依赖 Pass A 的输出，必须在 `signature()` 中声明。
-- **Shader 内联**：WGSL 写在 Rust Pass 文件内。一个文件 = AI 的完整上下文。
-
-## 📁 项目结构
-
-```
-├── Cargo.toml
-├── crates/
-│   ├── aether-engine/          # 引擎库
-│   │   └── src/
-│   │       ├── lib.rs
-│   │       ├── ecs/              # ECS (hecs 封装)
-│   │       ├── scene/            # 场景加载 + RON 反序列化
-│   │       ├── asset/            # 资源管理 + 内置网格注册
-│   │       ├── renderer/         # 渲染核心
-│   │       │   ├── pass.rs       # Pass trait (signature / init / resolve / execute)
-│   │       │   ├── scheduler.rs  # Scheduler + PipelineBuilder
-│   │       │   ├── resource.rs   # ResHandle<T> + ResourceTable
-│   │       │   ├── context.rs    # wgpu 上下文 + RenderContext
-│   │       │   ├── camera.rs     # FlyCamera
-│   │       │   └── passes/
-│   │       │       ├── template.rs  # AI 复制粘贴模板
-│   │       │       ├── gbuffer.rs   # G-Buffer (MRT)
-│   │       │       ├── lighting.rs  # 延迟光照
-│   │       │       └── debug.rs     # 线段渲染（网格、坐标轴）
-│   │       ├── physics/          # 物理系统（预留）
-│   │       ├── math.rs
-│   │       ├── input.rs
-│   │       └── window.rs
-│   └── aether-launcher/         # Launcher 程序（薄编排）
-├── scenes/                      # .ron 场景文件
-├── assets/                      # 网格、贴图、着色器
-└── docs/
-    └── adr/                     # 架构决策记录
-```
-
-## 🏗️ 架构
-
-### 渲染管线
-
-```
-PipelineBuilder
-  ├── ShadowPass       → writes: ShadowDepth
-  ├── GBufferPass      → writes: GPosition, GNormal, GAlbedo, GMaterial, GDepth
-  ├── SSAOPass         → reads: GPosition, GNormal  → writes: AOTexture
-  ├── LightingPass     → reads: GPosition, GNormal, GAlbedo, GMaterial, ShadowDepth, AOTexture
-  │                        writes: Swapchain
-  ├── SSRPass          → reads: GPosition, GNormal, GAlbedo, GMaterial → writes: ReflectionTexture
-  ├── CompositePass    → composites Lighting + SSR → writes: Swapchain
-  └── DebugLinePass    → reads: GDepth  → writes: Swapchain (LoadOp::Load)
-```
-
-资源连接在构建时类型检查。执行顺序由拓扑排序自动推导。
-
-### 关键设计决策
-
-| 决策 | 选择 | 理由 |
-|------|------|------|
-| Pass 调度 | PipelineBuilder + Scheduler | 声明式优于命令式——AI 无需读 main.rs 即可理解管线结构 |
-| 资源连接 | `ResHandle<T>` 类型标签 | 编译期安全——AI 无法混淆纹理语义 |
-| ECS 库 | `hecs` | API 极简，AI 友好，无宏魔法 |
-| 渲染 API | `wgpu` | 单一后端，自动适配 Vulkan/Metal/DX12 |
-| 着色器语言 | WGSL | 统一，内联——完整上下文给 AI |
-| 场景格式 | RON | Rust 原生，类型安全，AI 生成干净 RON |
-| UI | `egui` | 即时模式，易于调试面板 |
-| 测试策略 | TDD + 仅公开接口 | AI 先写测试，编译器给反馈，安全重构 |
-
-## 📅 路线图
-
-| 阶段 | 特性 | 状态 |
-|------|------|------|
-| **Phase 0** | 窗口、三角形、egui、Launcher | ✅ 完成 |
-| **Phase 1** | Deferred PBR、飞行相机、调试工具、类型安全调度器、阴影映射 | ✅ 完成 |
-| **Phase 2** | IBL、屏幕空间效果（SSAO、SSR） | ✅ 完成 |
-| **Phase 3** | ECS 运行时、射线拾取、变换 Gizmo、编辑器 UI、场景保存/加载、撤销/重做、删除 | ✅ 完成 |
-| **Phase 4** | 后处理链、色调映射、Bloom、FXAA、GPU Instancing | ✅ 完成 |
-| **Phase 5** | 地形 + 大气 + 水体 + 体积云 + God Ray | ✅ 完成 |
-| **Phase 6** | 光线追踪（Compute + Hybrid） | 🔲 当前 |
-
-## 📜 许可证
-
-MIT OR Apache-2.0
+<p align="center">
+  <strong>一个便于探索渲染、场景编辑与模拟的实时 3D 引擎。</strong>
+  <br>
+  <a href="README.md">English</a> · <a href="README.zh-CN.md">简体中文</a>
+</p>
 
 ---
 
-*Aether Engine 是 KongEngine 的精神续作，以 AI-first 架构重新构建。*
+Aether Engine 是一个使用 **Rust** 和 **wgpu** 开发的引擎项目，整合实时渲染、基于 ECS 的场景模型、交互式场景编辑器，以及可重复运行的物理和粒子模拟。项目仍在持续开发中，定位是引擎研发与探索项目，并非生产就绪的通用引擎。
+
+## 项目特色
+
+- **渲染流程便于检查：**渲染 Pass 声明读写的 GPU 资源，由调度器组织执行顺序。
+- **编辑与渲染共用场景数据：**场景实体保存在 `hecs` ECS 世界中，再通过 Extract 阶段生成渲染数据。
+- **模拟可重复运行：**物理基于 Rapier3D 固定步长更新；Launcher 提供 Play、Pause、Stop 控制。
+- **专项场景便于观察：**用独立的 RON 场景探索不同渲染和模拟功能。
+- **适合 Agent 协作迭代：**模块化功能和专项检查让 AI coding agent 能聚焦修改，也便于人审阅结果。
+
+## 项目结构
+
+| 路径 | 职责 |
+| --- | --- |
+| `crates/aether-engine/` | 引擎库：渲染器、ECS/场景模型、资源、地形、物理、粒子和时间系统 |
+| `crates/aether-launcher/` | 桌面启动器、场景浏览器、编辑器面板和运行时控制 |
+| `scenes/` | 示例场景与专项功能验证场景，使用 RON 编写 |
+| `tests/` | 自动化检查、视觉测试支持和测试产物 |
+| `docs/engine/` | 面向使用者的引擎总览与功能说明 |
+
+## 引擎能做什么
+
+当前渲染器包括延迟 PBR、基于图像的光照、阴影、SSAO、SSR、透明渲染、色调映射、Bloom、地形、水体、大气和体积云。Launcher 提供场景选择、层级与属性面板、变换编辑和模拟控制。
+
+各功能的完成度不同。尤其 SSR 和 SSAO 属于屏幕空间效果，无法获取当前画面之外的信息。功能行为、示例场景和已知边界请查看下方文档。
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/showcase-materials.png" alt="PBR 材质对比场景" width="100%"></td>
+    <td width="50%"><img src="docs/images/showcase-lighting.png" alt="彩色物体与方向光阴影" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>PBR 材质与基于图像的光照</sub></td>
+    <td align="center"><sub>彩色材质与方向光阴影</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/showcase-clouds.png" alt="地形上方的体积云" width="100%"></td>
+    <td width="50%"><img src="docs/images/showcase-physics-ramp.png" alt="斜坡刚体测试场景" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>地形上方的体积云</sub></td>
+    <td align="center"><sub>刚体与斜坡测试场景</sub></td>
+  </tr>
+</table>
+
+## 文档
+
+- [引擎总览与功能说明](docs/engine/README.md)
+- [开发路线图](docs/plans/2026-09-17-non-raytracing-engine-roadmap/index.html)
+- [工程与验证规范](docs/engineering-governance.md)
+- [视觉测试流程](docs/agents/visual-test-workflow.md)
+
+## 运行
+
+安装稳定版 Rust 工具链，并准备 wgpu 支持的图形设备和后端：
+
+```bash
+git clone https://github.com/ruochenhua/AetherEngine.git
+cd AetherEngine
+cargo run -p aether-launcher
+```
+
+启动后会打开场景浏览器。也可以直接指定场景：
+
+```bash
+cargo run -p aether-launcher -- --scene scenes/24_t3_pbr_material_grid.ron
+```
+
+Workspace 在 [`Cargo.toml`](Cargo.toml) 中声明许可证为 `MIT OR Apache-2.0`。
