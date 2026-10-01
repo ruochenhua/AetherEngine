@@ -1,0 +1,62 @@
+name: CI and Windows portable build
+
+on:
+  pull_request:
+  push:
+    branches:
+      - "**"
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify workspace
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run repository verification gate
+        run: ./scripts/verify-ci.sh
+
+  package-windows:
+    name: Build Windows x64 portable package
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build launcher
+        run: cargo build --locked -p aether-launcher --release
+      - name: Assemble and validate portable ZIP
+        shell: pwsh
+        run: ./scripts/package-portable.ps1 -Version "$env:GITHUB_REF_NAME"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: aether-engine-windows-x64
+          path: |
+            dist/*.zip
+            dist/*.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+  publish-release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs:
+      - verify
+      - package-windows
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: aether-engine-windows-x64
+          path: dist
+      - name: Attach package to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/*.zip dist/*.sha256 --generate-notes
