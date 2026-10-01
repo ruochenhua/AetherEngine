@@ -161,25 +161,25 @@ impl Pass for GBufferPass {
             let albedo_tex = match &batch.albedo_texture {
                 Some(handle) => frame
                     .texture_cache
-                    .get_or_upload(handle.clone(), frame.asset_manager),
+                    .get_or_upload(*handle, frame.asset_manager),
                 None => self.fallback_white.clone(),
             };
             let normal_tex = match &batch.normal_texture {
                 Some(handle) => frame
                     .texture_cache
-                    .get_or_upload(handle.clone(), frame.asset_manager),
+                    .get_or_upload(*handle, frame.asset_manager),
                 None => self.fallback_normal.clone(),
             };
             let orm_tex = match &batch.orm_texture {
                 Some(handle) => frame
                     .texture_cache
-                    .get_or_upload(handle.clone(), frame.asset_manager),
+                    .get_or_upload(*handle, frame.asset_manager),
                 None => self.fallback_white.clone(),
             };
             let emissive_tex = match &batch.emissive_texture {
                 Some(handle) => frame
                     .texture_cache
-                    .get_or_upload(handle.clone(), frame.asset_manager),
+                    .get_or_upload(*handle, frame.asset_manager),
                 None => self.fallback_white.clone(),
             };
             let bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {

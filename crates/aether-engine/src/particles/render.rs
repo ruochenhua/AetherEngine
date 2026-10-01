@@ -58,7 +58,7 @@ pub(crate) fn pack_items(frame: &ParticleFrame, view: Mat4) -> Vec<PackedParticl
 
 fn pack_item(item: &ParticleRenderItem, depth: f32) -> PackedParticleItem {
     PackedParticleItem {
-        texture: item.texture.clone(),
+        texture: item.texture,
         gpu: ParticleGpuItem {
             position_size: [
                 item.position[0],

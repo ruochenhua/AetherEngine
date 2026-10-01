@@ -1,26 +1,20 @@
-//! Asynchronous asset loading foundation.
+//! Compatibility adapter for the typed [`AssetStore`](super::AssetStore).
 //!
-//! Loads raw/decoded asset data on a background thread so the main
-//! thread is never blocked by disk I/O. Completed loads are surfaced
-//! through `AsyncHandle<T>` handles and processed in `update()`.
-//!
-//! The current implementation uses a single background worker thread.
-//! A thread pool can be swapped in later without changing the public
-//! API.
+//! New code should use `AssetStore` directly. This adapter keeps the previous
+//! `AsyncHandle` and `AssetLoadState` surface while sharing one worker, typed
+//! state table, cancellation system, and result queue.
 
+use super::{
+    Asset, AssetError, AssetId, AssetStore, AssetStoreConfig, FrameBoundary, Handle, LoadStateView,
+    LoadTicket,
+};
 use std::any::Any;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::thread;
 use std::time::SystemTime;
 
-use tracing::{debug, error, trace};
-
-use super::{Asset, Handle};
-
-/// Lifecycle state of an asynchronous asset load.
+/// Lifecycle state of an asynchronously loaded asset.
 #[derive(Debug, Clone, PartialEq)]
 pub enum AssetLoadState<T> {
     /// Asset is still being loaded.
@@ -32,12 +26,32 @@ pub enum AssetLoadState<T> {
 }
 
 /// Handle to an asynchronously loaded asset.
-///
-/// Clone freely; the underlying asset is reference-counted.
-#[derive(Debug, PartialEq, Eq, Hash)]
 pub struct AsyncHandle<T: 'static> {
     id: u64,
-    _marker: std::marker::PhantomData<T>,
+    sync_handle: Option<Handle<T>>,
+}
+
+impl<T: 'static> std::fmt::Debug for AsyncHandle<T> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_tuple("AsyncHandle")
+            .field(&self.id)
+            .finish()
+    }
+}
+
+impl<T: 'static> PartialEq for AsyncHandle<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl<T: 'static> Eq for AsyncHandle<T> {}
+
+impl<T: 'static> std::hash::Hash for AsyncHandle<T> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        std::hash::Hash::hash(&self.id, state);
+    }
 }
 
 impl<T: 'static> Copy for AsyncHandle<T> {}
@@ -49,35 +63,37 @@ impl<T: 'static> Clone for AsyncHandle<T> {
 }
 
 impl<T: 'static> AsyncHandle<T> {
-    fn new(id: u64) -> Self {
-        Self {
-            id,
-            _marker: std::marker::PhantomData,
-        }
+    fn new(id: u64, sync_handle: Option<Handle<T>>) -> Self {
+        Self { id, sync_handle }
     }
 
-    /// Return the underlying ID.
+    /// Return the stable adapter-local identifier.
     pub fn id(&self) -> u64 {
         self.id
     }
 }
 
-fn typed_loader<T: Asset + 'static + Send + Sync>(path: &Path) -> BoxedAsset {
-    T::load(path)
-        .map(|asset| Box::new(asset) as Box<dyn Any + Send + Sync>)
-        .map_err(|e| e.to_string())
+struct AsyncRecord<T: Asset> {
+    handle: Option<Handle<T>>,
+    ticket: Option<LoadTicket>,
+    asset_id: Option<AssetId>,
+    path: PathBuf,
+    last_modified: Option<SystemTime>,
+    error: Option<String>,
 }
 
-/// Central asynchronous asset loader.
-///
-/// `AsyncAssetLoader` owns a background worker thread and a registry of
-/// pending/completed loads. Call `update()` once per frame to process
-/// completions.
+struct ErasedRecord {
+    value: Box<dyn Any + Send + Sync>,
+    refresh: fn(&AssetStore, &mut (dyn Any + Send + Sync)),
+    reload_changed: fn(&mut AssetStore, &mut (dyn Any + Send + Sync)),
+}
+
+/// Central compatibility adapter for asynchronous asset requests.
 pub struct AsyncAssetLoader {
-    next_id: AtomicU64,
-    slots: HashMap<u64, AssetSlot>,
-    job_tx: std::sync::mpsc::Sender<LoadJob>,
-    result_rx: std::sync::mpsc::Receiver<CompletedLoad>,
+    store: AssetStore,
+    slots: HashMap<u64, ErasedRecord>,
+    next_id: u64,
+    frame_id: u64,
 }
 
 impl Default for AsyncAssetLoader {
@@ -87,213 +103,194 @@ impl Default for AsyncAssetLoader {
 }
 
 impl AsyncAssetLoader {
-    /// Create a new async asset loader with one background worker.
+    /// Create a loader rooted at the current working directory.
     pub fn new() -> Self {
-        let (job_tx, job_rx) = std::sync::mpsc::channel::<LoadJob>();
-        let (result_tx, result_rx) = std::sync::mpsc::channel::<CompletedLoad>();
+        Self::with_config(AssetStoreConfig::default())
+    }
 
-        thread::spawn(move || {
-            while let Ok(job) = job_rx.recv() {
-                trace!("Loading asset in background: {}", job.path.display());
-                let result = (job.loader)(&job.path);
-                if result_tx
-                    .send(CompletedLoad {
-                        id: job.id,
-                        result,
-                        modified: std::fs::metadata(&job.path).and_then(|m| m.modified()).ok(),
-                    })
-                    .is_err()
-                {
-                    break;
-                }
-            }
-        });
+    /// Create a loader rooted at a project directory.
+    pub fn with_project_root(root: impl Into<PathBuf>) -> Self {
+        Self::with_config(AssetStoreConfig::new(root))
+    }
 
+    /// Create a loader with explicit worker shutdown settings.
+    pub fn with_config(config: AssetStoreConfig) -> Self {
         Self {
-            next_id: AtomicU64::new(1),
+            store: AssetStore::new(config),
             slots: HashMap::new(),
-            job_tx,
-            result_rx,
+            next_id: 1,
+            frame_id: 0,
         }
     }
 
     /// Request an asset to be loaded asynchronously.
-    ///
-    /// If the same path is already being tracked, this returns a new
-    /// handle but does not deduplicate work.
-    pub fn load<T>(&mut self, path: impl AsRef<Path>) -> AsyncHandle<T>
-    where
-        T: Asset + 'static + Send + Sync,
-    {
+    pub fn load<T: Asset>(&mut self, path: impl AsRef<Path>) -> AsyncHandle<T> {
+        let id = self.next_id;
+        self.next_id = self.next_id.wrapping_add(1);
         let path = path.as_ref().to_path_buf();
-        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        debug!("Queue async load: {} (id: {})", path.display(), id);
-
-        let loader_fn: LoaderFnPtr = typed_loader::<T>;
-
+        let normalized = self.store.compatibility_path(&path);
+        let requested = normalized
+            .as_ref()
+            .map_err(Clone::clone)
+            .and_then(|relative| {
+                let asset_id = self.store.asset_id::<T>(relative)?;
+                let (handle, ticket) = self.store.request::<T>(relative)?;
+                Ok((relative.clone(), asset_id, handle, ticket))
+            });
+        let (relative_path, asset_id, handle, ticket, error) = match requested {
+            Ok((relative, asset_id, handle, ticket)) => {
+                (relative, Some(asset_id), Some(handle), Some(ticket), None)
+            }
+            Err(error) => (path.clone(), None, None, None, Some(error.to_string())),
+        };
+        let last_modified = std::fs::metadata(self.store.project_root().join(&relative_path))
+            .and_then(|metadata| metadata.modified())
+            .ok();
+        let record = AsyncRecord {
+            handle,
+            ticket,
+            asset_id,
+            path: relative_path,
+            last_modified,
+            error,
+        };
+        let sync_handle = record.handle;
         self.slots.insert(
             id,
-            AssetSlot {
-                path: path.clone(),
-                state: SlotState::Loading,
-                last_modified: None,
-                loader: Some(loader_fn),
+            ErasedRecord {
+                value: Box::new(record),
+                refresh: refresh_record::<T>,
+                reload_changed: reload_changed::<T>,
             },
         );
-
-        let job = LoadJob {
-            id,
-            path,
-            loader: Box::new(loader_fn),
-        };
-        if self.job_tx.send(job).is_err() {
-            if let Some(slot) = self.slots.get_mut(&id) {
-                slot.state = SlotState::Failed("background worker disconnected".into());
-            }
-        }
-
-        AsyncHandle::new(id)
+        AsyncHandle::new(id, sync_handle)
     }
 
-    /// Poll for completed loads and optionally queue hot-reloads.
-    ///
-    /// Call this once per frame on the main thread.
+    /// Process completed results and queue file-change reloads.
     pub fn update(&mut self) {
-        // Drain completed loads.
-        while let Ok(completed) = self.result_rx.try_recv() {
-            if let Some(slot) = self.slots.get_mut(&completed.id) {
-                match completed.result {
-                    Ok(asset) => {
-                        trace!(
-                            "Asset load complete: {} (id: {})",
-                            slot.path.display(),
-                            completed.id
-                        );
-                        slot.state = SlotState::Ready(Arc::from(asset));
-                        slot.last_modified = completed.modified;
-                    }
-                    Err(msg) => {
-                        error!(
-                            "Asset load failed: {} (id: {}): {}",
-                            slot.path.display(),
-                            completed.id,
-                            msg
-                        );
-                        slot.state = SlotState::Failed(msg);
-                    }
-                }
+        self.frame_id = self.frame_id.saturating_add(1);
+        if let Ok(results) = self.store.poll_results(128) {
+            for result in results {
+                let _ = self
+                    .store
+                    .apply_result(result, FrameBoundary::new(self.frame_id));
             }
         }
-
-        // Hot-reload: poll file mtimes for ready assets.
-        let mut reloads = Vec::new();
-        for (id, slot) in &self.slots {
-            if let SlotState::Ready(_) = slot.state {
-                let current_modified = std::fs::metadata(&slot.path)
-                    .and_then(|m| m.modified())
-                    .ok();
-                if current_modified.is_some() && current_modified != slot.last_modified {
-                    trace!("Hot-reload detected: {}", slot.path.display());
-                    reloads.push((*id, slot.path.clone()));
-                }
-            }
+        for slot in self.slots.values_mut() {
+            (slot.refresh)(&self.store, slot.value.as_mut());
         }
-
-        for (id, path) in reloads {
-            let loader_fn = match self.slots.get(&id).and_then(|slot| slot.loader) {
-                Some(f) => f,
-                None => {
-                    error!("Missing loader for hot-reload slot {}", id);
-                    continue;
-                }
-            };
-
-            if let Some(slot) = self.slots.get_mut(&id) {
-                slot.state = SlotState::Loading;
-                slot.last_modified = None;
-            }
-
-            let job = LoadJob {
-                id,
-                path,
-                loader: Box::new(loader_fn),
-            };
-            if self.job_tx.send(job).is_err() {
-                if let Some(slot) = self.slots.get_mut(&id) {
-                    slot.state = SlotState::Failed("background worker disconnected".into());
-                }
-            }
+        let store = &mut self.store;
+        for slot in self.slots.values_mut() {
+            (slot.reload_changed)(store, slot.value.as_mut());
         }
     }
 
     /// Get the current state of an asset load.
-    pub fn state<T: 'static + Send + Sync>(&self, handle: AsyncHandle<T>) -> AssetLoadState<T> {
-        match self.slots.get(&handle.id) {
-            Some(slot) => match &slot.state {
-                SlotState::Loading => AssetLoadState::Loading,
-                SlotState::Ready(asset) => asset
-                    .clone()
-                    .downcast::<T>()
-                    .map(AssetLoadState::Ready)
-                    .unwrap_or_else(|_| AssetLoadState::Failed("type mismatch".into())),
-                SlotState::Failed(msg) => AssetLoadState::Failed(msg.clone()),
+    pub fn state<T: Asset>(&self, handle: AsyncHandle<T>) -> AssetLoadState<T> {
+        let Some(record) = self.slots.get(&handle.id) else {
+            return AssetLoadState::Failed("unknown handle".into());
+        };
+        let Some(record) = record.value.downcast_ref::<AsyncRecord<T>>() else {
+            return AssetLoadState::Failed("asset handle type mismatch".into());
+        };
+        if let Some(error) = &record.error {
+            return AssetLoadState::Failed(error.clone());
+        }
+        let Some(asset_handle) = record.handle else {
+            return AssetLoadState::Failed("unknown handle".into());
+        };
+        match self.store.state(asset_handle) {
+            Ok(LoadStateView::Loading { .. }) => AssetLoadState::Loading,
+            Ok(LoadStateView::Ready { .. }) => match self.store.get(asset_handle) {
+                Ok(asset) => AssetLoadState::Ready(asset),
+                Err(error) => AssetLoadState::Failed(error.to_string()),
             },
-            None => AssetLoadState::Failed("unknown handle".into()),
+            Ok(LoadStateView::Failed { error, .. }) => AssetLoadState::Failed(error.to_string()),
+            Err(error) => AssetLoadState::Failed(error.to_string()),
         }
     }
 
+    /// Cancel the current load request for an adapter handle.
+    pub fn cancel<T: Asset>(&mut self, handle: AsyncHandle<T>) -> Result<(), AssetError> {
+        let record = self
+            .slots
+            .get(&handle.id)
+            .and_then(|slot| slot.value.downcast_ref::<AsyncRecord<T>>())
+            .ok_or(AssetError::StaleHandle)?;
+        let ticket = record.ticket.ok_or(AssetError::StaleHandle)?;
+        self.store.cancel(&ticket)
+    }
+
     /// Return the path associated with a handle, if any.
-    pub fn path<T>(&self, handle: AsyncHandle<T>) -> Option<&Path> {
-        self.slots.get(&handle.id).map(|s| s.path.as_path())
+    pub fn path<T: Asset>(&self, handle: AsyncHandle<T>) -> Option<&Path> {
+        self.slots
+            .get(&handle.id)?
+            .value
+            .downcast_ref::<AsyncRecord<T>>()
+            .map(|record| record.path.as_path())
+    }
+
+    /// Stop and join the shared typed-store worker.
+    pub fn shutdown(&mut self) -> Result<(), AssetError> {
+        self.store.shutdown()
     }
 }
 
-struct AssetSlot {
-    path: PathBuf,
-    state: SlotState,
-    last_modified: Option<SystemTime>,
-    loader: Option<LoaderFnPtr>,
-}
-
-enum SlotState {
-    Loading,
-    Ready(Arc<dyn Any + Send + Sync>),
-    Failed(String),
-}
-
-/// Type-erased loader result returned by background workers.
-pub type BoxedAsset = Result<Box<dyn Any + Send + Sync>, String>;
-
-/// Function pointer that knows how to load a concrete asset type.
-type LoaderFnPtr = fn(&Path) -> BoxedAsset;
-
-type LoaderFn = Box<dyn FnOnce(&Path) -> BoxedAsset + Send>;
-
-struct LoadJob {
-    id: u64,
-    path: PathBuf,
-    loader: LoaderFn,
-}
-
-struct CompletedLoad {
-    id: u64,
-    result: Result<Box<dyn Any + Send + Sync>, String>,
-    modified: Option<SystemTime>,
-}
-
-/// Compatibility: turn an async handle into the synchronous `Handle<T>` once
-/// the asset is ready. The returned handle is only meaningful if the asset
-/// has completed loading.
+/// Convert an async handle into its initial synchronous handle.
+///
+/// This is intended for use after the first load has completed. After a reload,
+/// obtain the current generation from `AssetStore::current_handle` instead.
 pub fn to_sync_handle<T: 'static>(handle: AsyncHandle<T>) -> Handle<T> {
-    Handle::new(handle.id)
+    handle.sync_handle.unwrap_or_else(|| Handle::new(handle.id))
 }
+
+fn refresh_record<T: Asset>(store: &AssetStore, value: &mut (dyn Any + Send + Sync)) {
+    let Some(record) = value.downcast_mut::<AsyncRecord<T>>() else {
+        return;
+    };
+    let Some(asset_id) = &record.asset_id else {
+        return;
+    };
+    if let Ok(handle) = store.current_handle::<T>(asset_id) {
+        record.handle = Some(handle);
+    }
+}
+
+fn reload_changed<T: Asset>(store: &mut AssetStore, value: &mut (dyn Any + Send + Sync)) {
+    let Some(record) = value.downcast_mut::<AsyncRecord<T>>() else {
+        return;
+    };
+    if record.error.is_some() {
+        return;
+    }
+    let Some(handle) = record.handle else {
+        return;
+    };
+    if !matches!(store.state(handle), Ok(LoadStateView::Ready { .. })) {
+        return;
+    }
+    let modified = std::fs::metadata(store.project_root().join(&record.path))
+        .and_then(|metadata| metadata.modified())
+        .ok();
+    if modified.is_some() && modified != record.last_modified {
+        match store.reload(handle) {
+            Ok(ticket) => {
+                record.ticket = store.load_ticket(&ticket).ok();
+                record.last_modified = modified;
+            }
+            Err(error) => tracing::warn!("asset auto-reload failed: {error}"),
+        }
+    }
+}
+
+/// Type-erased legacy loader result retained for source compatibility.
+pub type BoxedAsset = Result<Box<dyn Any + Send + Sync>, String>;
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::fs;
     use std::io::Write;
-    use std::path::PathBuf;
     use std::thread;
     use std::time::Duration;
 
@@ -301,25 +298,28 @@ mod tests {
     struct TestAsset(String);
 
     impl Asset for TestAsset {
+        const KIND: super::super::AssetKind = super::super::AssetKind::CpuMesh;
+
         fn load(path: &Path) -> anyhow::Result<Self> {
             Ok(TestAsset(fs::read_to_string(path)?))
         }
     }
 
     fn temp_path(name: &str) -> PathBuf {
-        let mut p = std::env::temp_dir();
-        p.push(format!(
+        let mut path = std::env::temp_dir();
+        path.push(format!(
             "aether_async_loader_{}_{}",
             std::process::id(),
             name
         ));
-        p
+        path
     }
 
-    fn wait_for_ready<T: 'static + Send + Sync>(
-        loader: &mut AsyncAssetLoader,
-        handle: AsyncHandle<T>,
-    ) -> Arc<T> {
+    fn loader_for(path: &Path) -> AsyncAssetLoader {
+        AsyncAssetLoader::with_project_root(path.parent().unwrap())
+    }
+
+    fn wait_for_ready<T: Asset>(loader: &mut AsyncAssetLoader, handle: AsyncHandle<T>) -> Arc<T> {
         for _ in 0..200 {
             loader.update();
             if let AssetLoadState::Ready(asset) = loader.state(handle) {
@@ -335,47 +335,40 @@ mod tests {
         let path = temp_path("completes");
         let mut file = fs::File::create(&path).unwrap();
         file.write_all(b"hello terrain").unwrap();
-
-        let mut loader = AsyncAssetLoader::new();
+        let mut loader = loader_for(&path);
         let handle = loader.load::<TestAsset>(&path);
-
-        let asset = wait_for_ready(&mut loader, handle);
-        assert_eq!(asset.as_ref(), &TestAsset("hello terrain".into()));
-
+        assert_eq!(
+            wait_for_ready(&mut loader, handle).as_ref(),
+            &TestAsset("hello terrain".into())
+        );
+        loader.shutdown().unwrap();
         fs::remove_file(&path).ok();
     }
 
     #[test]
     fn async_load_reports_failure_for_missing_file() {
         let path = temp_path("missing");
-        let mut loader = AsyncAssetLoader::new();
+        let mut loader = loader_for(&path);
         let handle = loader.load::<TestAsset>(&path);
-
         for _ in 0..200 {
             loader.update();
-            if let AssetLoadState::Failed(_) = loader.state(handle) {
+            if matches!(loader.state(handle), AssetLoadState::Failed(_)) {
                 break;
             }
             thread::sleep(Duration::from_millis(5));
         }
-
-        assert!(
-            matches!(loader.state(handle), AssetLoadState::Failed(_)),
-            "expected failed state, got {:?}",
-            loader.state(handle)
-        );
+        assert!(matches!(loader.state(handle), AssetLoadState::Failed(_)));
+        loader.shutdown().unwrap();
     }
 
     #[test]
     fn async_load_state_is_loading_before_update() {
         let path = temp_path("loading_state");
         fs::write(&path, b"x").unwrap();
-
-        let mut loader = AsyncAssetLoader::new();
+        let mut loader = loader_for(&path);
         let handle = loader.load::<TestAsset>(&path);
-
         assert_eq!(loader.state(handle), AssetLoadState::Loading);
-
+        loader.shutdown().unwrap();
         fs::remove_file(&path).ok();
     }
 
@@ -385,39 +378,34 @@ mod tests {
         let path_b = temp_path("multi_b");
         fs::write(&path_a, b"asset_a").unwrap();
         fs::write(&path_b, b"asset_b").unwrap();
-
-        let mut loader = AsyncAssetLoader::new();
+        let mut loader = loader_for(&path_a);
         let handle_a = loader.load::<TestAsset>(&path_a);
         let handle_b = loader.load::<TestAsset>(&path_b);
-
-        let asset_a = wait_for_ready(&mut loader, handle_a);
-        let asset_b = wait_for_ready(&mut loader, handle_b);
-
-        assert_eq!(asset_a.as_ref(), &TestAsset("asset_a".into()));
-        assert_eq!(asset_b.as_ref(), &TestAsset("asset_b".into()));
-
-        fs::remove_file(&path_a).ok();
-        fs::remove_file(&path_b).ok();
+        assert_eq!(
+            wait_for_ready(&mut loader, handle_a).as_ref(),
+            &TestAsset("asset_a".into())
+        );
+        assert_eq!(
+            wait_for_ready(&mut loader, handle_b).as_ref(),
+            &TestAsset("asset_b".into())
+        );
+        loader.shutdown().unwrap();
+        fs::remove_file(path_a).ok();
+        fs::remove_file(path_b).ok();
     }
 
     #[test]
     fn async_load_hot_reload_detects_mtime_change() {
         let path = temp_path("hot_reload");
         fs::write(&path, b"v1").unwrap();
-
-        let mut loader = AsyncAssetLoader::new();
+        let mut loader = loader_for(&path);
         let handle = loader.load::<TestAsset>(&path);
         let _ = wait_for_ready(&mut loader, handle);
-
-        // Ensure the next write has a different mtime.
         thread::sleep(Duration::from_millis(50));
         fs::write(&path, b"v2").unwrap();
-
-        // update() currently logs the limitation; it still transitions the
-        // slot back to Loading when a change is detected.
         loader.update();
         assert_eq!(loader.state(handle), AssetLoadState::Loading);
-
-        fs::remove_file(&path).ok();
+        loader.shutdown().unwrap();
+        fs::remove_file(path).ok();
     }
 }

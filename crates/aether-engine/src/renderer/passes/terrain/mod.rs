@@ -409,24 +409,15 @@ impl TerrainPass {
             queue,
         );
 
-        let splat =
-            texture_cache.get_or_upload_optional(terrain.material.splat_map.clone(), asset_manager);
-        let layer0 = texture_cache.get_or_upload_optional(
-            terrain.material.layers[0].albedo_texture.clone(),
-            asset_manager,
-        );
-        let layer1 = texture_cache.get_or_upload_optional(
-            terrain.material.layers[1].albedo_texture.clone(),
-            asset_manager,
-        );
-        let layer2 = texture_cache.get_or_upload_optional(
-            terrain.material.layers[2].albedo_texture.clone(),
-            asset_manager,
-        );
-        let layer3 = texture_cache.get_or_upload_optional(
-            terrain.material.layers[3].albedo_texture.clone(),
-            asset_manager,
-        );
+        let splat = texture_cache.get_or_upload_optional(terrain.material.splat_map, asset_manager);
+        let layer0 = texture_cache
+            .get_or_upload_optional(terrain.material.layers[0].albedo_texture, asset_manager);
+        let layer1 = texture_cache
+            .get_or_upload_optional(terrain.material.layers[1].albedo_texture, asset_manager);
+        let layer2 = texture_cache
+            .get_or_upload_optional(terrain.material.layers[2].albedo_texture, asset_manager);
+        let layer3 = texture_cache
+            .get_or_upload_optional(terrain.material.layers[3].albedo_texture, asset_manager);
 
         let needs_rebuild = match (
             &self.last_splat,

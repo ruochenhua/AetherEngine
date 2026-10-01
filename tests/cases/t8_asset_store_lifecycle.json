@@ -1,0 +1,76 @@
+[
+  {
+    "manifest_version": 2,
+    "id": "t8_asset_store_lifecycle",
+    "scene": "scenes/18_file_mesh.ron",
+    "launcher_args": [],
+    "render": {
+      "width": 1,
+      "height": 1,
+      "frames": 1,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0.0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/t8_asset_store_lifecycle.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "initial CPU load produces a versioned GPU commit on the caller thread",
+      "repeated cancellation is idempotent and a late result cannot commit",
+      "failed reload preserves the last-known-good generation",
+      "canonical identity, loading, ready, and failed states follow the AssetStore contract"
+    ],
+    "benchmark": null,
+    "variants": [
+      {
+        "id": "default",
+        "launcher_args_append": [],
+        "time_override": null,
+        "camera_override": null,
+        "benchmark_override": null,
+        "expected_result": {
+          "kind": "Render",
+          "diagnostics": [],
+          "fallbacks": [],
+          "metrics": [],
+          "hashes": [],
+          "probes": [
+            { "name": "initial_load_commit", "value": { "kind": "Bool", "value": true } },
+            { "name": "cancel_idempotent", "value": { "kind": "Bool", "value": true } },
+            { "name": "worker_gpu_commit", "value": { "kind": "Bool", "value": false } },
+            { "name": "state_machine", "value": { "kind": "Text", "value": "valid" } }
+          ],
+          "graph": null
+        }
+      }
+    ]
+  }
+]

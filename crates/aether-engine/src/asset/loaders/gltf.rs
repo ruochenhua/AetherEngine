@@ -8,10 +8,19 @@
 
 use std::path::Path;
 
-use glam::{Mat4, Vec3};
+use glam::Mat4;
 
 use crate::asset::loaders::{compute_smooth_normals, compute_tangents, fill_missing_uvs};
 use crate::asset::mesh::{CpuMaterial, CpuMesh, CpuSubmesh};
+#[path = "gltf/helpers.rs"]
+mod helpers;
+#[path = "gltf/metadata.rs"]
+mod metadata;
+
+use helpers::{transform_point, transform_tangent, transform_vector};
+pub use metadata::{
+    read_metadata, GltfDocumentAsset, GltfMeshMetadata, GltfNodeMetadata, GltfSkinMetadata,
+};
 
 /// Load a glTF file into a `CpuMesh`.
 ///
@@ -223,25 +232,4 @@ fn build_submesh_from_primitive(
             albedo_texture,
         },
     }
-}
-
-fn transform_point(transform: Mat4, p: [f32; 3]) -> [f32; 3] {
-    transform.transform_point3(Vec3::from_array(p)).to_array()
-}
-
-fn transform_vector(transform: Mat4, v: [f32; 3]) -> [f32; 3] {
-    // Normalize after transformation so normals stay unit-length under scale.
-    // Note: for non-uniform scale the mathematically correct transform is the
-    // inverse-transpose of the upper 3x3; this simplified path is sufficient
-    // for typical assets.
-    transform
-        .transform_vector3(Vec3::from_array(v))
-        .normalize()
-        .to_array()
-}
-
-fn transform_tangent(transform: Mat4, t: [f32; 4]) -> [f32; 4] {
-    let v = Vec3::new(t[0], t[1], t[2]);
-    let transformed = transform.transform_vector3(v).normalize();
-    [transformed.x, transformed.y, transformed.z, t[3]]
 }

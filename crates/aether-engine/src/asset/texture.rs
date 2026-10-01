@@ -1,4 +1,4 @@
-use super::Asset;
+mod asset;
 use std::path::Path;
 
 /// CPU-side texture data.
@@ -58,12 +58,6 @@ impl CpuTexture {
             channels: 4,
             format: TextureFormat::Rgba8,
         }
-    }
-}
-
-impl Asset for CpuTexture {
-    fn load(path: &Path) -> anyhow::Result<Self> {
-        Self::from_file(path)
     }
 }
 

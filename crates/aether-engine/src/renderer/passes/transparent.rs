@@ -168,7 +168,7 @@ impl Pass for TransparentPass {
             let texture = item
                 .texture
                 .as_ref()
-                .filter(|handle| frame.asset_manager.is_loaded((*handle).clone()))
+                .filter(|handle| frame.asset_manager.is_loaded(**handle))
                 .cloned();
             let texture_id = texture.as_ref().map_or(0, |handle| handle.id());
             self.particle_texture_ids.push(texture_id);
@@ -266,7 +266,7 @@ impl Pass for TransparentPass {
             if !self.particle_texture_bind_groups.contains_key(&texture_id) {
                 let texture = frame
                     .texture_cache
-                    .get_or_upload_optional(draw.material.texture.clone(), frame.asset_manager);
+                    .get_or_upload_optional(draw.material.texture, frame.asset_manager);
                 let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                     label: Some("Transparent Mesh Texture Bind Group"),
                     layout: &self.particle_texture_bind_group_layout,

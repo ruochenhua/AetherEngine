@@ -234,10 +234,10 @@ impl MaterialResolver {
                 occlusion_strength: config.occlusion_strength,
                 emissive: config.emissive,
                 emissive_intensity: config.emissive_intensity,
-                albedo: albedo.handle.clone(),
-                normal: normal.handle.clone(),
-                orm: orm.handle.clone(),
-                emissive_texture: emissive.handle.clone(),
+                albedo: albedo.handle,
+                normal: normal.handle,
+                orm: orm.handle,
+                emissive_texture: emissive.handle,
             },
             legacy_unlit: config.unlit,
             albedo,
@@ -257,7 +257,7 @@ impl MaterialResolver {
         let normalized = raw_path
             .map(|path| normalize_path(&self.asset_root.join(path)))
             .unwrap_or_else(|| self.asset_root.join("<fallback>"));
-        let path = normalized.to_string_lossy().into_owned();
+        let path = normalized.to_string_lossy().replace('\\', "/");
         let key = TextureCacheKey::new(path.clone(), usage);
         let handle = match raw_path {
             None => None,

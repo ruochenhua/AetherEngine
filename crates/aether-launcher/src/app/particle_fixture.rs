@@ -54,7 +54,7 @@ pub(super) fn billboard_frame(texture: Option<Handle<CpuTexture>>) -> Arc<Partic
                 size: 0.58,
                 rotation: particle_id as f32 * 0.23,
                 color,
-                texture: (particle_id == 2).then(|| texture.clone()).flatten(),
+                texture: (particle_id == 2).then_some(texture).flatten(),
                 blend,
             },
         )

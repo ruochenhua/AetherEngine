@@ -1,8 +1,7 @@
-use super::Asset;
+mod asset;
 use crate::math::Aabb;
 use bytemuck::{Pod, Zeroable};
 use glam::Vec3;
-use std::path::Path;
 use std::sync::Arc;
 
 /// CPU-side PBR material description used while loading models.
@@ -306,12 +305,6 @@ impl CpuMesh {
             });
         }
         vertices
-    }
-}
-
-impl Asset for CpuMesh {
-    fn load(path: &Path) -> anyhow::Result<Self> {
-        crate::asset::loaders::load_mesh(path)
     }
 }
 

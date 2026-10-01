@@ -146,7 +146,7 @@ impl Pass for WaterReflectionPass {
         for batch in self.batches.iter() {
             let gpu_tex = frame
                 .texture_cache
-                .get_or_upload_optional(batch.albedo_texture.clone(), frame.asset_manager);
+                .get_or_upload_optional(batch.albedo_texture, frame.asset_manager);
             let bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("WaterReflection Texture BG"),
                 layout: &self.texture_bind_group_layout,

@@ -144,7 +144,7 @@ pub(super) fn build_objects(
         if let Some(config) = &obj.material.transparent {
             let transparent_material = TransparentMaterial {
                 base_color: obj.material.albedo,
-                texture: resolution.material.albedo.clone(),
+                texture: resolution.material.albedo,
                 blend: config.blend,
                 alpha_cutoff: config.alpha_cutoff,
             };

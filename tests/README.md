@@ -144,3 +144,17 @@ and writes an HTML report; it does not promote either image to a baseline:
 AETHER_LAUNCHER_BIN=target/release/aether-launcher \
   ./tests/ssr-effect-test.sh
 ```
+
+## T8.1 AssetStore lifecycle acceptance
+
+Run the T8.1 primary fixture with:
+
+```bash
+./scripts/run-slice-tests.sh --slice T8.1
+```
+
+This is a headless CPU fixture; it does not start the launcher or open a scene
+window. Each run writes an HTML aggregate and machine-readable evidence under
+`tests/reports/<run-id>/t8_asset_store_lifecycle/`, including the lifecycle
+events, probe results, logs, metrics, graph placeholder, and 1×1 RGBA8 sentinel
+images. Visual comparison is marked not applicable for this fixture.
