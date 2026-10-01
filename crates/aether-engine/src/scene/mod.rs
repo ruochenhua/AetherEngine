@@ -18,3 +18,8 @@ pub use config::{
     PhysicsConfig, SceneDescription, TerrainConfig, TerrainGeometry, TerrainLayerConfig,
     TerrainSource, TransformConfig, TransparentMaterialConfig, WaterConfig,
 };
+
+pub use crate::asset::prefab::{
+    ComponentPatch, PrefabAsset, PrefabComponentKind, PrefabDocument, PrefabError,
+    PrefabInstanceConfig, PrefabNode, PrefabOverrides, RemovedComponent,
+};

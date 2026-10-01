@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>T8.1 Typed AssetStore lifecycle — PASS</title>
+<style>
+body{font:15px/1.5 system-ui,sans-serif;max-width:1100px;margin:2rem auto;padding:0 1rem;color:#172033}
+table{border-collapse:collapse;width:100%;margin:1rem 0}th,td{text-align:left;padding:.65rem;border-bottom:1px solid #d0d5dd;vertical-align:top}
+th{background:#f2f4f7}tr.pass td:nth-child(2){color:#15803d;font-weight:700}tr.fail td:nth-child(2){color:#b42318;font-weight:700}
+.status{padding:.8rem 1rem;border-left:4px solid #15803d;background:#f0fdf4}
+code{overflow-wrap:anywhere}a{margin-right:.7rem}
+</style></head><body>
+<h1>T8.1 — Typed AssetStore lifecycle</h1>
+<p class="status">Aggregate: <strong>PASS</strong> · Fixture case; no scene render captured</p>
+<p>Run: <code>t8-20261001T062844Z-16</code> · Started: <code>2026-10-01T06:28:44Z</code> · Completed: <code>2026-10-01T06:28:45.228702+00:00</code></p>
+<p>Environment: <code>Windows-10-10.0.26200-SP0</code> · Python <code>3.10.9</code> · Commit <code>e0225b94208741942afa94adcadefc73f521a0e1</code></p>
+<p>Fixture exit: <strong>0</strong> · Scene exit: <strong>not run</strong> · Case schema: <strong>valid</strong></p>
+<h2>Typed probes</h2><table><thead><tr><th>Probe</th><th>Status</th><th>Expected</th><th>Observed</th></tr></thead><tbody><tr class="pass"><td>initial_load_commit</td><td>PASS</td><td><code>{&quot;kind&quot;: &quot;Bool&quot;, &quot;value&quot;: true}</code></td><td><code>{&quot;kind&quot;: &quot;Bool&quot;, &quot;value&quot;: true}</code></td></tr><tr class="pass"><td>cancel_idempotent</td><td>PASS</td><td><code>{&quot;kind&quot;: &quot;Bool&quot;, &quot;value&quot;: true}</code></td><td><code>{&quot;kind&quot;: &quot;Bool&quot;, &quot;value&quot;: true}</code></td></tr><tr class="pass"><td>worker_gpu_commit</td><td>PASS</td><td><code>{&quot;kind&quot;: &quot;Bool&quot;, &quot;value&quot;: false}</code></td><td><code>{&quot;kind&quot;: &quot;Bool&quot;, &quot;value&quot;: false}</code></td></tr><tr class="pass"><td>state_machine</td><td>PASS</td><td><code>{&quot;kind&quot;: &quot;Text&quot;, &quot;value&quot;: &quot;valid&quot;}</code></td><td><code>{&quot;kind&quot;: &quot;Text&quot;, &quot;value&quot;: &quot;valid&quot;}</code></td></tr></tbody></table>
+<h2>Lifecycle events</h2><ul><li>canonical_path_normalized</li><li>same_path_distinct_kind</li><li>in_flight_request_deduplicated</li><li>owned_payload_downcast</li><li>initial_load_gpu_commit_on_caller</li><li>failed_reload_kept_last_known_good</li><li>cancel_repeated_and_late_result_rejected</li><li>shutdown_idempotent</li></ul>
+<h2>Scene capture</h2><p>No renderer output was captured.</p>
+<h2>Artifacts</h2><p><a href="asset-events.json">asset-events.json</a> <a href="metrics.json">metrics.json</a> <a href="launcher.log">launcher.log</a> <a href="graph.txt">graph.txt</a> <a href="stdout">stdout</a> <a href="stderr">stderr</a> <a href="output.png">output.png</a> <a href="reference.png">reference.png</a> <a href="diff.png">diff.png</a></p>
+<p>PNG files are deterministic 1×1 RGBA8 sentinels for fixture-runner compatibility; they are not rendered visual evidence.</p>
+</body></html>

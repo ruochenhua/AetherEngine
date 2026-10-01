@@ -79,7 +79,7 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), EditorError> {
 
 fn temp_path(path: &Path) -> PathBuf {
     let thread = std::thread::current();
-    let thread_name = thread.name().unwrap_or("editor");
+    let thread_name = thread.name().unwrap_or("editor").replace(':', "_");
     let suffix = format!("{}.{}.tmp", std::process::id(), thread_name);
     path.with_file_name(format!(
         ".{}.{}",

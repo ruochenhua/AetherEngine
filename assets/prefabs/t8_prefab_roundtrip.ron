@@ -1,0 +1,27 @@
+(
+    schema_version: 2,
+    root: (
+        instance_id: 100,
+        name: "PrefabRoot",
+        components: [
+            Transform(translation: (-0.9, 0.0, 0.0), rotation_xyzw: (0.0, 0.0, 0.0, 1.0), scale: (0.9, 0.9, 0.9)),
+            Mesh(source: Builtin("sphere")),
+            Material(config: (albedo: (0.8, 0.22, 0.12, 1.0), roughness: 0.52, metallic: 0.0)),
+            Visibility(visible: true),
+            Name(value: "PrefabRoot"),
+        ],
+        children: [
+            (
+                instance_id: 101,
+                name: "PrefabChild",
+                components: [
+                    Transform(translation: (0.9, 0.0, 0.0), rotation_xyzw: (0.0, 0.0, 0.0, 1.0), scale: (0.9, 0.9, 0.9)),
+                    Mesh(source: Builtin("cube")),
+                    Material(config: (albedo: (0.12, 0.36, 0.88, 1.0), roughness: 0.35, metallic: 0.0)),
+                    Visibility(visible: true),
+                    Name(value: "PrefabChild"),
+                ],
+            ),
+        ],
+    ),
+)

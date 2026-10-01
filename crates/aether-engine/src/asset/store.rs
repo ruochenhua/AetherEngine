@@ -9,6 +9,9 @@ mod worker;
 #[path = "store/frame_boundary_tests.rs"]
 mod frame_boundary_tests;
 #[cfg(test)]
+#[path = "store/hot_reload_acceptance.rs"]
+mod hot_reload_acceptance;
+#[cfg(test)]
 mod store_tests;
 
 use super::store_types::{AssetEntry, TicketRecord};
@@ -269,6 +272,11 @@ impl AssetStore {
             }
         }
         Ok(results)
+    }
+
+    /// Return a result to the front of the queue when another adapter owns it.
+    pub fn defer_result(&mut self, result: AssetResult) {
+        self.deferred_results.push_front(result);
     }
 
     /// Apply one worker result on the app thread at a monotonic frame boundary.

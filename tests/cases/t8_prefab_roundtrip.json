@@ -1,0 +1,76 @@
+[
+  {
+    "manifest_version": 2,
+    "id": "t8_prefab_roundtrip",
+    "scene": "scenes/t8_prefab_roundtrip.ron",
+    "launcher_args": [],
+    "render": {
+      "width": 640,
+      "height": 360,
+      "frames": 1,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0.0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/t8_prefab_roundtrip.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "Prefab save/load preserves hierarchy and component records",
+      "stable node ids map to distinct runtime entities for separate instances",
+      "typed overrides and removed component tombstones apply before spawn",
+      "a mid-insertion failure removes every entity created by the transaction"
+    ],
+    "benchmark": null,
+    "variants": [
+      {
+        "id": "default",
+        "launcher_args_append": [],
+        "time_override": null,
+        "camera_override": null,
+        "benchmark_override": null,
+        "expected_result": {
+          "kind": "Render",
+          "diagnostics": [],
+          "fallbacks": [],
+          "metrics": [],
+          "hashes": [],
+          "probes": [
+            { "name": "round_trip", "value": { "kind": "Bool", "value": true } },
+            { "name": "instance_id_remap", "value": { "kind": "Bool", "value": true } },
+            { "name": "typed_patch_validation", "value": { "kind": "Bool", "value": true } },
+            { "name": "transaction_rollback", "value": { "kind": "Bool", "value": true } }
+          ],
+          "graph": null
+        }
+      }
+    ]
+  }
+]

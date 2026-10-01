@@ -1,0 +1,19 @@
+{
+  "case_id": "t8_material_reload_lkg",
+  "run_id": "t8-20261001T063913Z-1027",
+  "runner": "t8-slice-runner/1",
+  "runner_pid": 1027,
+  "command": "cargo test -p aether-engine --test t8_material_reload_lkg -- --exact t8_material_reload_lkg",
+  "exit_code": 0,
+  "started_at": "2026-10-01T06:39:13Z",
+  "ended_at": "2026-10-01T06:39:17.051181+00:00",
+  "os": "Windows-10-10.0.26200-SP0",
+  "machine": "",
+  "python": "3.10.9",
+  "launcher_started": true,
+  "window_opened": true,
+  "auto_exit_requested": true,
+  "launcher_exit_code": 0,
+  "render_command": "cargo run --release -p aether-launcher -- --scene scenes/t8_material_reload.ron --screenshot <case-dir>/launcher-output.png --exit-after-frames 1 --no-gui-overlay --no-debug-helpers",
+  "status": "PASS"
+}

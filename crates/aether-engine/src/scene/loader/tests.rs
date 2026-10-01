@@ -80,6 +80,7 @@ fn test_scene_desc() -> SceneDescription {
                 physics: None,
             },
         ],
+        prefab_instances: vec![],
     }
 }
 
@@ -450,4 +451,44 @@ fn from_file_loads_valid_ron() {
 
     let _ = std::fs::remove_file(&path);
     let _ = std::fs::remove_dir(&dir);
+}
+
+#[test]
+fn prefab_scene_loads_hierarchy_and_scene_serialization_keeps_the_asset_reference() {
+    let device = headless_device();
+    let registry = test_registry();
+    let project_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .unwrap();
+    let mut assets = AssetManager::with_project_root(project_root.clone());
+    let mut world = World::new();
+    let scene_path = project_root.join("scenes/t8_prefab_roundtrip.ron");
+    let description = SceneLoader::from_file(&scene_path).unwrap();
+
+    SceneLoader::build_world(&description, &device, &registry, &mut assets, &mut world).unwrap();
+
+    assert_eq!(
+        world
+            .query::<&crate::ecs::components::PrefabNodeInstance>()
+            .iter()
+            .count(),
+        2
+    );
+    let root_path = world
+        .query::<&crate::ecs::components::PrefabInstanceRoot>()
+        .iter()
+        .next()
+        .unwrap()
+        .0
+        .prefab_asset
+        .clone();
+    assert_eq!(root_path, "assets/prefabs/t8_prefab_roundtrip.ron");
+    let saved = crate::scene::serializer::serialize_world(
+        &world,
+        &crate::renderer::light::LightingUniforms::default(),
+        &description.name,
+    );
+    assert_eq!(saved.prefab_instances, description.prefab_instances);
+    assert!(saved.objects.is_empty());
 }

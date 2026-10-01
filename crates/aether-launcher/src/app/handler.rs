@@ -179,8 +179,23 @@ impl ApplicationHandler for App {
                 scene::process_pending_load(self);
 
                 if let LauncherState::Running { ref mut world, .. } = self.state {
-                    self.material_asset_watcher
-                        .update(world, &mut self.asset_manager);
+                    let device = self.ctx.as_ref().map(|context| context.device.clone());
+                    if let (Some(device), Some(texture_cache)) =
+                        (device, self.texture_cache.as_mut())
+                    {
+                        self.asset_hot_reload_watcher.update(
+                            world,
+                            &mut self.asset_manager,
+                            texture_cache,
+                            &device,
+                            &self.mesh_registry,
+                        );
+                        self.material_asset_watcher
+                            .update(world, &mut self.asset_manager);
+                    } else {
+                        self.material_asset_watcher
+                            .update(world, &mut self.asset_manager);
+                    }
                 }
 
                 input::update_camera_and_picking(self, dt, egui_consumed);

@@ -48,13 +48,23 @@ def escape(value):
 def build_report(args):
     case_records = read_json(args.case_file, [])
     if not isinstance(case_records, list) or len(case_records) != 1:
-        raise ValueError("T8.1 case file must contain exactly one VisualCase v2 record")
+        raise ValueError("T8 case file must contain exactly one VisualCase v2 record")
     case = case_records[0]
     case_id = case.get("id", "")
-    if case_id not in {"t8_asset_store_lifecycle", "t8_material_reload_lkg"}:
+    if case_id not in {"t8_asset_store_lifecycle", "t8_material_reload_lkg", "t8_prefab_roundtrip", "t8_hot_reload_shutdown"}:
         raise ValueError("unexpected primary case id")
-    slice_label = "T8.1" if case_id == "t8_asset_store_lifecycle" else "T8.2"
-    case_title = "Typed AssetStore lifecycle" if slice_label == "T8.1" else "MaterialAsset reload and last-known-good"
+    slice_label = {
+        "t8_asset_store_lifecycle": "T8.1",
+        "t8_material_reload_lkg": "T8.2",
+        "t8_prefab_roundtrip": "T8.3",
+        "t8_hot_reload_shutdown": "T8.4",
+    }[case_id]
+    case_title = {
+        "T8.1": "Typed AssetStore lifecycle",
+        "T8.2": "MaterialAsset reload and last-known-good",
+        "T8.3": "Prefab save, instance, and rollback",
+        "T8.4": "Hot reload generations and worker shutdown",
+    }[slice_label]
     variants = case.get("variants")
     if not isinstance(variants, list) or len(variants) != 1 or variants[0].get("id") != "default":
         raise ValueError(f"{slice_label} requires exactly one default variant")
@@ -63,7 +73,8 @@ def build_report(args):
         raise ValueError(f"{slice_label} default variant must use the Render expectation")
 
     args.case_dir.mkdir(parents=True, exist_ok=True)
-    events_path = args.case_dir / "asset-events.json"
+    events_name = "prefab-events.json" if slice_label == "T8.3" else "asset-events.json"
+    events_path = args.case_dir / events_name
     events = read_json(events_path, {"case_id": case_id, "kind": "Fixture", "events": [], "probes": []})
     if not isinstance(events, dict):
         events = {"case_id": case_id, "kind": "Fixture", "events": [], "probes": []}
@@ -85,7 +96,7 @@ def build_report(args):
     render_output = args.case_dir / "launcher-output.png"
     render_exit_code = args.render_exit_code
     rendered = render_exit_code == 0 and render_output.is_file() and render_output.stat().st_size > 64
-    render_required = slice_label == "T8.2"
+    render_required = slice_label in {"T8.2", "T8.3", "T8.4"}
     render_passed = not render_required or rendered
     aggregate_passed = command_passed and render_passed and case_identity_passed and bool(checks) and all(item["passed"] for item in checks)
     status = "PASS" if aggregate_passed else "FAIL"
@@ -112,7 +123,7 @@ def build_report(args):
     (args.case_dir / "metrics.json").write_text(json.dumps(metrics, indent=2) + "\n", encoding="utf-8")
     graph_summary = (
         "Scene rendered successfully; a graph dump was not collected by the bounded launcher capture.\n"
-        "Asset lifecycle assertions are recorded in asset-events.json.\n"
+        f"Slice assertions are recorded in {events_name}.\n"
         if rendered
         else "not_applicable: CPU AssetStore fixture; no render graph was created\n"
     )
@@ -153,11 +164,11 @@ def build_report(args):
 
     artifact_links = " ".join(
         f'<a href="{name}">{escape(name)}</a>'
-        for name in ("asset-events.json", "metrics.json", "launcher.log", "graph.txt", "stdout", "stderr", "output.png", "reference.png", "diff.png")
+        for name in (events_name, "metrics.json", "launcher.log", "graph.txt", "stdout", "stderr", "output.png", "reference.png", "diff.png")
     )
     output_preview = '<h2>Scene capture</h2><p>No renderer output was captured.</p>'
     if rendered:
-        output_preview = '<h2>Scene capture</h2><p>Launcher exited after the bounded screenshot run. No golden reference is configured, so image comparison was not run.</p><p><img src="output.png" alt="Rendered material reload scene" style="max-width:100%;height:auto"></p>'
+        output_preview = '<h2>Scene capture</h2><p>Launcher exited after the bounded screenshot run. No golden reference is configured, so image comparison was not run.</p><p><img src="output.png" alt="Rendered T8 scene" style="max-width:100%;height:auto"></p>'
     report = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{escape(slice_label)} {escape(case_title)} — {status}</title>
@@ -202,7 +213,7 @@ def main():
     try:
         return build_report(args)
     except (OSError, ValueError, json.JSONDecodeError) as error:
-        print(f"could not build T8.1 report: {error}", file=sys.stderr)
+        print(f"could not build T8 slice report: {error}", file=sys.stderr)
         return 2
 
 

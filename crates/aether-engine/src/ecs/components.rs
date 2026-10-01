@@ -53,6 +53,25 @@ pub struct MaterialAssetRef(pub String);
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct MaterialAssetStatus(pub Option<String>);
 
+/// Runtime provenance for one entity instantiated from a Prefab node.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PrefabNodeInstance {
+    /// Stable scene-level identifier for this placed prefab.
+    pub prefab_instance_id: u64,
+    /// Stable node identifier from the Prefab document.
+    pub instance_id: u64,
+    /// Parent node id in the Prefab document, if this is not the root.
+    pub parent_instance_id: Option<u64>,
+}
+
+/// Serialized Prefab path and overrides attached to the root runtime entity.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PrefabInstanceRoot(pub crate::asset::prefab::PrefabInstanceConfig);
+
+/// Last Prefab reload diagnostic attached to an active scene instance root.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct PrefabAssetStatus(pub Option<String>);
+
 /// Handle to a GPU mesh.
 ///
 /// Shared ownership via `Arc` so that multiple entities can reference

@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>T8.3 Prefab save, instance, and rollback — PASS</title>
+<style>
+body{font:15px/1.5 system-ui,sans-serif;max-width:1100px;margin:2rem auto;padding:0 1rem;color:#172033}
+table{border-collapse:collapse;width:100%;margin:1rem 0}th,td{text-align:left;padding:.65rem;border-bottom:1px solid #d0d5dd;vertical-align:top}
+th{background:#f2f4f7}tr.pass td:nth-child(2){color:#15803d;font-weight:700}tr.fail td:nth-child(2){color:#b42318;font-weight:700}
+.status{padding:.8rem 1rem;border-left:4px solid #15803d;background:#f0fdf4}
+code{overflow-wrap:anywhere}a{margin-right:.7rem}
+</style></head><body>
+<h1>T8.3 — Prefab save, instance, and rollback</h1>
+<p class="status">Aggregate: <strong>PASS</strong> · Scene render and fixture probes</p>
+<p>Run: <code>t8-20261001T083138Z-1923</code> · Started: <code>2026-10-01T08:31:38Z</code> · Completed: <code>2026-10-01T08:31:41.837645+00:00</code></p>
+<p>Environment: <code>Windows-10-10.0.26200-SP0</code> · Python <code>3.10.9</code> · Commit <code>de991f64dfeca275779cd6ce14109d252adff26e</code></p>
+<p>Fixture exit: <strong>0</strong> · Scene exit: <strong>0</strong> · Case schema: <strong>valid</strong></p>
+<h2>Typed probes</h2><table><thead><tr><th>Probe</th><th>Status</th><th>Expected</th><th>Observed</th></tr></thead><tbody><tr class="pass"><td>round_trip</td><td>PASS</td><td><code>{&quot;kind&quot;: &quot;Bool&quot;, &quot;value&quot;: true}</code></td><td><code>{&quot;kind&quot;: &quot;Bool&quot;, &quot;value&quot;: true}</code></td></tr><tr class="pass"><td>instance_id_remap</td><td>PASS</td><td><code>{&quot;kind&quot;: &quot;Bool&quot;, &quot;value&quot;: true}</code></td><td><code>{&quot;kind&quot;: &quot;Bool&quot;, &quot;value&quot;: true}</code></td></tr><tr class="pass"><td>typed_patch_validation</td><td>PASS</td><td><code>{&quot;kind&quot;: &quot;Bool&quot;, &quot;value&quot;: true}</code></td><td><code>{&quot;kind&quot;: &quot;Bool&quot;, &quot;value&quot;: true}</code></td></tr><tr class="pass"><td>transaction_rollback</td><td>PASS</td><td><code>{&quot;kind&quot;: &quot;Bool&quot;, &quot;value&quot;: true}</code></td><td><code>{&quot;kind&quot;: &quot;Bool&quot;, &quot;value&quot;: true}</code></td></tr></tbody></table>
+<h2>Lifecycle events</h2><ul><li>prefab_saved_and_loaded_as_versioned_ron</li><li>instance_overrides_applied_before_spawn</li><li>stable_node_ids_mapped_to_fresh_runtime_entities</li><li>component_tombstone_removed_instance_name</li><li>partial_spawn_failure_rolled_back_created_entities</li></ul>
+<h2>Scene capture</h2><p>Launcher exited after the bounded screenshot run. No golden reference is configured, so image comparison was not run.</p><p><img src="output.png" alt="Rendered T8 scene" style="max-width:100%;height:auto"></p>
+<h2>Artifacts</h2><p><a href="prefab-events.json">prefab-events.json</a> <a href="metrics.json">metrics.json</a> <a href="launcher.log">launcher.log</a> <a href="graph.txt">graph.txt</a> <a href="stdout">stdout</a> <a href="stderr">stderr</a> <a href="output.png">output.png</a> <a href="reference.png">reference.png</a> <a href="diff.png">diff.png</a></p>
+<p>reference.png and diff.png are deterministic 1×1 placeholders because this case has no approved golden reference.</p>
+</body></html>

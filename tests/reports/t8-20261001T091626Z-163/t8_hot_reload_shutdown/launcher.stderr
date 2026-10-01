@@ -1,0 +1,4 @@
+   Compiling aether-engine v0.1.0 (E:\Projects\AetherEngine\crates\aether-engine)
+   Compiling aether-launcher v0.1.0 (E:\Projects\AetherEngine\crates\aether-launcher)
+    Finished `release` profile [optimized] target(s) in 40.88s
+     Running `target\release\aether-launcher.exe --scene scenes/t8_prefab_roundtrip.ron --screenshot 'E:\Projects\AetherEngine\tests\reports\t8-20261001T091626Z-163\t8_hot_reload_shutdown\launcher-output.png' --exit-after-frames 1 --no-gui-overlay --no-debug-helpers --width 640 --height 360 --time-mode seek --simulation-time 0`

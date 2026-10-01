@@ -1,0 +1,33 @@
+{
+  "case_id": "t8_hot_reload_shutdown",
+  "events": [
+    "reload_in_flight_kept_current_generation_visible",
+    "failed_generation_preserved_last_good_asset",
+    "bounded_shutdown_timed_out_without_blocking",
+    "worker_joined_on_idempotent_shutdown_retry"
+  ],
+  "kind": "Fixture",
+  "probes": [
+    {
+      "name": "shutdown_nonblocking",
+      "value": {
+        "kind": "Bool",
+        "value": true
+      }
+    },
+    {
+      "name": "old_generation_retained",
+      "value": {
+        "kind": "Bool",
+        "value": true
+      }
+    },
+    {
+      "name": "worker_joined",
+      "value": {
+        "kind": "Bool",
+        "value": true
+      }
+    }
+  ]
+}

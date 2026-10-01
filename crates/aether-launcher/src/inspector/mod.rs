@@ -15,7 +15,8 @@ pub(crate) use apply::{apply, apply_undo};
 use material::config_from_uniform;
 
 use aether_engine::ecs::components::{
-    Atmosphere, Camera, Clouds, GodRay, Light, Terrain, Transform, Water,
+    Atmosphere, Camera, Clouds, GodRay, Light, PrefabAssetStatus, PrefabInstanceRoot, Terrain,
+    Transform, Water,
 };
 use aether_engine::ecs::{Entity, World};
 use aether_engine::particles::ParticleEmitterConfig;
@@ -115,6 +116,12 @@ pub(crate) enum InspectorTarget {
         config: ParticleEmitterConfig,
         restart: bool,
     },
+    /// A Prefab instance root with a hot-reload diagnostic.
+    PrefabAssetError {
+        entity: Entity,
+        path: String,
+        error: String,
+    },
 }
 
 impl InspectorTarget {
@@ -128,7 +135,8 @@ impl InspectorTarget {
             | InspectorTarget::Clouds { entity, .. }
             | InspectorTarget::GodRay { entity, .. }
             | InspectorTarget::Camera { entity, .. }
-            | InspectorTarget::ParticleEmitter { entity, .. } => entity,
+            | InspectorTarget::ParticleEmitter { entity, .. }
+            | InspectorTarget::PrefabAssetError { entity, .. } => entity,
         }
     }
 }
@@ -139,6 +147,19 @@ pub(crate) fn extract(world: &World) -> Option<InspectorTarget> {
         .query::<(Entity, &aether_engine::ecs::components::Selected)>()
         .iter()
         .next()?;
+
+    if let Ok((root, status)) = world
+        .query_one::<(&PrefabInstanceRoot, &PrefabAssetStatus)>(entity)
+        .get()
+    {
+        if let Some(error) = status.0.clone() {
+            return Some(InspectorTarget::PrefabAssetError {
+                entity,
+                path: root.0.prefab_asset.clone(),
+                error,
+            });
+        }
+    }
 
     // Mesh object: Transform + MeshHandle + MaterialUniform.
     let mut q = world.query_one::<(

@@ -1,0 +1,57 @@
+{
+  "case_id": "t8_asset_store_lifecycle",
+  "aggregate": "PASS",
+  "checks": [
+    {
+      "name": "initial_load_commit",
+      "expected": {
+        "kind": "Bool",
+        "value": true
+      },
+      "actual": {
+        "kind": "Bool",
+        "value": true
+      },
+      "passed": true
+    },
+    {
+      "name": "cancel_idempotent",
+      "expected": {
+        "kind": "Bool",
+        "value": true
+      },
+      "actual": {
+        "kind": "Bool",
+        "value": true
+      },
+      "passed": true
+    },
+    {
+      "name": "worker_gpu_commit",
+      "expected": {
+        "kind": "Bool",
+        "value": false
+      },
+      "actual": {
+        "kind": "Bool",
+        "value": false
+      },
+      "passed": true
+    },
+    {
+      "name": "state_machine",
+      "expected": {
+        "kind": "Text",
+        "value": "valid"
+      },
+      "actual": {
+        "kind": "Text",
+        "value": "valid"
+      },
+      "passed": true
+    }
+  ],
+  "command_exit_code": 0,
+  "render_exit_code": null,
+  "rendered": false
+}

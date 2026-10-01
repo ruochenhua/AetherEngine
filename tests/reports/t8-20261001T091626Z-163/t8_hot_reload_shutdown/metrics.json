@@ -1,0 +1,24 @@
+{
+  "case_id": "t8_hot_reload_shutdown",
+  "kind": "Render+Fixture",
+  "aggregate": "PASS",
+  "comparison": "not_run_no_reference",
+  "sentinel": {
+    "width": 1,
+    "height": 1,
+    "format": "png-rgba8",
+    "rgba": [
+      24,
+      48,
+      72,
+      255
+    ]
+  },
+  "sentinel_files": [
+    "reference.png",
+    "diff.png"
+  ],
+  "rendered_output": "output.png",
+  "probe_count": 3,
+  "passed_probe_count": 3
+}

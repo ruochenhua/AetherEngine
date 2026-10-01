@@ -1,0 +1,19 @@
+{
+  "case_id": "t8_asset_store_lifecycle",
+  "run_id": "t8-20261001T062844Z-16",
+  "runner": "t8-slice-runner/1",
+  "runner_pid": 16,
+  "command": "cargo test -p aether-engine --test t8_asset_store_lifecycle -- --exact t8_asset_store_lifecycle",
+  "exit_code": 0,
+  "started_at": "2026-10-01T06:28:44Z",
+  "ended_at": "2026-10-01T06:28:45.228702+00:00",
+  "os": "Windows-10-10.0.26200-SP0",
+  "machine": "",
+  "python": "3.10.9",
+  "launcher_started": false,
+  "window_opened": false,
+  "auto_exit_requested": false,
+  "launcher_exit_code": null,
+  "render_command": "not run",
+  "status": "PASS"
+}

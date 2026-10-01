@@ -60,6 +60,10 @@ pub(crate) fn render(ui: &mut egui::Ui, target: &mut InspectorTarget) {
         InspectorTarget::ParticleEmitter {
             config, restart, ..
         } => super::particle::render(ui, config, restart),
+        InspectorTarget::PrefabAssetError { path, error, .. } => {
+            ui.label(format!("Prefab asset: {path}"));
+            ui.colored_label(egui::Color32::LIGHT_RED, error);
+        }
     }
 }
 

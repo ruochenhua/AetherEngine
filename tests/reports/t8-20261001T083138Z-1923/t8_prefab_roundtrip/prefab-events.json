@@ -1,0 +1,41 @@
+{
+  "case_id": "t8_prefab_roundtrip",
+  "events": [
+    "prefab_saved_and_loaded_as_versioned_ron",
+    "instance_overrides_applied_before_spawn",
+    "stable_node_ids_mapped_to_fresh_runtime_entities",
+    "component_tombstone_removed_instance_name",
+    "partial_spawn_failure_rolled_back_created_entities"
+  ],
+  "kind": "Fixture",
+  "probes": [
+    {
+      "name": "round_trip",
+      "value": {
+        "kind": "Bool",
+        "value": true
+      }
+    },
+    {
+      "name": "instance_id_remap",
+      "value": {
+        "kind": "Bool",
+        "value": true
+      }
+    },
+    {
+      "name": "typed_patch_validation",
+      "value": {
+        "kind": "Bool",
+        "value": true
+      }
+    },
+    {
+      "name": "transaction_rollback",
+      "value": {
+        "kind": "Bool",
+        "value": true
+      }
+    }
+  ]
+}

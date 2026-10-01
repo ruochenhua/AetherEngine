@@ -37,6 +37,7 @@ fn atmosphere_config_roundtrips_through_ron() {
         god_ray: None,
         particle_emitters: vec![],
         objects: vec![],
+        prefab_instances: vec![],
     };
     let ron = ron::ser::to_string(&desc).expect("should serialize");
     let parsed = SceneDescription::from_ron(&ron).expect("should deserialize");
@@ -117,6 +118,7 @@ fn water_config_roundtrips_through_ron() {
         god_ray: None,
         particle_emitters: vec![],
         objects: vec![],
+        prefab_instances: vec![],
     };
     let ron = ron::ser::to_string(&desc).expect("should serialize");
     let parsed = SceneDescription::from_ron(&ron).expect("should deserialize");
@@ -176,6 +178,7 @@ fn terrain_config_roundtrips_through_ron() {
         god_ray: None,
         particle_emitters: vec![],
         objects: vec![],
+        prefab_instances: vec![],
     };
     let ron = ron::ser::to_string(&desc).expect("should serialize");
     let parsed = SceneDescription::from_ron(&ron).expect("should deserialize");
@@ -248,6 +251,7 @@ fn cloud_config_roundtrips_through_ron() {
         god_ray: None,
         particle_emitters: vec![],
         objects: vec![],
+        prefab_instances: vec![],
     };
     let ron = ron::ser::to_string(&desc).expect("should serialize");
     let parsed = SceneDescription::from_ron(&ron).expect("should deserialize");
@@ -310,6 +314,7 @@ fn godray_config_roundtrips_through_ron() {
         }),
         particle_emitters: vec![],
         objects: vec![],
+        prefab_instances: vec![],
     };
     let ron = ron::ser::to_string(&desc).expect("should serialize");
     let parsed = SceneDescription::from_ron(&ron).expect("should deserialize");

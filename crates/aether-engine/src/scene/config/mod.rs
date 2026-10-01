@@ -47,6 +47,9 @@ pub struct SceneDescription {
     /// Objects in the scene.
     #[serde(default)]
     pub objects: Vec<ObjectConfig>,
+    /// Prefab assets instantiated into this scene.
+    #[serde(default)]
+    pub prefab_instances: Vec<crate::asset::prefab::PrefabInstanceConfig>,
     /// Optional global terrain configuration.
     #[serde(default)]
     pub terrain: Option<TerrainConfig>,

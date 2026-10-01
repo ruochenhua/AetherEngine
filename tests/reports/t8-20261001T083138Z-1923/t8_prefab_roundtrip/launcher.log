@@ -1,0 +1,19 @@
+{
+  "case_id": "t8_prefab_roundtrip",
+  "run_id": "t8-20261001T083138Z-1923",
+  "runner": "t8-slice-runner/1",
+  "runner_pid": 1923,
+  "command": "cargo test -p aether-engine --lib asset::prefab::tests::acceptance::t8_prefab_roundtrip_acceptance -- --exact",
+  "exit_code": 0,
+  "started_at": "2026-10-01T08:31:38Z",
+  "ended_at": "2026-10-01T08:31:41.837645+00:00",
+  "os": "Windows-10-10.0.26200-SP0",
+  "machine": "",
+  "python": "3.10.9",
+  "launcher_started": true,
+  "window_opened": true,
+  "auto_exit_requested": true,
+  "launcher_exit_code": 0,
+  "render_command": "cargo run --release -p aether-launcher -- --scene scenes/t8_prefab_roundtrip.ron --screenshot <case-dir>/launcher-output.png --exit-after-frames 1 --no-gui-overlay --no-debug-helpers",
+  "status": "PASS"
+}

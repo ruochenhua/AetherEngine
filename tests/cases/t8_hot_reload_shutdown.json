@@ -1,0 +1,75 @@
+[
+  {
+    "manifest_version": 2,
+    "id": "t8_hot_reload_shutdown",
+    "scene": "scenes/t8_prefab_roundtrip.ron",
+    "launcher_args": [],
+    "render": {
+      "width": 640,
+      "height": 360,
+      "frames": 1,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0.0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/t8_prefab_roundtrip.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "An in-flight reload leaves the last committed generation available to consumers",
+      "A failed reload retains the last-known-good asset generation",
+      "Shutdown returns within its configured bound when decoding remains in flight",
+      "A later shutdown joins the finished worker and remains idempotent"
+    ],
+    "benchmark": null,
+    "variants": [
+      {
+        "id": "default",
+        "launcher_args_append": [],
+        "time_override": null,
+        "camera_override": null,
+        "benchmark_override": null,
+        "expected_result": {
+          "kind": "Render",
+          "diagnostics": [],
+          "fallbacks": [],
+          "metrics": [],
+          "hashes": [],
+          "probes": [
+            { "name": "shutdown_nonblocking", "value": { "kind": "Bool", "value": true } },
+            { "name": "old_generation_retained", "value": { "kind": "Bool", "value": true } },
+            { "name": "worker_joined", "value": { "kind": "Bool", "value": true } }
+          ],
+          "graph": null
+        }
+      }
+    ]
+  }
+]

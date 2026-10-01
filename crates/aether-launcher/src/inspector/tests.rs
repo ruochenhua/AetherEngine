@@ -25,6 +25,29 @@ fn world_with_light() -> (World, Entity) {
 }
 
 #[test]
+fn inspector_exposes_prefab_reload_errors_on_the_selected_root() {
+    let mut world = World::new();
+    world.spawn((
+        Selected,
+        aether_engine::ecs::components::PrefabInstanceRoot(
+            aether_engine::asset::prefab::PrefabInstanceConfig {
+                instance_id: 42,
+                prefab_asset: "prefabs/room.ron".into(),
+                overrides: Default::default(),
+            },
+        ),
+        aether_engine::ecs::components::PrefabAssetStatus(Some("invalid RON".into())),
+    ));
+
+    let target = extract(&world).unwrap();
+    assert!(matches!(
+        target,
+        InspectorTarget::PrefabAssetError { path, error, .. }
+            if path == "prefabs/room.ron" && error == "invalid RON"
+    ));
+}
+
+#[test]
 fn extract_returns_light_for_selected_light_entity() {
     let (world, entity) = world_with_light();
     let target = extract(&world).expect("should extract light target");

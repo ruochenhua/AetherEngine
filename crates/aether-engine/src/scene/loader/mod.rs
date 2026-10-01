@@ -14,6 +14,7 @@ use std::path::Path;
 
 mod lighting;
 mod objects;
+mod prefab;
 mod spawn;
 mod transaction;
 
@@ -55,6 +56,17 @@ impl SceneLoader {
         let desc = Self::from_file(path)?;
         objects::build_objects(&desc, device, registry, assets, world)?;
         Ok(())
+    }
+
+    /// Transactionally replace active instances that reference a reloaded Prefab asset.
+    pub fn reload_prefab_instances(
+        prefab_path: &str,
+        device: &wgpu::Device,
+        registry: &BuiltinMeshRegistry,
+        assets: &mut AssetManager,
+        world: &mut World,
+    ) -> anyhow::Result<usize> {
+        prefab::replace_instances(prefab_path, device, registry, assets, world)
     }
 
     /// Build scene entities into an ECS World.
@@ -110,6 +122,7 @@ impl SceneLoader {
             }
         }
         objects::build_objects(desc, device, registry, assets, world)?;
+        prefab::build_prefab_instances(desc, device, registry, assets, world)?;
         Ok(lighting::build_lighting_uniforms(desc))
     }
 

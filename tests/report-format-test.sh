@@ -3,6 +3,19 @@
 
 set -euo pipefail
 
+if python3 -c 'import os' >/dev/null 2>&1; then
+    REPORT_TEST_PYTHON=python3
+elif python -c 'import os' >/dev/null 2>&1; then
+    REPORT_TEST_PYTHON=python
+else
+    echo "Python 3 is required for the report format smoke test" >&2
+    exit 2
+fi
+if ! "$REPORT_TEST_PYTHON" -c 'import os, sys; sys.exit(0 if hasattr(os, "fork") else 1)'; then
+    echo "report format smoke test skipped: runner_process.py requires POSIX process isolation" >&2
+    exit 0
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_ROOT="$(dirname "$SCRIPT_DIR")"
 PROJECT_ROOT="$(mktemp -d)"

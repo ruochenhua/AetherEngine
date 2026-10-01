@@ -11,10 +11,10 @@
 //!   的 position/rotation 写回 ECS Camera Component，否则 RON 使用 stale 数据。
 
 use crate::ecs::components::{
-    Atmosphere, Camera, Clouds, GodRay, Light, MeshHandle, Name, Terrain, Transform, Visibility,
-    Water,
+    Atmosphere, Camera, Clouds, GodRay, Light, MeshHandle, Name, PrefabInstanceRoot,
+    PrefabNodeInstance, Terrain, Transform, Visibility, Water,
 };
-use crate::ecs::World;
+use crate::ecs::{Entity, World};
 use crate::physics::{ColliderList, ColliderShape, RigidBody};
 use crate::renderer::light::LightingUniforms;
 use crate::renderer::renderable::MaterialUniform;
@@ -24,6 +24,7 @@ use crate::scene::{
     PhysicsConfig, SceneDescription, TerrainConfig, TransformConfig, WaterConfig,
 };
 use glam::Vec3;
+use std::collections::HashSet;
 
 /// Serialize the ECS World into a `SceneDescription`.
 ///
@@ -37,15 +38,16 @@ pub fn serialize_world(
     lighting: &LightingUniforms,
     scene_name: &str,
 ) -> SceneDescription {
-    let camera = extract_camera(world);
-    let lights = extract_lights(world);
+    let prefab_entities = prefab_entities(world);
+    let camera = extract_camera(world, &prefab_entities);
+    let lights = extract_lights(world, &prefab_entities);
     let terrain = extract_terrain(world);
-    let atmosphere = extract_atmosphere(world);
+    let atmosphere = extract_atmosphere(world, &prefab_entities);
     let water = extract_water(world);
-    let clouds = extract_clouds(world);
-    let god_ray = extract_god_ray(world);
+    let clouds = extract_clouds(world, &prefab_entities);
+    let god_ray = extract_god_ray(world, &prefab_entities);
     let particle_emitters = extract_particle_emitters(world);
-    let objects = extract_objects(world);
+    let objects = extract_objects(world, &prefab_entities);
 
     SceneDescription {
         name: scene_name.to_string(),
@@ -59,6 +61,7 @@ pub fn serialize_world(
         god_ray,
         particle_emitters,
         objects,
+        prefab_instances: extract_prefab_instances(world),
     }
 }
 
@@ -76,10 +79,16 @@ pub fn to_ron_string(desc: &SceneDescription) -> anyhow::Result<String> {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-fn extract_camera(world: &World) -> CameraConfig {
+fn extract_camera(world: &World, prefab_entities: &HashSet<Entity>) -> CameraConfig {
     let mut camera = CameraConfig::default();
 
-    if let Some((transform, cam)) = world.query::<(&Transform, &Camera)>().iter().next() {
+    if let Some((transform, cam)) = world
+        .query::<(Entity, &Transform, &Camera)>()
+        .iter()
+        .find_map(|(entity, transform, camera)| {
+            (!prefab_entities.contains(&entity)).then_some((transform, camera))
+        })
+    {
         let (yaw, pitch, _roll) = transform.rotation.to_euler(glam::EulerRot::YXZ);
         camera = CameraConfig {
             position: transform.translation.to_array(),
@@ -94,10 +103,13 @@ fn extract_camera(world: &World) -> CameraConfig {
     camera
 }
 
-fn extract_lights(world: &World) -> Vec<LightConfig> {
+fn extract_lights(world: &World, prefab_entities: &HashSet<Entity>) -> Vec<LightConfig> {
     let mut lights = Vec::new();
 
-    for (transform, light) in world.query::<(&Transform, &Light)>().iter() {
+    for (entity, transform, light) in world.query::<(Entity, &Transform, &Light)>().iter() {
+        if prefab_entities.contains(&entity) {
+            continue;
+        }
         // Direction is derived from rotation: default light direction is -Y,
         // so rotated direction = rotation * -Y.
         let direction = (transform.rotation * Vec3::NEG_Y).normalize().to_array();
@@ -138,12 +150,16 @@ fn extract_terrain(world: &World) -> Option<TerrainConfig> {
         })
 }
 
-fn extract_atmosphere(world: &World) -> Option<AtmosphereConfig> {
+fn extract_atmosphere(
+    world: &World,
+    prefab_entities: &HashSet<Entity>,
+) -> Option<AtmosphereConfig> {
     world
-        .query::<&Atmosphere>()
+        .query::<(Entity, &Atmosphere)>()
         .iter()
-        .next()
-        .map(|atmos| atmos.config.clone())
+        .find_map(|(entity, atmos)| {
+            (!prefab_entities.contains(&entity)).then(|| atmos.config.clone())
+        })
 }
 
 fn extract_water(world: &World) -> Option<WaterConfig> {
@@ -154,20 +170,20 @@ fn extract_water(world: &World) -> Option<WaterConfig> {
         .map(|water| water.config.clone())
 }
 
-fn extract_clouds(world: &World) -> Option<CloudConfig> {
+fn extract_clouds(world: &World, prefab_entities: &HashSet<Entity>) -> Option<CloudConfig> {
     world
-        .query::<&Clouds>()
+        .query::<(Entity, &Clouds)>()
         .iter()
-        .next()
-        .map(|clouds| clouds.config.clone())
+        .find_map(|(entity, clouds)| {
+            (!prefab_entities.contains(&entity)).then(|| clouds.config.clone())
+        })
 }
 
-fn extract_god_ray(world: &World) -> Option<GodRayConfig> {
+fn extract_god_ray(world: &World, prefab_entities: &HashSet<Entity>) -> Option<GodRayConfig> {
     world
-        .query::<&GodRay>()
+        .query::<(Entity, &GodRay)>()
         .iter()
-        .next()
-        .map(|gr| gr.config.clone())
+        .find_map(|(entity, gr)| (!prefab_entities.contains(&entity)).then(|| gr.config.clone()))
 }
 
 fn extract_particle_emitters(world: &World) -> Vec<crate::particles::ParticleEmitterConfig> {
@@ -187,9 +203,10 @@ fn extract_particle_emitters(world: &World) -> Vec<crate::particles::ParticleEmi
         .collect()
 }
 
-fn extract_objects(world: &World) -> Vec<ObjectConfig> {
+fn extract_objects(world: &World, prefab_entities: &HashSet<Entity>) -> Vec<ObjectConfig> {
     let mut objects = Vec::new();
     for (
+        entity,
         transform,
         mesh_handle,
         material,
@@ -201,6 +218,7 @@ fn extract_objects(world: &World) -> Vec<ObjectConfig> {
         colliders,
     ) in world
         .query::<(
+            Entity,
             &Transform,
             &MeshHandle,
             &MaterialUniform,
@@ -213,6 +231,9 @@ fn extract_objects(world: &World) -> Vec<ObjectConfig> {
         )>()
         .iter()
     {
+        if prefab_entities.contains(&entity) {
+            continue;
+        }
         let mesh_ref = match &mesh_handle.source {
             crate::ecs::components::MeshSource::Builtin(name) => MeshRef::Builtin(name.clone()),
             crate::ecs::components::MeshSource::File(path) => MeshRef::File(path.clone()),
@@ -280,6 +301,24 @@ fn extract_objects(world: &World) -> Vec<ObjectConfig> {
     }
 
     objects
+}
+
+fn prefab_entities(world: &World) -> HashSet<Entity> {
+    world
+        .query::<(Entity, &PrefabNodeInstance)>()
+        .iter()
+        .map(|(entity, _)| entity)
+        .collect()
+}
+
+fn extract_prefab_instances(world: &World) -> Vec<crate::asset::prefab::PrefabInstanceConfig> {
+    let mut instances = world
+        .query::<&PrefabInstanceRoot>()
+        .iter()
+        .map(|root| root.0.clone())
+        .collect::<Vec<_>>();
+    instances.sort_by_key(|instance| instance.instance_id);
+    instances
 }
 
 #[cfg(test)]

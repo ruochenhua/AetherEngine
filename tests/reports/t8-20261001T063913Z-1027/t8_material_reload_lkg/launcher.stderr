@@ -1,0 +1,2 @@
+    Finished `release` profile [optimized] target(s) in 0.27s
+     Running `target\release\aether-launcher.exe --scene scenes/t8_material_reload.ron --screenshot 'E:\Projects\AetherEngine\tests\reports\t8-20261001T063913Z-1027\t8_material_reload_lkg\launcher-output.png' --exit-after-frames 1 --no-gui-overlay --no-debug-helpers --width 640 --height 360 --time-mode seek --simulation-time 0`

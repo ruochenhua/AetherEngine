@@ -1,0 +1,31 @@
+SceneDescription(
+    name: "T8.3 Prefab Roundtrip",
+    camera: (
+        position: (0.0, 2.0, 7.0),
+        yaw: -1.57,
+        pitch: -0.16,
+        speed: 4.0,
+        fov: 45.0,
+    ),
+    lights: [
+        (
+            light_type: Directional,
+            direction: (-0.3, -1.0, -0.4),
+            color: (1.0, 0.95, 0.88),
+            intensity: 1.5,
+        ),
+    ],
+    ambient: 0.04,
+    prefab_instances: [
+        (
+            instance_id: 700,
+            prefab_asset: "assets/prefabs/t8_prefab_roundtrip.ron",
+            overrides: (
+                patches: [
+                    TransformScale(instance_id: 100, value: (1.0, 1.0, 1.0)),
+                ],
+                removed_components: [],
+            ),
+        ),
+    ],
+)

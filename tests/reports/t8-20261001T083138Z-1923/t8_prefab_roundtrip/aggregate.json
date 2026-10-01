@@ -1,0 +1,57 @@
+{
+  "case_id": "t8_prefab_roundtrip",
+  "aggregate": "PASS",
+  "checks": [
+    {
+      "name": "round_trip",
+      "expected": {
+        "kind": "Bool",
+        "value": true
+      },
+      "actual": {
+        "kind": "Bool",
+        "value": true
+      },
+      "passed": true
+    },
+    {
+      "name": "instance_id_remap",
+      "expected": {
+        "kind": "Bool",
+        "value": true
+      },
+      "actual": {
+        "kind": "Bool",
+        "value": true
+      },
+      "passed": true
+    },
+    {
+      "name": "typed_patch_validation",
+      "expected": {
+        "kind": "Bool",
+        "value": true
+      },
+      "actual": {
+        "kind": "Bool",
+        "value": true
+      },
+      "passed": true
+    },
+    {
+      "name": "transaction_rollback",
+      "expected": {
+        "kind": "Bool",
+        "value": true
+      },
+      "actual": {
+        "kind": "Bool",
+        "value": true
+      },
+      "passed": true
+    }
+  ],
+  "command_exit_code": 0,
+  "render_exit_code": 0,
+  "rendered": true
+}

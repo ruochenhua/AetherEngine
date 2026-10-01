@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>T8.4 Hot reload generations and worker shutdown — PASS</title>
+<style>
+body{font:15px/1.5 system-ui,sans-serif;max-width:1100px;margin:2rem auto;padding:0 1rem;color:#172033}
+table{border-collapse:collapse;width:100%;margin:1rem 0}th,td{text-align:left;padding:.65rem;border-bottom:1px solid #d0d5dd;vertical-align:top}
+th{background:#f2f4f7}tr.pass td:nth-child(2){color:#15803d;font-weight:700}tr.fail td:nth-child(2){color:#b42318;font-weight:700}
+.status{padding:.8rem 1rem;border-left:4px solid #15803d;background:#f0fdf4}
+code{overflow-wrap:anywhere}a{margin-right:.7rem}
+</style></head><body>
+<h1>T8.4 — Hot reload generations and worker shutdown</h1>
+<p class="status">Aggregate: <strong>PASS</strong> · Scene render and fixture probes</p>
+<p>Run: <code>t8-20261001T091626Z-163</code> · Started: <code>2026-10-01T09:16:26Z</code> · Completed: <code>2026-10-01T09:17:10.980644+00:00</code></p>
+<p>Environment: <code>Windows-10-10.0.26200-SP0</code> · Python <code>3.10.9</code> · Commit <code>de991f64dfeca275779cd6ce14109d252adff26e</code></p>
+<p>Fixture exit: <strong>0</strong> · Scene exit: <strong>0</strong> · Case schema: <strong>valid</strong></p>
+<h2>Typed probes</h2><table><thead><tr><th>Probe</th><th>Status</th><th>Expected</th><th>Observed</th></tr></thead><tbody><tr class="pass"><td>shutdown_nonblocking</td><td>PASS</td><td><code>{&quot;kind&quot;: &quot;Bool&quot;, &quot;value&quot;: true}</code></td><td><code>{&quot;kind&quot;: &quot;Bool&quot;, &quot;value&quot;: true}</code></td></tr><tr class="pass"><td>old_generation_retained</td><td>PASS</td><td><code>{&quot;kind&quot;: &quot;Bool&quot;, &quot;value&quot;: true}</code></td><td><code>{&quot;kind&quot;: &quot;Bool&quot;, &quot;value&quot;: true}</code></td></tr><tr class="pass"><td>worker_joined</td><td>PASS</td><td><code>{&quot;kind&quot;: &quot;Bool&quot;, &quot;value&quot;: true}</code></td><td><code>{&quot;kind&quot;: &quot;Bool&quot;, &quot;value&quot;: true}</code></td></tr></tbody></table>
+<h2>Lifecycle events</h2><ul><li>reload_in_flight_kept_current_generation_visible</li><li>failed_generation_preserved_last_good_asset</li><li>bounded_shutdown_timed_out_without_blocking</li><li>worker_joined_on_idempotent_shutdown_retry</li></ul>
+<h2>Scene capture</h2><p>Launcher exited after the bounded screenshot run. No golden reference is configured, so image comparison was not run.</p><p><img src="output.png" alt="Rendered T8 scene" style="max-width:100%;height:auto"></p>
+<h2>Artifacts</h2><p><a href="asset-events.json">asset-events.json</a> <a href="metrics.json">metrics.json</a> <a href="launcher.log">launcher.log</a> <a href="graph.txt">graph.txt</a> <a href="stdout">stdout</a> <a href="stderr">stderr</a> <a href="output.png">output.png</a> <a href="reference.png">reference.png</a> <a href="diff.png">diff.png</a></p>
+<p>reference.png and diff.png are deterministic 1×1 placeholders because this case has no approved golden reference.</p>
+</body></html>

@@ -14,6 +14,8 @@ pub mod material;
 pub mod material_asset;
 /// Mesh asset types.
 pub mod mesh;
+/// Versioned Prefab documents and scene instances.
+pub mod prefab;
 /// Built-in mesh registry.
 pub mod registry;
 /// Shader utilities.

@@ -1,6 +1,8 @@
 use super::*;
 use crate::asset::registry::BuiltinMeshRegistry;
-use crate::ecs::components::{Light, Name, Transform, Visibility};
+use crate::ecs::components::{
+    Light, Name, PrefabInstanceRoot, PrefabNodeInstance, Transform, Visibility,
+};
 use crate::ecs::World;
 use crate::renderer::light::LightType;
 use crate::renderer::renderable::MaterialUniform;
@@ -108,7 +110,7 @@ fn extract_camera_roundtrips() {
     let mut world = World::new();
     spawn_camera_entity(&mut world, [5.0, 10.0, 5.0], -1.5, -0.5, 60.0);
 
-    let camera = extract_camera(&world);
+    let camera = extract_camera(&world, &HashSet::new());
     assert_eq!(camera.position, [5.0, 10.0, 5.0]);
     assert!((camera.yaw - (-1.5)).abs() < 0.001);
     assert!((camera.pitch - (-0.5)).abs() < 0.001);
@@ -118,7 +120,7 @@ fn extract_camera_roundtrips() {
 #[test]
 fn extract_camera_defaults_when_missing() {
     let world = World::new();
-    let camera = extract_camera(&world);
+    let camera = extract_camera(&world, &HashSet::new());
     assert_eq!(camera, CameraConfig::default());
 }
 
@@ -127,7 +129,7 @@ fn extract_light_roundtrips() {
     let mut world = World::new();
     spawn_light_entity(&mut world, [1.0, 0.9, 0.8], 2.0);
 
-    let lights = extract_lights(&world);
+    let lights = extract_lights(&world, &HashSet::new());
     assert_eq!(lights.len(), 1);
     let light = &lights[0];
     assert_eq!(light.light_type, LightType::Directional);
@@ -141,7 +143,7 @@ fn extract_light_roundtrips() {
 #[test]
 fn extract_light_empty_when_no_lights() {
     let world = World::new();
-    let lights = extract_lights(&world);
+    let lights = extract_lights(&world, &HashSet::new());
     assert!(lights.is_empty());
 }
 
@@ -152,7 +154,7 @@ fn extract_object_preserves_name() {
     let mut world = World::new();
     spawn_object_entity(&mut world, &device, &registry, "MyCube", "cube");
 
-    let objects = extract_objects(&world);
+    let objects = extract_objects(&world, &HashSet::new());
     assert_eq!(objects.len(), 1);
     assert_eq!(objects[0].name, "MyCube");
     assert_eq!(objects[0].mesh, MeshRef::Builtin("cube".into()));
@@ -177,7 +179,7 @@ fn extract_object_preserves_file_mesh_source() {
         Name("Dragon".into()),
     ));
 
-    let objects = extract_objects(&world);
+    let objects = extract_objects(&world, &HashSet::new());
     assert_eq!(objects.len(), 1);
     assert_eq!(objects[0].name, "Dragon");
     assert_eq!(
@@ -285,7 +287,7 @@ fn extract_object_spawned_with_selected_directly() {
         Selected,
     ));
 
-    let objects = extract_objects(&world);
+    let objects = extract_objects(&world, &HashSet::new());
     assert_eq!(
         objects.len(),
         1,
@@ -335,6 +337,7 @@ fn serialize_to_ron_roundtrips() {
             visible: true,
             physics: None,
         }],
+        prefab_instances: vec![],
     };
 
     let ron = to_ron_string(&desc).expect("should serialize");
@@ -449,4 +452,42 @@ fn serialize_world_preserves_water() {
     let water = desc.water.expect("water should be serialized");
     assert_eq!(water.level, -0.5);
     assert_eq!(water.wave_amplitude, 0.5);
+}
+
+#[test]
+fn serialize_world_preserves_prefab_references_and_skips_instantiated_components() {
+    let mut world = World::new();
+    let config = crate::asset::prefab::PrefabInstanceConfig {
+        instance_id: 42,
+        prefab_asset: "assets/prefabs/example.ron".into(),
+        overrides: crate::asset::prefab::PrefabOverrides::default(),
+    };
+    world.spawn((
+        Transform::default(),
+        Light::default(),
+        Name("PrefabLight".into()),
+        PrefabNodeInstance {
+            prefab_instance_id: 42,
+            instance_id: 1,
+            parent_instance_id: None,
+        },
+        PrefabInstanceRoot(config.clone()),
+    ));
+    world.spawn((
+        Transform::default(),
+        Light::default(),
+        Name("NestedPrefabLight".into()),
+        PrefabNodeInstance {
+            prefab_instance_id: 42,
+            instance_id: 2,
+            parent_instance_id: Some(1),
+        },
+    ));
+
+    let saved = serialize_world(&world, &LightingUniforms::default(), "Prefab scene");
+
+    assert!(saved.lights.is_empty());
+    assert_eq!(saved.prefab_instances, vec![config]);
+    let parsed = SceneDescription::from_ron(&to_ron_string(&saved).unwrap()).unwrap();
+    assert_eq!(parsed.prefab_instances, saved.prefab_instances);
 }

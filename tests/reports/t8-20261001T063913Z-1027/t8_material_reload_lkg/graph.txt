@@ -1,0 +1,2 @@
+Scene rendered successfully; a graph dump was not collected by the bounded launcher capture.
+Asset lifecycle assertions are recorded in asset-events.json.

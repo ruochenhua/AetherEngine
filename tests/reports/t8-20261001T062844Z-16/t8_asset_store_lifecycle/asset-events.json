@@ -1,0 +1,44 @@
+{
+  "case_id": "t8_asset_store_lifecycle",
+  "events": [
+    "canonical_path_normalized",
+    "same_path_distinct_kind",
+    "in_flight_request_deduplicated",
+    "owned_payload_downcast",
+    "initial_load_gpu_commit_on_caller",
+    "failed_reload_kept_last_known_good",
+    "cancel_repeated_and_late_result_rejected",
+    "shutdown_idempotent"
+  ],
+  "kind": "Fixture",
+  "probes": [
+    {
+      "name": "initial_load_commit",
+      "value": {
+        "kind": "Bool",
+        "value": true
+      }
+    },
+    {
+      "name": "cancel_idempotent",
+      "value": {
+        "kind": "Bool",
+        "value": true
+      }
+    },
+    {
+      "name": "worker_gpu_commit",
+      "value": {
+        "kind": "Bool",
+        "value": false
+      }
+    },
+    {
+      "name": "state_machine",
+      "value": {
+        "kind": "Text",
+        "value": "valid"
+      }
+    }
+  ]
+}

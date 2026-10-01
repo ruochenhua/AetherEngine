@@ -1,0 +1,2 @@
+Scene rendered successfully; a graph dump was not collected by the bounded launcher capture.
+Slice assertions are recorded in asset-events.json.

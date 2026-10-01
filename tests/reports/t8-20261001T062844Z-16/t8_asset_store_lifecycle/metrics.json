@@ -1,0 +1,20 @@
+{
+  "case_id": "t8_asset_store_lifecycle",
+  "kind": "Fixture",
+  "aggregate": "PASS",
+  "comparison": "not_applicable",
+  "sentinel": {
+    "width": 1,
+    "height": 1,
+    "format": "png-rgba8",
+    "rgba": [
+      24,
+      48,
+      72,
+      255
+    ]
+  },
+  "rendered_output": null,
+  "probe_count": 4,
+  "passed_probe_count": 4
+}

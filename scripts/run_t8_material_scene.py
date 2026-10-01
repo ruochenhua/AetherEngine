@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Capture the T8.2 scene with bounded launcher lifetime."""
+"""Capture a T8 asset slice scene with bounded launcher lifetime."""
 
 import argparse
 import os
@@ -15,13 +15,14 @@ TIMEOUT_SECONDS = 120
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--case-dir", type=Path, required=True)
+    parser.add_argument("--scene", default="scenes/t8_material_reload.ron")
     args = parser.parse_args()
     case_dir = args.case_dir.resolve()
     case_dir.mkdir(parents=True, exist_ok=True)
     output = case_dir / "launcher-output.png"
     command = [
         "cargo", "run", "--release", "-p", "aether-launcher", "--",
-        "--scene", "scenes/t8_material_reload.ron",
+        "--scene", args.scene,
         "--screenshot", str(output),
         "--exit-after-frames", "1",
         "--no-gui-overlay",

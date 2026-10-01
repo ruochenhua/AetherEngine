@@ -1,6 +1,6 @@
 use super::{
-    Asset, AssetError, AssetId, AssetResult, AssetStore, AssetStoreConfig, FrameBoundary, Handle,
-    ReloadTicket,
+    Asset, AssetError, AssetId, AssetResult, AssetStore, AssetStoreConfig, FrameBoundary,
+    GpuCommitCache, GpuCommitContext, Handle, LoadTicket, ReloadTicket,
 };
 use std::path::Path;
 
@@ -57,9 +57,22 @@ impl AssetManager {
         self.store.reload(handle)
     }
 
+    /// Queue an asynchronous load for a typed asset that has no current generation.
+    pub fn request<T: Asset>(
+        &mut self,
+        path: impl AsRef<Path>,
+    ) -> Result<(Handle<T>, LoadTicket), AssetError> {
+        self.store.request(path.as_ref())
+    }
+
     /// Drain completed asynchronous asset work without blocking.
     pub fn poll_results(&mut self, max: usize) -> Result<Vec<AssetResult>, AssetError> {
         self.store.poll_results(max)
+    }
+
+    /// Return an asset result to the queue so its owning runtime adapter can apply it.
+    pub fn defer_result(&mut self, result: AssetResult) {
+        self.store.defer_result(result);
     }
 
     /// Resolve dependencies on a material result and apply it at a frame boundary.
@@ -68,9 +81,29 @@ impl AssetManager {
         result: AssetResult,
         boundary: FrameBoundary,
     ) -> Result<super::ApplyOutcome, AssetError> {
+        self.apply_result(result, boundary)
+    }
+
+    /// Resolve material dependencies and apply any typed asset result at a frame boundary.
+    pub fn apply_result(
+        &mut self,
+        result: AssetResult,
+        boundary: FrameBoundary,
+    ) -> Result<super::ApplyOutcome, AssetError> {
         let root = self.store.project_root().to_path_buf();
         let resolved = super::material_asset::resolve_material_result(result, &root, self);
         self.store.apply_result(resolved, boundary)
+    }
+
+    /// Commit one applied generation into a GPU cache at a frame boundary.
+    pub fn commit_gpu(
+        &mut self,
+        ticket: ReloadTicket,
+        cache: &mut dyn GpuCommitCache,
+        boundary: FrameBoundary,
+    ) -> Result<(), AssetError> {
+        self.store
+            .commit_gpu(ticket, &mut GpuCommitContext { cache, boundary })
     }
 
     /// Stop and join the backing asset worker before application shutdown.

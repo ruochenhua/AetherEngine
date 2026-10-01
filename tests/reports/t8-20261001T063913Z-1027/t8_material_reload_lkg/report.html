@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>T8.2 MaterialAsset reload and last-known-good — PASS</title>
+<style>
+body{font:15px/1.5 system-ui,sans-serif;max-width:1100px;margin:2rem auto;padding:0 1rem;color:#172033}
+table{border-collapse:collapse;width:100%;margin:1rem 0}th,td{text-align:left;padding:.65rem;border-bottom:1px solid #d0d5dd;vertical-align:top}
+th{background:#f2f4f7}tr.pass td:nth-child(2){color:#15803d;font-weight:700}tr.fail td:nth-child(2){color:#b42318;font-weight:700}
+.status{padding:.8rem 1rem;border-left:4px solid #15803d;background:#f0fdf4}
+code{overflow-wrap:anywhere}a{margin-right:.7rem}
+</style></head><body>
+<h1>T8.2 — MaterialAsset reload and last-known-good</h1>
+<p class="status">Aggregate: <strong>PASS</strong> · Scene render and fixture probes</p>
+<p>Run: <code>t8-20261001T063913Z-1027</code> · Started: <code>2026-10-01T06:39:13Z</code> · Completed: <code>2026-10-01T06:39:17.051181+00:00</code></p>
+<p>Environment: <code>Windows-10-10.0.26200-SP0</code> · Python <code>3.10.9</code> · Commit <code>7d9bbedaf660042c89dc5276bc9ea52b5191d2ca</code></p>
+<p>Fixture exit: <strong>0</strong> · Scene exit: <strong>0</strong> · Case schema: <strong>valid</strong></p>
+<h2>Typed probes</h2><table><thead><tr><th>Probe</th><th>Status</th><th>Expected</th><th>Observed</th></tr></thead><tbody><tr class="pass"><td>lkg_on_reload_error</td><td>PASS</td><td><code>{&quot;kind&quot;: &quot;Bool&quot;, &quot;value&quot;: true}</code></td><td><code>{&quot;kind&quot;: &quot;Bool&quot;, &quot;value&quot;: true}</code></td></tr><tr class="pass"><td>generation_commit_boundary</td><td>PASS</td><td><code>{&quot;kind&quot;: &quot;Bool&quot;, &quot;value&quot;: true}</code></td><td><code>{&quot;kind&quot;: &quot;Bool&quot;, &quot;value&quot;: true}</code></td></tr><tr class="pass"><td>stale_ticket_rejected</td><td>PASS</td><td><code>{&quot;kind&quot;: &quot;Bool&quot;, &quot;value&quot;: true}</code></td><td><code>{&quot;kind&quot;: &quot;Bool&quot;, &quot;value&quot;: true}</code></td></tr></tbody></table>
+<h2>Lifecycle events</h2><ul><li>material_ron_loaded_on_worker</li><li>texture_dependency_resolved_by_t3</li><li>reload_ticket_bound_to_material_generation</li><li>gpu_commit_performed_at_frame_boundary</li><li>stale_uncommitted_generation_rejected</li><li>corrupt_texture_failure_preserved_last_known_good</li></ul>
+<h2>Scene capture</h2><p>Launcher exited after the bounded screenshot run. No golden reference is configured, so image comparison was not run.</p><p><img src="output.png" alt="Rendered material reload scene" style="max-width:100%;height:auto"></p>
+<h2>Artifacts</h2><p><a href="asset-events.json">asset-events.json</a> <a href="metrics.json">metrics.json</a> <a href="launcher.log">launcher.log</a> <a href="graph.txt">graph.txt</a> <a href="stdout">stdout</a> <a href="stderr">stderr</a> <a href="output.png">output.png</a> <a href="reference.png">reference.png</a> <a href="diff.png">diff.png</a></p>
+<p>reference.png and diff.png are deterministic 1×1 placeholders because this case has no approved golden reference.</p>
+</body></html>

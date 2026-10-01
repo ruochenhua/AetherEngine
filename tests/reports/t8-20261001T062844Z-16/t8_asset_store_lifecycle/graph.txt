@@ -1,0 +1,1 @@
+not_applicable: CPU AssetStore fixture; no render graph was created

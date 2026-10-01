@@ -1,0 +1,45 @@
+{
+  "case_id": "t8_material_reload_lkg",
+  "aggregate": "PASS",
+  "checks": [
+    {
+      "name": "lkg_on_reload_error",
+      "expected": {
+        "kind": "Bool",
+        "value": true
+      },
+      "actual": {
+        "kind": "Bool",
+        "value": true
+      },
+      "passed": true
+    },
+    {
+      "name": "generation_commit_boundary",
+      "expected": {
+        "kind": "Bool",
+        "value": true
+      },
+      "actual": {
+        "kind": "Bool",
+        "value": true
+      },
+      "passed": true
+    },
+    {
+      "name": "stale_ticket_rejected",
+      "expected": {
+        "kind": "Bool",
+        "value": true
+      },
+      "actual": {
+        "kind": "Bool",
+        "value": true
+      },
+      "passed": true
+    }
+  ],
+  "command_exit_code": 0,
+  "render_exit_code": 0,
+  "rendered": true
+}

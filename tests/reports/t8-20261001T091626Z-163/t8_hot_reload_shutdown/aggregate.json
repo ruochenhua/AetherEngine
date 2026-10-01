@@ -1,0 +1,45 @@
+{
+  "case_id": "t8_hot_reload_shutdown",
+  "aggregate": "PASS",
+  "checks": [
+    {
+      "name": "shutdown_nonblocking",
+      "expected": {
+        "kind": "Bool",
+        "value": true
+      },
+      "actual": {
+        "kind": "Bool",
+        "value": true
+      },
+      "passed": true
+    },
+    {
+      "name": "old_generation_retained",
+      "expected": {
+        "kind": "Bool",
+        "value": true
+      },
+      "actual": {
+        "kind": "Bool",
+        "value": true
+      },
+      "passed": true
+    },
+    {
+      "name": "worker_joined",
+      "expected": {
+        "kind": "Bool",
+        "value": true
+      },
+      "actual": {
+        "kind": "Bool",
+        "value": true
+      },
+      "passed": true
+    }
+  ],
+  "command_exit_code": 0,
+  "render_exit_code": 0,
+  "rendered": true
+}

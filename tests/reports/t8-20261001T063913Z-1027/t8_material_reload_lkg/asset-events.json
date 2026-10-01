@@ -1,0 +1,35 @@
+{
+  "case_id": "t8_material_reload_lkg",
+  "events": [
+    "material_ron_loaded_on_worker",
+    "texture_dependency_resolved_by_t3",
+    "reload_ticket_bound_to_material_generation",
+    "gpu_commit_performed_at_frame_boundary",
+    "stale_uncommitted_generation_rejected",
+    "corrupt_texture_failure_preserved_last_known_good"
+  ],
+  "kind": "Fixture",
+  "probes": [
+    {
+      "name": "lkg_on_reload_error",
+      "value": {
+        "kind": "Bool",
+        "value": true
+      }
+    },
+    {
+      "name": "generation_commit_boundary",
+      "value": {
+        "kind": "Bool",
+        "value": true
+      }
+    },
+    {
+      "name": "stale_ticket_rejected",
+      "value": {
+        "kind": "Bool",
+        "value": true
+      }
+    }
+  ]
+}

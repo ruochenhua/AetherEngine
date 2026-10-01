@@ -1,0 +1,3 @@
+2026-10-01T08:31:39.336685Z  INFO aether_launcher::app: Aether Engine Launcher starting...
+2026-10-01T08:31:41.027960Z  INFO wgpu_hal::vulkan::adapter: Found 6 cooperative matrix configurations supported by wgpu
+2026-10-01T08:31:41.579987Z  INFO aether_launcher::app::render: Screenshot saved to "E:\\Projects\\AetherEngine\\tests\\reports\\t8-20261001T083138Z-1923\\t8_prefab_roundtrip\\launcher-output.png"

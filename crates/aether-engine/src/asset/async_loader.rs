@@ -14,6 +14,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::SystemTime;
 
+mod reload;
+
 /// Lifecycle state of an asynchronously loaded asset.
 #[derive(Debug, Clone, PartialEq)]
 pub enum AssetLoadState<T> {
@@ -160,7 +162,7 @@ impl AsyncAssetLoader {
             ErasedRecord {
                 value: Box::new(record),
                 refresh: refresh_record::<T>,
-                reload_changed: reload_changed::<T>,
+                reload_changed: reload::reload_changed::<T>,
             },
         );
         AsyncHandle::new(id, sync_handle)
@@ -253,33 +255,6 @@ fn refresh_record<T: Asset>(store: &AssetStore, value: &mut (dyn Any + Send + Sy
     };
     if let Ok(handle) = store.current_handle::<T>(asset_id) {
         record.handle = Some(handle);
-    }
-}
-
-fn reload_changed<T: Asset>(store: &mut AssetStore, value: &mut (dyn Any + Send + Sync)) {
-    let Some(record) = value.downcast_mut::<AsyncRecord<T>>() else {
-        return;
-    };
-    if record.error.is_some() {
-        return;
-    }
-    let Some(handle) = record.handle else {
-        return;
-    };
-    if !matches!(store.state(handle), Ok(LoadStateView::Ready { .. })) {
-        return;
-    }
-    let modified = std::fs::metadata(store.project_root().join(&record.path))
-        .and_then(|metadata| metadata.modified())
-        .ok();
-    if modified.is_some() && modified != record.last_modified {
-        match store.reload(handle) {
-            Ok(ticket) => {
-                record.ticket = store.load_ticket(&ticket).ok();
-                record.last_modified = modified;
-            }
-            Err(error) => tracing::warn!("asset auto-reload failed: {error}"),
-        }
     }
 }
 

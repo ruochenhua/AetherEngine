@@ -3,6 +3,7 @@
 //! Thin orchestration layer. Builds the Scheduler from passes,
 //! injects per-frame data via `RenderFrame`, and delegates execution.
 
+mod asset_hot_reload;
 mod cli;
 mod handler;
 mod input;
@@ -63,6 +64,7 @@ pub(crate) struct App {
     pub(crate) camera: FlyCamera,
     pub(crate) mesh_registry: BuiltinMeshRegistry,
     pub(crate) asset_manager: AssetManager,
+    pub(crate) asset_hot_reload_watcher: asset_hot_reload::AssetHotReloadWatcher,
     pub(crate) material_asset_watcher: material_reload::MaterialAssetWatcher,
     pub(crate) particle_runtime: particle_runtime::SimulationRuntime,
     pub(crate) texture_cache: Option<GpuTextureCache>,
@@ -162,6 +164,7 @@ impl App {
             },
             mesh_registry: BuiltinMeshRegistry::new(),
             asset_manager: AssetManager::new(),
+            asset_hot_reload_watcher: asset_hot_reload::AssetHotReloadWatcher::default(),
             material_asset_watcher: material_reload::MaterialAssetWatcher::default(),
             particle_runtime: particle_runtime::SimulationRuntime::new(
                 no_gui_overlay || cli.time.mode == aether_engine::time::TimeMode::Seek,

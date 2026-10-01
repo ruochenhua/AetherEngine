@@ -198,6 +198,7 @@ pub(crate) fn apply(
                     .map_err(|error| format!("particle emitter unavailable: {error}"))? = desired;
             }
         }
+        InspectorTarget::PrefabAssetError { .. } => {}
     }
     Ok(())
 }
