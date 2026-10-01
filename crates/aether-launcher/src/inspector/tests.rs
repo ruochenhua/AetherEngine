@@ -393,3 +393,66 @@ fn apply_material_undo_restores_source_config_and_adapter() {
     );
     assert!(matches!(redo_command, EditorCommand::Material { .. }));
 }
+
+#[test]
+fn detaching_a_linked_material_is_undoable_and_redoable() {
+    let device = headless_device();
+    let cpu_mesh = aether_engine::asset::mesh::CpuMesh::cube();
+    let gpu_mesh = std::sync::Arc::new(aether_engine::asset::mesh::GpuMesh::from_cpu(
+        &device, &cpu_mesh,
+    ));
+    let mut world = World::new();
+    let config = MaterialConfig::default();
+    let entity = world.spawn((
+        Transform::default(),
+        aether_engine::ecs::components::MeshHandle::new(
+            gpu_mesh,
+            aether_engine::ecs::components::MeshSource::Builtin("cube".into()),
+            "cube",
+        ),
+        config.clone(),
+        MaterialUniform::default(),
+        aether_engine::ecs::components::MaterialAssetRef("materials/paint.ron".into()),
+        aether_engine::ecs::components::MaterialAssetStatus::default(),
+        Selected,
+    ));
+    let mut target = extract(&world).expect("linked mesh target should exist");
+    let InspectorTarget::Mesh {
+        detach_material, ..
+    } = &mut target
+    else {
+        panic!("expected mesh target");
+    };
+    *detach_material = true;
+
+    let mut undo = Vec::new();
+    let mut redo = Vec::new();
+    apply(
+        &target,
+        &mut world,
+        &mut undo,
+        &mut redo,
+        &mut aether_engine::asset::AssetManager::new(),
+    )
+    .expect("linked material should detach");
+    assert!(world
+        .query_one::<&aether_engine::ecs::components::MaterialAssetRef>(entity)
+        .get()
+        .is_err());
+    assert_eq!(undo.len(), 1);
+
+    let redo_command = apply_undo(&mut world, &undo.pop().unwrap());
+    assert_eq!(
+        world
+            .query_one::<&aether_engine::ecs::components::MaterialAssetRef>(entity)
+            .get()
+            .unwrap()
+            .0,
+        "materials/paint.ron"
+    );
+    let _undo_again = apply_undo(&mut world, &redo_command);
+    assert!(world
+        .query_one::<&aether_engine::ecs::components::MaterialAssetRef>(entity)
+        .get()
+        .is_err());
+}

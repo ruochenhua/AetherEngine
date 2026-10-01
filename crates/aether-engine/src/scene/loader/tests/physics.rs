@@ -13,6 +13,7 @@ fn build_world_attaches_scene_physics_to_the_renderable_entity() {
         mesh: MeshRef::Builtin("cube".into()),
         transform: Default::default(),
         material: Default::default(),
+        material_asset: None,
         visible: true,
         physics: Some(crate::scene::PhysicsConfig {
             body: crate::scene::PhysicsBodyConfig {

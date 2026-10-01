@@ -138,7 +138,12 @@ impl ApplicationHandler for App {
         self.input.handle_window_event(&event);
 
         match event {
-            WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::CloseRequested => {
+                if let Err(error) = self.asset_manager.shutdown() {
+                    tracing::error!(%error, "asset worker shutdown failed");
+                }
+                event_loop.exit();
+            }
             WindowEvent::Resized(size) if size.width > 0 && size.height > 0 => {
                 let ctx = self.ctx.as_mut().unwrap();
                 let scheduler = self.scheduler.as_mut().unwrap();
@@ -172,6 +177,11 @@ impl ApplicationHandler for App {
                 input::process_debug_hotkeys(self);
 
                 scene::process_pending_load(self);
+
+                if let LauncherState::Running { ref mut world, .. } = self.state {
+                    self.material_asset_watcher
+                        .update(world, &mut self.asset_manager);
+                }
 
                 input::update_camera_and_picking(self, dt, egui_consumed);
 

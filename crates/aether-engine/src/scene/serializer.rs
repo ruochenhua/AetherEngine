@@ -189,19 +189,29 @@ fn extract_particle_emitters(world: &World) -> Vec<crate::particles::ParticleEmi
 
 fn extract_objects(world: &World) -> Vec<ObjectConfig> {
     let mut objects = Vec::new();
-    for (transform, mesh_handle, material, visibility, name, stored_config, body, colliders) in
-        world
-            .query::<(
-                &Transform,
-                &MeshHandle,
-                &MaterialUniform,
-                &Visibility,
-                &Name,
-                Option<&MaterialConfig>,
-                Option<&RigidBody>,
-                Option<&ColliderList>,
-            )>()
-            .iter()
+    for (
+        transform,
+        mesh_handle,
+        material,
+        visibility,
+        name,
+        stored_config,
+        material_asset,
+        body,
+        colliders,
+    ) in world
+        .query::<(
+            &Transform,
+            &MeshHandle,
+            &MaterialUniform,
+            &Visibility,
+            &Name,
+            Option<&MaterialConfig>,
+            Option<&crate::ecs::components::MaterialAssetRef>,
+            Option<&RigidBody>,
+            Option<&ColliderList>,
+        )>()
+        .iter()
     {
         let mesh_ref = match &mesh_handle.source {
             crate::ecs::components::MeshSource::Builtin(name) => MeshRef::Builtin(name.clone()),
@@ -216,14 +226,19 @@ fn extract_objects(world: &World) -> Vec<ObjectConfig> {
                 rotation: transform.rotation.to_array(),
                 scale: transform.scale.to_array(),
             },
-            material: stored_config.cloned().unwrap_or_else(|| MaterialConfig {
-                albedo: material.albedo,
-                roughness: material.roughness,
-                metallic: material.metallic,
-                unlit: material.unlit != 0,
-                albedo_texture: None,
-                ..MaterialConfig::default()
-            }),
+            material: if material_asset.is_some() {
+                MaterialConfig::default()
+            } else {
+                stored_config.cloned().unwrap_or_else(|| MaterialConfig {
+                    albedo: material.albedo,
+                    roughness: material.roughness,
+                    metallic: material.metallic,
+                    unlit: material.unlit != 0,
+                    albedo_texture: None,
+                    ..MaterialConfig::default()
+                })
+            },
+            material_asset: material_asset.map(|reference| reference.0.clone()),
             visible: visibility.0,
             physics: body.zip(colliders).and_then(|(body, colliders)| {
                 let colliders = colliders

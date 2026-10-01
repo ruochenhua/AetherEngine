@@ -21,11 +21,7 @@ SceneDescription(
             name: "LastKnownGoodMaterial",
             mesh: Builtin("sphere"),
             transform: (translation: (0.0, 0.0, 0.0), scale: (1.8, 1.8, 1.8)),
-            material: (
-                albedo: (0.3, 0.6, 0.9, 1.0),
-                roughness: 0.42,
-                metallic: 0.25,
-            ),
+            material_asset: Some("assets/materials/t8_material_reload.ron"),
         ),
         (
             name: "ReloadTarget",

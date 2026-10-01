@@ -15,6 +15,9 @@ pub struct ObjectConfig {
     /// PBR material parameters.
     #[serde(default)]
     pub material: MaterialConfig,
+    /// Optional project-relative material document. When present it takes precedence over `material`.
+    #[serde(default)]
+    pub material_asset: Option<String>,
     /// Whether the object is rendered.
     #[serde(default = "default_visibility")]
     pub visible: bool,

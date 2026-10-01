@@ -25,9 +25,22 @@ pub(crate) fn apply(
             entity,
             transform,
             material,
+            material_asset,
+            detach_material,
             euler,
+            ..
         } => {
-            let material_previous = apply_material_config(world, *entity, material, assets)?;
+            let material_previous = if material_asset.is_none() || *detach_material {
+                Some(apply_material_config(
+                    world,
+                    *entity,
+                    material,
+                    assets,
+                    *detach_material,
+                )?)
+            } else {
+                None
+            };
             let mut desired_transform = transform.clone();
             desired_transform.rotation =
                 Quat::from_euler(glam::EulerRot::XYZ, euler[0], euler[1], euler[2]);
@@ -41,13 +54,23 @@ pub(crate) fn apply(
                     *current = desired_transform;
                 }
             }
-            if material_previous.config.as_ref() != Some(material) {
-                undo_stack.push(EditorCommand::Material {
-                    entity: *entity,
-                    old_config: material_previous.config,
-                    old_material: material_previous.uniform,
-                });
-                redo_stack.clear();
+            if let Some(previous) = material_previous {
+                if previous.config.as_ref() != Some(material)
+                    || previous.asset_ref.as_ref()
+                        != if *detach_material {
+                            None
+                        } else {
+                            material_asset.as_ref()
+                        }
+                {
+                    undo_stack.push(EditorCommand::Material {
+                        entity: *entity,
+                        old_config: previous.config,
+                        old_material: previous.uniform,
+                        old_asset_ref: previous.asset_ref,
+                    });
+                    redo_stack.clear();
+                }
             }
         }
         InspectorTarget::Light {
@@ -200,12 +223,20 @@ pub(crate) fn apply_undo(world: &mut World, cmd: &EditorCommand) -> EditorComman
             entity,
             old_config,
             old_material,
+            old_asset_ref,
         } => {
-            let current = swap_material_state(world, entity, old_config.as_ref(), old_material);
+            let current = swap_material_state(
+                world,
+                entity,
+                old_config.as_ref(),
+                old_material,
+                old_asset_ref.as_deref(),
+            );
             EditorCommand::Material {
                 entity,
                 old_config: current.config,
                 old_material: current.uniform,
+                old_asset_ref: current.asset_ref,
             }
         }
         EditorCommand::Light {

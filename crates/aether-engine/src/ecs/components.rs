@@ -45,6 +45,14 @@ pub enum MeshSource {
     File(String),
 }
 
+/// Project-relative material document assigned to a renderable entity.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MaterialAssetRef(pub String);
+
+/// Last material asset reload diagnostic, if the latest file change failed.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct MaterialAssetStatus(pub Option<String>);
+
 /// Handle to a GPU mesh.
 ///
 /// Shared ownership via `Arc` so that multiple entities can reference

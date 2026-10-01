@@ -1,6 +1,7 @@
 //! Material inspector state and atomic application helpers.
 
 use aether_engine::asset::AssetManager;
+use aether_engine::ecs::components::{MaterialAssetRef, MaterialAssetStatus};
 use aether_engine::ecs::{Entity, World};
 use aether_engine::renderer::renderable::MaterialUniform;
 use aether_engine::scene::{material::MaterialResolver, MaterialConfig};
@@ -9,6 +10,7 @@ use aether_engine::scene::{material::MaterialResolver, MaterialConfig};
 pub(crate) struct MaterialState {
     pub(crate) config: Option<MaterialConfig>,
     pub(crate) uniform: MaterialUniform,
+    pub(crate) asset_ref: Option<String>,
 }
 
 pub(crate) fn config_from_uniform(material: &MaterialUniform) -> MaterialConfig {
@@ -26,9 +28,18 @@ pub(crate) fn apply_material_config(
     entity: Entity,
     desired: &MaterialConfig,
     assets: &mut AssetManager,
+    detach_asset: bool,
 ) -> Result<MaterialState, String> {
+    let mut resolved_config = desired.clone();
+    if let Some(texture) = resolved_config
+        .transparent
+        .as_ref()
+        .and_then(|transparent| transparent.texture.as_ref())
+    {
+        resolved_config.albedo_texture = Some(texture.clone());
+    }
     let resolution = MaterialResolver::new(".")
-        .resolve(desired, assets)
+        .resolve(&resolved_config, assets)
         .map_err(|error| error.to_string())?;
     let next_uniform = MaterialUniform::from_resolution(&resolution);
     let old_uniform = *world
@@ -40,6 +51,11 @@ pub(crate) fn apply_material_config(
         .get()
         .ok()
         .cloned();
+    let old_asset_ref = world
+        .query_one::<&MaterialAssetRef>(entity)
+        .get()
+        .ok()
+        .map(|reference| reference.0.clone());
 
     if let Ok(current) = world.query_one_mut::<&mut MaterialConfig>(entity) {
         *current = desired.clone();
@@ -52,9 +68,15 @@ pub(crate) fn apply_material_config(
         .query_one_mut::<&mut MaterialUniform>(entity)
         .map_err(|error| format!("material uniform is unavailable: {error}"))? = next_uniform;
 
+    if detach_asset {
+        let _ = world.remove::<(MaterialAssetRef,)>(entity);
+        let _ = world.remove::<(MaterialAssetStatus,)>(entity);
+    }
+
     Ok(MaterialState {
         config: old_config,
         uniform: old_uniform,
+        asset_ref: old_asset_ref,
     })
 }
 
@@ -63,6 +85,7 @@ pub(crate) fn swap_material_state(
     entity: Entity,
     desired_config: Option<&MaterialConfig>,
     desired_uniform: MaterialUniform,
+    desired_asset_ref: Option<&str>,
 ) -> MaterialState {
     let current = MaterialState {
         config: world
@@ -74,6 +97,11 @@ pub(crate) fn swap_material_state(
             .query_one::<&MaterialUniform>(entity)
             .get()
             .expect("material undo requires a material uniform"),
+        asset_ref: world
+            .query_one::<&MaterialAssetRef>(entity)
+            .get()
+            .ok()
+            .map(|reference| reference.0.clone()),
     };
 
     match desired_config {
@@ -93,6 +121,23 @@ pub(crate) fn swap_material_state(
     *world
         .query_one_mut::<&mut MaterialUniform>(entity)
         .expect("material undo requires a material uniform") = desired_uniform;
+    match desired_asset_ref {
+        Some(path) => {
+            world
+                .insert(
+                    entity,
+                    (
+                        MaterialAssetRef(path.to_string()),
+                        MaterialAssetStatus::default(),
+                    ),
+                )
+                .expect("material undo entity must exist");
+        }
+        None => {
+            let _ = world.remove::<(MaterialAssetRef,)>(entity);
+            let _ = world.remove::<(MaterialAssetStatus,)>(entity);
+        }
+    }
     current
 }
 
@@ -127,7 +172,13 @@ mod tests {
         let mut desired = initial.clone();
         desired.normal_scale = 4.0;
 
-        let result = apply_material_config(&mut world, entity, &desired, &mut AssetManager::new());
+        let result = apply_material_config(
+            &mut world,
+            entity,
+            &desired,
+            &mut AssetManager::new(),
+            false,
+        );
 
         assert!(result.is_err());
         assert_eq!(
@@ -147,9 +198,14 @@ mod tests {
         let entity = world.spawn((initial.clone(), MaterialUniform::default()));
         let desired = extended_config();
 
-        let previous =
-            apply_material_config(&mut world, entity, &desired, &mut AssetManager::new())
-                .expect("valid material should apply");
+        let previous = apply_material_config(
+            &mut world,
+            entity,
+            &desired,
+            &mut AssetManager::new(),
+            false,
+        )
+        .expect("valid material should apply");
 
         assert_eq!(previous.config, Some(initial));
         assert_eq!(previous.uniform, MaterialUniform::default());

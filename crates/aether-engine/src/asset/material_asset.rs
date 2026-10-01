@@ -8,6 +8,7 @@ mod gpu;
 mod tests;
 
 use crate::asset::{Asset, AssetError, AssetId, AssetKind, AssetManager};
+use crate::renderer::transparent::TransparentMaterial;
 use crate::scene::config::MaterialConfig;
 use crate::scene::material::{
     MaterialResolution, MaterialResolveError, MaterialResolver, TextureFallback, TextureUsage,
@@ -85,8 +86,16 @@ impl MaterialAsset {
         let relative_root = relative_material.parent().unwrap_or_else(|| Path::new("."));
         let material_root = project_root.join(relative_root);
         let resolver = MaterialResolver::new(&material_root);
+        let mut resolved_config = self.config.clone();
+        if let Some(texture) = resolved_config
+            .transparent
+            .as_ref()
+            .and_then(|transparent| transparent.texture.as_ref())
+        {
+            resolved_config.albedo_texture = Some(texture.clone());
+        }
         let mut dependencies = Vec::new();
-        for (raw_path, usage) in configured_textures(&self.config) {
+        for (raw_path, usage) in configured_textures(&resolved_config) {
             if let Some(path) = raw_path {
                 let relative_path = relative_root.join(path);
                 let asset =
@@ -96,8 +105,20 @@ impl MaterialAsset {
         }
 
         let resolution = resolver
-            .resolve(&self.config, texture_assets)
+            .resolve(&resolved_config, texture_assets)
             .map_err(|error| resolve_error(error, project_root))?;
+        if let Some(config) = &self.config.transparent {
+            TransparentMaterial {
+                base_color: self.config.albedo,
+                texture: resolution.material.albedo,
+                blend: config.blend,
+                alpha_cutoff: config.alpha_cutoff,
+            }
+            .validate()
+            .map_err(|error| {
+                AssetError::Decode(format!("invalid transparent material: {error:?}"))
+            })?;
+        }
         let mut resolved_dependencies = Vec::with_capacity(dependencies.len());
         for (asset, usage) in dependencies {
             let binding = binding_for(&resolution, usage);

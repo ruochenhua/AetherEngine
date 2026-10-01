@@ -6,6 +6,7 @@
 mod cli;
 mod handler;
 mod input;
+mod material_reload;
 mod particle_runtime;
 mod ready;
 mod render;
@@ -62,6 +63,7 @@ pub(crate) struct App {
     pub(crate) camera: FlyCamera,
     pub(crate) mesh_registry: BuiltinMeshRegistry,
     pub(crate) asset_manager: AssetManager,
+    pub(crate) material_asset_watcher: material_reload::MaterialAssetWatcher,
     pub(crate) particle_runtime: particle_runtime::SimulationRuntime,
     pub(crate) texture_cache: Option<GpuTextureCache>,
     pub(crate) scheduler: Option<Scheduler>,
@@ -160,6 +162,7 @@ impl App {
             },
             mesh_registry: BuiltinMeshRegistry::new(),
             asset_manager: AssetManager::new(),
+            material_asset_watcher: material_reload::MaterialAssetWatcher::default(),
             particle_runtime: particle_runtime::SimulationRuntime::new(
                 no_gui_overlay || cli.time.mode == aether_engine::time::TimeMode::Seek,
             ),

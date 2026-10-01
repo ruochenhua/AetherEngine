@@ -359,6 +359,9 @@ pub(crate) fn frame(
     }
 
     if app.exit_after_frames.is_some_and(|n| app.frame_count >= n) {
+        if let Err(error) = app.asset_manager.shutdown() {
+            tracing::error!(%error, "asset worker shutdown failed");
+        }
         event_loop.exit();
     }
 }

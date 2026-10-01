@@ -58,7 +58,7 @@ fn spawn_object_entity(
     registry: &BuiltinMeshRegistry,
     name: &str,
     mesh_name: &str,
-) {
+) -> crate::ecs::Entity {
     let cpu_mesh = registry.get(mesh_name).expect("known mesh");
     let gpu_mesh = Arc::new(crate::asset::mesh::GpuMesh::from_cpu(device, &cpu_mesh));
     world.spawn((
@@ -71,7 +71,36 @@ fn spawn_object_entity(
         MaterialUniform::default(),
         Visibility::default(),
         Name(name.into()),
-    ));
+    ))
+}
+
+#[test]
+fn serialize_world_preserves_material_asset_reference_without_inline_duplicate() {
+    let device = headless_device();
+    let registry = BuiltinMeshRegistry::new();
+    let mut world = World::new();
+    let entity = spawn_object_entity(&mut world, &device, &registry, "Linked", "cube");
+    world
+        .insert(
+            entity,
+            (
+                crate::ecs::components::MaterialAssetRef("materials/paint.ron".into()),
+                crate::ecs::components::MaterialAssetStatus::default(),
+                crate::scene::MaterialConfig {
+                    albedo: [0.1, 0.2, 0.3, 1.0],
+                    ..Default::default()
+                },
+            ),
+        )
+        .unwrap();
+
+    let scene = serialize_world(&world, &LightingUniforms::default(), "Linked material");
+    let object = scene.objects.first().expect("object should serialize");
+    assert_eq!(
+        object.material_asset.as_deref(),
+        Some("materials/paint.ron")
+    );
+    assert_eq!(object.material, MaterialConfig::default());
 }
 
 #[test]
@@ -302,6 +331,7 @@ fn serialize_to_ron_roundtrips() {
             mesh: MeshRef::Builtin("cube".into()),
             transform: TransformConfig::default(),
             material: MaterialConfig::default(),
+            material_asset: None,
             visible: true,
             physics: None,
         }],

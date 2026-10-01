@@ -1,4 +1,7 @@
-use super::{Asset, AssetError, AssetId, AssetStore, AssetStoreConfig, Handle};
+use super::{
+    Asset, AssetError, AssetId, AssetResult, AssetStore, AssetStoreConfig, FrameBoundary, Handle,
+    ReloadTicket,
+};
 use std::path::Path;
 
 /// Compatibility adapter backed by the typed asset store.
@@ -42,6 +45,37 @@ impl AssetManager {
     /// Return the stable identity associated with a ready handle.
     pub fn asset_id<T: Asset>(&self, handle: Handle<T>) -> Result<AssetId, AssetError> {
         self.store.asset_id_for_handle(handle)
+    }
+
+    /// Return the project root used to resolve project-relative assets.
+    pub fn project_root(&self) -> &Path {
+        self.store.project_root()
+    }
+
+    /// Queue a versioned reload for a currently loaded asset.
+    pub fn reload<T: Asset>(&mut self, handle: Handle<T>) -> Result<ReloadTicket, AssetError> {
+        self.store.reload(handle)
+    }
+
+    /// Drain completed asynchronous asset work without blocking.
+    pub fn poll_results(&mut self, max: usize) -> Result<Vec<AssetResult>, AssetError> {
+        self.store.poll_results(max)
+    }
+
+    /// Resolve dependencies on a material result and apply it at a frame boundary.
+    pub fn apply_material_result(
+        &mut self,
+        result: AssetResult,
+        boundary: FrameBoundary,
+    ) -> Result<super::ApplyOutcome, AssetError> {
+        let root = self.store.project_root().to_path_buf();
+        let resolved = super::material_asset::resolve_material_result(result, &root, self);
+        self.store.apply_result(resolved, boundary)
+    }
+
+    /// Stop and join the backing asset worker before application shutdown.
+    pub fn shutdown(&mut self) -> Result<(), AssetError> {
+        self.store.shutdown()
     }
 
     /// Check if an asset is loaded.

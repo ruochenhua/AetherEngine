@@ -3,11 +3,14 @@
 use crate::physics::{Collider, ColliderList, ColliderShape, RigidBody};
 use crate::{
     asset::{
+        material_asset::MaterialAsset,
         mesh::{CpuMesh, GpuMesh},
         registry::BuiltinMeshRegistry,
         AssetManager,
     },
-    ecs::components::{MeshHandle, MeshSource, Name, Transform, Visibility},
+    ecs::components::{
+        MaterialAssetRef, MaterialAssetStatus, MeshHandle, MeshSource, Name, Transform, Visibility,
+    },
     ecs::World,
     renderer::renderable::MaterialUniform,
     renderer::transparent::TransparentMaterial,
@@ -32,6 +35,26 @@ pub(super) fn build_objects(
     let material_resolver = MaterialResolver::new(".");
 
     for obj in &desc.objects {
+        let linked_material = if let Some(path) = &obj.material_asset {
+            let handle = assets.load::<MaterialAsset>(path).map_err(|error| {
+                anyhow::anyhow!("Failed to load material asset '{}': {}", path, error)
+            })?;
+            let asset_id = assets.asset_id(handle)?;
+            let project_root = assets.project_root().to_path_buf();
+            let mut material_asset = assets
+                .get(handle)
+                .ok_or_else(|| anyhow::anyhow!("Loaded material asset not found: '{}'", path))?
+                .as_ref()
+                .clone();
+            material_asset.resolve(&asset_id, &project_root, assets)?;
+            let resolution = material_asset
+                .resolution()
+                .cloned()
+                .ok_or_else(|| anyhow::anyhow!("Material asset did not resolve: '{}'", path))?;
+            Some((path.clone(), material_asset.config().clone(), resolution))
+        } else {
+            None
+        };
         let mesh_source = match &obj.mesh {
             MeshRef::Builtin(name) => MeshSource::Builtin(name.clone()),
             MeshRef::File(path) => MeshSource::File(path.clone()),
@@ -100,17 +123,23 @@ pub(super) fn build_objects(
                         submesh.index_count as u32,
                     ));
 
-                    let material_config = MaterialConfig {
-                        albedo: submesh.material.base_color,
-                        roughness: submesh.material.roughness,
-                        metallic: submesh.material.metallic,
-                        albedo_texture: submesh.material.albedo_texture.clone(),
-                        ..MaterialConfig::default()
-                    };
-                    let resolution = material_resolver.resolve(&material_config, assets)?;
+                    let (material_config, resolution) =
+                        if let Some((_, config, resolution)) = &linked_material {
+                            (config.clone(), resolution.clone())
+                        } else {
+                            let config = MaterialConfig {
+                                albedo: submesh.material.base_color,
+                                roughness: submesh.material.roughness,
+                                metallic: submesh.material.metallic,
+                                albedo_texture: submesh.material.albedo_texture.clone(),
+                                ..MaterialConfig::default()
+                            };
+                            let resolution = material_resolver.resolve(&config, assets)?;
+                            (config, resolution)
+                        };
                     let material = MaterialUniform::from_resolution(&resolution);
 
-                    let entity = world.spawn((
+                    let components = (
                         transform.clone(),
                         MeshHandle::new(
                             gpu_mesh,
@@ -121,29 +150,48 @@ pub(super) fn build_objects(
                         material,
                         Visibility(obj.visible),
                         Name(format!("{}::{}", obj.name, submesh.name)),
-                    ));
+                    );
+                    let entity = world.spawn(components);
+                    if let Some((path, _, _)) = &linked_material {
+                        world.insert(
+                            entity,
+                            (
+                                MaterialAssetRef(path.clone()),
+                                MaterialAssetStatus::default(),
+                            ),
+                        )?;
+                    }
                     attach_physics(world, entity, obj.physics.as_ref())?;
                 }
                 continue;
             }
         }
 
-        let mut material_config = obj.material.clone();
-        if let Some(texture) = obj
-            .material
-            .transparent
+        let mut material_config = linked_material
             .as_ref()
-            .and_then(|transparent| transparent.texture.as_ref())
-        {
-            material_config.albedo_texture = Some(texture.clone());
+            .map(|(_, config, _)| config.clone())
+            .unwrap_or_else(|| obj.material.clone());
+        if linked_material.is_none() {
+            if let Some(texture) = obj
+                .material
+                .transparent
+                .as_ref()
+                .and_then(|transparent| transparent.texture.as_ref())
+            {
+                material_config.albedo_texture = Some(texture.clone());
+            }
         }
-        let resolution = material_resolver.resolve(&material_config, assets)?;
+        let resolution = if let Some((_, _, resolution)) = &linked_material {
+            resolution.clone()
+        } else {
+            material_resolver.resolve(&material_config, assets)?
+        };
         let material = MaterialUniform::from_resolution(&resolution);
         let mesh_handle = MeshHandle::new(base_gpu_mesh, mesh_source, mesh_name);
 
-        if let Some(config) = &obj.material.transparent {
+        if let Some(config) = &material_config.transparent {
             let transparent_material = TransparentMaterial {
-                base_color: obj.material.albedo,
+                base_color: material_config.albedo,
                 texture: resolution.material.albedo,
                 blend: config.blend,
                 alpha_cutoff: config.alpha_cutoff,
@@ -154,22 +202,40 @@ pub(super) fn build_objects(
             let entity = world.spawn((
                 transform,
                 mesh_handle,
-                obj.material.clone(),
+                material_config.clone(),
                 material,
                 transparent_material,
                 Visibility(obj.visible),
                 Name(obj.name.clone()),
             ));
+            if let Some((path, _, _)) = &linked_material {
+                world.insert(
+                    entity,
+                    (
+                        MaterialAssetRef(path.clone()),
+                        MaterialAssetStatus::default(),
+                    ),
+                )?;
+            }
             attach_physics(world, entity, obj.physics.as_ref())?;
         } else {
             let entity = world.spawn((
                 transform,
                 mesh_handle,
-                obj.material.clone(),
+                material_config.clone(),
                 material,
                 Visibility(obj.visible),
                 Name(obj.name.clone()),
             ));
+            if let Some((path, _, _)) = &linked_material {
+                world.insert(
+                    entity,
+                    (
+                        MaterialAssetRef(path.clone()),
+                        MaterialAssetStatus::default(),
+                    ),
+                )?;
+            }
             attach_physics(world, entity, obj.physics.as_ref())?;
         }
     }

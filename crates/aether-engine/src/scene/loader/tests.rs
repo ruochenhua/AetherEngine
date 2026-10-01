@@ -56,6 +56,7 @@ fn test_scene_desc() -> SceneDescription {
                     albedo_texture: None,
                     ..Default::default()
                 },
+                material_asset: None,
                 visible: true,
                 physics: None,
             },
@@ -74,6 +75,7 @@ fn test_scene_desc() -> SceneDescription {
                     albedo_texture: None,
                     ..Default::default()
                 },
+                material_asset: None,
                 visible: true,
                 physics: None,
             },
@@ -125,6 +127,34 @@ fn build_world_sets_correct_material() {
         }
     }
     assert!(found, "expected cube material in world");
+}
+
+#[test]
+fn scene_material_asset_reference_resolves_and_is_attached_to_the_entity() {
+    let workspace = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let scene_path = workspace.join("scenes/t8_material_reload.ron");
+    let device = headless_device();
+    let registry = test_registry();
+    let desc = SceneLoader::from_file(&scene_path).expect("material reference scene should parse");
+    let mut world = World::new();
+    let mut assets = AssetManager::with_project_root(&workspace);
+
+    SceneLoader::build_world(&desc, &device, &registry, &mut assets, &mut world)
+        .expect("linked material should resolve");
+
+    let mut query = world.query::<(
+        &crate::ecs::components::Name,
+        &crate::ecs::components::MaterialAssetRef,
+        &crate::scene::MaterialConfig,
+        &MaterialUniform,
+    )>();
+    let (_name, asset, config, uniform) = query
+        .iter()
+        .find(|(name, _, _, _)| name.0 == "LastKnownGoodMaterial")
+        .expect("linked material object should be present");
+    assert_eq!(asset.0, "assets/materials/t8_material_reload.ron");
+    assert_eq!(config.albedo, [0.3, 0.6, 0.9, 1.0]);
+    assert_eq!(uniform.albedo, config.albedo);
 }
 
 #[test]

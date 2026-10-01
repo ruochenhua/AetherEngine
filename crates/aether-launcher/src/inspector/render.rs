@@ -15,11 +15,34 @@ pub(crate) fn render(ui: &mut egui::Ui, target: &mut InspectorTarget) {
         InspectorTarget::Mesh {
             transform,
             material,
+            material_asset,
+            material_asset_error,
+            detach_material,
             euler,
             ..
         } => {
             render_transform(ui, transform, euler);
-            super::material_render::render_material(ui, material);
+            if let Some(path) = material_asset {
+                ui.label(format!("Material asset: {path}"));
+                if let Some(error) = material_asset_error {
+                    ui.colored_label(egui::Color32::LIGHT_RED, error);
+                } else {
+                    ui.label("Watching for file changes");
+                }
+                if !*detach_material && ui.button("Detach and edit").clicked() {
+                    *detach_material = true;
+                }
+                if !*detach_material {
+                    ui.add_enabled_ui(false, |ui| {
+                        super::material_render::render_material(ui, material);
+                    });
+                } else {
+                    ui.label("Detached copy");
+                    super::material_render::render_material(ui, material);
+                }
+            } else {
+                super::material_render::render_material(ui, material);
+            }
         }
         InspectorTarget::Light {
             light, direction, ..

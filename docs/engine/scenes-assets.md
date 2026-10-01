@@ -23,7 +23,21 @@ cargo run -p aether-launcher -- --scene scenes/19_model_loading_examples.ron
 
 - **模型网格：**资源加载模块包含 OBJ 与 glTF 加载器；示例见 [`18_file_mesh.ron`](../../scenes/18_file_mesh.ron) 和 [`19_model_loading_examples.ron`](../../scenes/19_model_loading_examples.ron)。
 - **纹理与环境图：**纹理、图像缓存和 IBL 相关模块负责读取并管理 GPU 资源；支持格式由当前 image crate 配置和具体加载路径决定。
+- **材质资产：**物体可用 `material_asset` 引用独立的 MaterialAsset RON 文件。路径相对于项目根目录；设置后该文件中的材质覆盖场景内联的 `material`。示例见 [`t8_material_reload.ron`](../../scenes/t8_material_reload.ron) 和 [`t8_material_reload.ron` 材质文件](../../assets/materials/t8_material_reload.ron)。
 - **程序化地形：**地形几何、LOD 与材质由 `terrain` 模块负责，场景配置控制地形实例及其参数。
+
+场景物体配置示例：
+
+```ron
+(
+    name: "LinkedMaterial",
+    mesh: Builtin("sphere"),
+    transform: (translation: (0.0, 0.0, 0.0), scale: (1.0, 1.0, 1.0)),
+    material_asset: Some("assets/materials/example.ron"),
+)
+```
+
+Launcher 运行时会监视场景所引用的材质文件。文件变化后，资产在后台重新加载，并在帧边界应用；解析或依赖加载失败时保留上一个可用材质，并在 Inspector 中显示诊断。选择 **Detach and edit** 会解除文件链接，再把当前材质作为场景内联值编辑；该操作支持撤销和重做。
 
 ## 文件位置约定
 

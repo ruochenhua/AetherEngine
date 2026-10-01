@@ -252,7 +252,8 @@ impl AssetStore {
             return Err(AssetError::WorkerStopped);
         }
         let Some(receiver) = self.result_rx.as_ref() else {
-            return Ok(self.deferred_results.drain(..max).collect());
+            let count = max.min(self.deferred_results.len());
+            return Ok(self.deferred_results.drain(..count).collect());
         };
         let mut results = Vec::with_capacity(max.min(32));
         while results.len() < max {

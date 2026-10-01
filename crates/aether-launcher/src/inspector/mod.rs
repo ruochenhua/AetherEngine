@@ -36,6 +36,7 @@ pub(crate) enum EditorCommand {
         entity: Entity,
         old_config: Option<MaterialConfig>,
         old_material: MaterialUniform,
+        old_asset_ref: Option<String>,
     },
     /// Restore a Light and its Transform to previous values.
     Light {
@@ -77,6 +78,9 @@ pub(crate) enum InspectorTarget {
         entity: Entity,
         transform: Transform,
         material: MaterialConfig,
+        material_asset: Option<String>,
+        material_asset_error: Option<String>,
+        detach_material: bool,
         euler: [f32; 3],
     },
     /// Directional/point/spot light.
@@ -150,10 +154,27 @@ pub(crate) fn extract(world: &World) -> Option<InspectorTarget> {
             .ok()
             .cloned()
             .unwrap_or_else(|| config_from_uniform(material));
+        let material_asset = world
+            .query_one::<&aether_engine::ecs::components::MaterialAssetRef>(entity)
+            .get()
+            .ok()
+            .map(|reference| reference.0.clone());
+        let material_asset_error = world
+            .query_one::<&aether_engine::ecs::components::MaterialAssetStatus>(entity)
+            .get()
+            .ok()
+            .and_then(|status| status.0.clone());
+        let config = material_asset
+            .as_deref()
+            .map(|path| rebase_material_textures(config.clone(), path))
+            .unwrap_or(config);
         return Some(InspectorTarget::Mesh {
             entity,
             transform: transform.clone(),
             material: config,
+            material_asset,
+            material_asset_error,
+            detach_material: false,
             euler: [ex, ey, ez],
         });
     }
@@ -235,6 +256,31 @@ pub(crate) fn extract(world: &World) -> Option<InspectorTarget> {
     }
 
     None
+}
+
+fn rebase_material_textures(mut config: MaterialConfig, material_path: &str) -> MaterialConfig {
+    let parent = std::path::Path::new(material_path)
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
+    for path in [
+        &mut config.albedo_texture,
+        &mut config.normal_texture,
+        &mut config.orm_texture,
+        &mut config.emissive_texture,
+    ]
+    .into_iter()
+    .flatten()
+    {
+        *path = parent.join(&*path).to_string_lossy().replace('\\', "/");
+    }
+    if let Some(path) = config
+        .transparent
+        .as_mut()
+        .and_then(|transparent| transparent.texture.as_mut())
+    {
+        *path = parent.join(&*path).to_string_lossy().replace('\\', "/");
+    }
+    config
 }
 
 /// Render the inspector UI for the given target.

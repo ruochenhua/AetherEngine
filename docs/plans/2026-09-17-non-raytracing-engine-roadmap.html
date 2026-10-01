@@ -291,6 +291,7 @@ T8.1 ── T8.2 MaterialAsset ── T8.3 Prefab ── T8.4 hot reload</pre>
       <tr><td>T8.4 Hot reload</td><td>文件变更触发 versioned reload；所有 consumer 在 commit 前仍读旧版本，失败不破坏运行中资源。</td><td>纹理/材质/prefab reload、UI error、tracing；worker 数量固定且应用退出 join。</td><td>reload-in-flight、timeout、failure-retains-old、shutdown-no-process-leak smoke。</td></tr>
     </tbody>
   </table>
+  <p><strong>实现记录（2026-10-01）：</strong>T8.2 已接入场景和编辑器：物体可通过项目相对路径引用 MaterialAsset RON，加载时解析材质依赖，场景保存保留引用；Launcher 监视被引用的材质文件，异步重载并在帧边界更新使用者。重载失败会保留当前可用版本，并在 Inspector 显示诊断；解除链接后可编辑内联副本，支持撤销/重做。专项场景为 <code>scenes/t8_material_reload.ron</code>。本记录描述已实现的范围，不代表 T8.4 完成：当前热重载仅覆盖材质，Prefab/纹理热重载及退出时 worker 生命周期验收仍未完成。按依赖顺序，后续先做 T8.3 Prefab。</p>
 
   <h3>3.5.12 T9：性能与规模化垂直切片（8 人日；研究项不阻塞发布）</h3>
   <table>
