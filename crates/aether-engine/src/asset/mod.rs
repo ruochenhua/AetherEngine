@@ -10,6 +10,8 @@ pub mod id;
 pub mod loaders;
 /// Material definitions.
 pub mod material;
+/// Resolved material asset lifecycle and GPU generation cache.
+pub mod material_asset;
 /// Mesh asset types.
 pub mod mesh;
 /// Built-in mesh registry.

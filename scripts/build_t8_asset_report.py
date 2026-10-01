@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the T8.1 fixture aggregate from its VisualCase and test evidence."""
+"""Build a T8 slice aggregate from its VisualCase and test evidence."""
 
 import argparse
 from datetime import datetime, timezone
@@ -50,20 +50,23 @@ def build_report(args):
     if not isinstance(case_records, list) or len(case_records) != 1:
         raise ValueError("T8.1 case file must contain exactly one VisualCase v2 record")
     case = case_records[0]
-    if case.get("id") != "t8_asset_store_lifecycle":
+    case_id = case.get("id", "")
+    if case_id not in {"t8_asset_store_lifecycle", "t8_material_reload_lkg"}:
         raise ValueError("unexpected primary case id")
+    slice_label = "T8.1" if case_id == "t8_asset_store_lifecycle" else "T8.2"
+    case_title = "Typed AssetStore lifecycle" if slice_label == "T8.1" else "MaterialAsset reload and last-known-good"
     variants = case.get("variants")
     if not isinstance(variants, list) or len(variants) != 1 or variants[0].get("id") != "default":
-        raise ValueError("T8.1 requires exactly one default variant")
+        raise ValueError(f"{slice_label} requires exactly one default variant")
     expected_result = variants[0].get("expected_result", {})
     if expected_result.get("kind") != "Render":
-        raise ValueError("T8.1 default variant must use the Render expectation")
+        raise ValueError(f"{slice_label} default variant must use the Render expectation")
 
     args.case_dir.mkdir(parents=True, exist_ok=True)
     events_path = args.case_dir / "asset-events.json"
-    events = read_json(events_path, {"case_id": case["id"], "kind": "Fixture", "events": [], "probes": []})
+    events = read_json(events_path, {"case_id": case_id, "kind": "Fixture", "events": [], "probes": []})
     if not isinstance(events, dict):
-        events = {"case_id": case["id"], "kind": "Fixture", "events": [], "probes": []}
+        events = {"case_id": case_id, "kind": "Fixture", "events": [], "probes": []}
     actual_probes = {
         probe.get("name"): typed_value(probe.get("value"))
         for probe in events.get("probes", [])
@@ -78,29 +81,44 @@ def build_report(args):
         checks.append({"name": name, "expected": expected_value, "actual": actual_value, "passed": actual_value == expected_value})
 
     command_passed = args.exit_code == 0
-    case_identity_passed = events.get("case_id") == case["id"] and events.get("kind") == "Fixture"
-    aggregate_passed = command_passed and case_identity_passed and bool(checks) and all(item["passed"] for item in checks)
+    case_identity_passed = events.get("case_id") == case_id and events.get("kind") == "Fixture"
+    render_output = args.case_dir / "launcher-output.png"
+    render_exit_code = args.render_exit_code
+    rendered = render_exit_code == 0 and render_output.is_file() and render_output.stat().st_size > 64
+    render_required = slice_label == "T8.2"
+    render_passed = not render_required or rendered
+    aggregate_passed = command_passed and render_passed and case_identity_passed and bool(checks) and all(item["passed"] for item in checks)
     status = "PASS" if aggregate_passed else "FAIL"
     now = datetime.now(timezone.utc).isoformat()
     sentinel = sentinel_png()
-    for name in ("output.png", "reference.png", "diff.png"):
+    if rendered:
+        (args.case_dir / "output.png").write_bytes(render_output.read_bytes())
+    else:
+        (args.case_dir / "output.png").write_bytes(sentinel)
+    for name in ("reference.png", "diff.png"):
         (args.case_dir / name).write_bytes(sentinel)
 
     metrics = {
-        "case_id": case["id"],
-        "kind": "Fixture",
+        "case_id": case_id,
+        "kind": "Render+Fixture" if rendered else "Fixture",
         "aggregate": status,
-        "comparison": "not_applicable",
+        "comparison": "not_run_no_reference" if rendered else "not_applicable",
         "sentinel": {"width": 1, "height": 1, "format": "png-rgba8", "rgba": list(SENTINEL_RGBA)},
+        "sentinel_files": ["reference.png", "diff.png"] if rendered else ["output.png", "reference.png", "diff.png"],
+        "rendered_output": "output.png" if rendered else None,
         "probe_count": len(checks),
         "passed_probe_count": sum(item["passed"] for item in checks),
     }
     (args.case_dir / "metrics.json").write_text(json.dumps(metrics, indent=2) + "\n", encoding="utf-8")
-    (args.case_dir / "graph.txt").write_text(
-        "not_applicable: CPU AssetStore fixture; no render graph was created\n", encoding="utf-8"
+    graph_summary = (
+        "Scene rendered successfully; a graph dump was not collected by the bounded launcher capture.\n"
+        "Asset lifecycle assertions are recorded in asset-events.json.\n"
+        if rendered
+        else "not_applicable: CPU AssetStore fixture; no render graph was created\n"
     )
+    (args.case_dir / "graph.txt").write_text(graph_summary, encoding="utf-8")
     launcher_log = {
-        "case_id": case["id"],
+        "case_id": case_id,
         "run_id": args.run_id,
         "runner": RUNNER_VERSION,
         "runner_pid": args.runner_pid,
@@ -111,8 +129,11 @@ def build_report(args):
         "os": platform.platform(),
         "machine": platform.machine(),
         "python": platform.python_version(),
-        "launcher_started": False,
-        "window_opened": False,
+        "launcher_started": render_exit_code is not None,
+        "window_opened": rendered,
+        "auto_exit_requested": render_exit_code is not None,
+        "launcher_exit_code": render_exit_code,
+        "render_command": args.render_command,
         "status": status,
     }
     (args.case_dir / "launcher.log").write_text(json.dumps(launcher_log, indent=2) + "\n", encoding="utf-8")
@@ -134,9 +155,12 @@ def build_report(args):
         f'<a href="{name}">{escape(name)}</a>'
         for name in ("asset-events.json", "metrics.json", "launcher.log", "graph.txt", "stdout", "stderr", "output.png", "reference.png", "diff.png")
     )
+    output_preview = '<h2>Scene capture</h2><p>No renderer output was captured.</p>'
+    if rendered:
+        output_preview = '<h2>Scene capture</h2><p>Launcher exited after the bounded screenshot run. No golden reference is configured, so image comparison was not run.</p><p><img src="output.png" alt="Rendered material reload scene" style="max-width:100%;height:auto"></p>'
     report = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>T8.1 AssetStore Lifecycle — {status}</title>
+<title>{escape(slice_label)} {escape(case_title)} — {status}</title>
 <style>
 body{{font:15px/1.5 system-ui,sans-serif;max-width:1100px;margin:2rem auto;padding:0 1rem;color:#172033}}
 table{{border-collapse:collapse;width:100%;margin:1rem 0}}th,td{{text-align:left;padding:.65rem;border-bottom:1px solid #d0d5dd;vertical-align:top}}
@@ -144,19 +168,20 @@ th{{background:#f2f4f7}}tr.pass td:nth-child(2){{color:#15803d;font-weight:700}}
 .status{{padding:.8rem 1rem;border-left:4px solid {'#15803d' if aggregate_passed else '#b42318'};background:{'#f0fdf4' if aggregate_passed else '#fef3f2'}}}
 code{{overflow-wrap:anywhere}}a{{margin-right:.7rem}}
 </style></head><body>
-<h1>T8.1 — Typed AssetStore lifecycle</h1>
-<p class="status">Aggregate: <strong>{status}</strong> · Fixture case · Visual comparison not applicable</p>
+<h1>{escape(slice_label)} — {escape(case_title)}</h1>
+<p class="status">Aggregate: <strong>{status}</strong> · {'Scene render and fixture probes' if rendered else 'Fixture case; no scene render captured'}</p>
 <p>Run: <code>{escape(args.run_id)}</code> · Started: <code>{escape(args.started_at)}</code> · Completed: <code>{escape(now)}</code></p>
 <p>Environment: <code>{escape(platform.platform())}</code> · Python <code>{escape(platform.python_version())}</code> · Commit <code>{escape(args.commit)}</code></p>
-<p>Command exit: <strong>{'0' if command_passed else escape(args.exit_code)}</strong> · Case schema: <strong>{'valid' if case_identity_passed else 'invalid or missing'}</strong></p>
+<p>Fixture exit: <strong>{'0' if command_passed else escape(args.exit_code)}</strong> · Scene exit: <strong>{'not run' if render_exit_code is None else escape(render_exit_code)}</strong> · Case schema: <strong>{'valid' if case_identity_passed else 'invalid or missing'}</strong></p>
 <h2>Typed probes</h2><table><thead><tr><th>Probe</th><th>Status</th><th>Expected</th><th>Observed</th></tr></thead><tbody>{''.join(rows)}</tbody></table>
 <h2>Lifecycle events</h2><ul>{''.join(f'<li>{escape(item)}</li>' for item in events.get('events', [])) or '<li>No lifecycle events emitted</li>'}</ul>
+{output_preview}
 <h2>Artifacts</h2><p>{artifact_links}</p>
-<p>PNG files are deterministic 1×1 RGBA8 sentinels for fixture-runner compatibility; they are not rendered visual evidence.</p>
+<p>{'reference.png and diff.png are deterministic 1×1 placeholders because this case has no approved golden reference.' if rendered else 'PNG files are deterministic 1×1 RGBA8 sentinels for fixture-runner compatibility; they are not rendered visual evidence.'}</p>
 </body></html>
 """
     (args.case_dir / "report.html").write_text(report, encoding="utf-8")
-    summary = {"case_id": case["id"], "aggregate": status, "checks": checks, "command_exit_code": args.exit_code}
+    summary = {"case_id": case_id, "aggregate": status, "checks": checks, "command_exit_code": args.exit_code, "render_exit_code": render_exit_code, "rendered": rendered}
     (args.case_dir / "aggregate.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     return 0 if aggregate_passed else 1
 
@@ -171,6 +196,8 @@ def main():
     parser.add_argument("--runner-pid", type=int, required=True)
     parser.add_argument("--started-at", required=True)
     parser.add_argument("--exit-code", type=int, required=True)
+    parser.add_argument("--render-exit-code", type=int)
+    parser.add_argument("--render-command", default="not run")
     args = parser.parse_args()
     try:
         return build_report(args)

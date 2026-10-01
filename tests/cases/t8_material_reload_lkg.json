@@ -1,0 +1,74 @@
+[
+  {
+    "manifest_version": 2,
+    "id": "t8_material_reload_lkg",
+    "scene": "scenes/t8_material_reload.ron",
+    "launcher_args": [],
+    "render": {
+      "width": 640,
+      "height": 360,
+      "frames": 1,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0.0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/t8_material_reload_lkg.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "material asset resolves T3 texture dependencies before applying its generation",
+      "a reload error preserves the last-known-good material generation",
+      "GPU replacement is committed on the requested frame boundary and stale tickets are rejected"
+    ],
+    "benchmark": null,
+    "variants": [
+      {
+        "id": "default",
+        "launcher_args_append": [],
+        "time_override": null,
+        "camera_override": null,
+        "benchmark_override": null,
+        "expected_result": {
+          "kind": "Render",
+          "diagnostics": [],
+          "fallbacks": [],
+          "metrics": [],
+          "hashes": [],
+          "probes": [
+            { "name": "lkg_on_reload_error", "value": { "kind": "Bool", "value": true } },
+            { "name": "generation_commit_boundary", "value": { "kind": "Bool", "value": true } },
+            { "name": "stale_ticket_rejected", "value": { "kind": "Bool", "value": true } }
+          ],
+          "graph": null
+        }
+      }
+    ]
+  }
+]
