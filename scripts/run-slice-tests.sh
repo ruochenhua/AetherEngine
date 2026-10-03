@@ -8,12 +8,16 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_ROOT"
 
 usage() {
-    echo "Usage: $0 --slice T8.1|T8.2|T8.3|T8.4" >&2
+    echo "Usage: $0 --slice T7.1|T8.1|T8.2|T8.3|T8.4" >&2
 }
 
-if [[ $# -ne 2 || "$1" != "--slice" || ( "$2" != "T8.1" && "$2" != "T8.2" && "$2" != "T8.3" && "$2" != "T8.4" ) ]]; then
+if [[ $# -ne 2 || "$1" != "--slice" || ( "$2" != "T7.1" && "$2" != "T8.1" && "$2" != "T8.2" && "$2" != "T8.3" && "$2" != "T8.4" ) ]]; then
     usage
     exit 2
+fi
+
+if [[ "$2" == "T7.1" ]]; then
+    exec bash "$SCRIPT_DIR/run-t7-gltf-tests.sh" --slice T7.1
 fi
 
 if [[ -n "${AETHER_SLICE_PYTHON_BIN:-}" ]]; then

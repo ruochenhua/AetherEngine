@@ -1,9 +1,8 @@
-use crate::asset::{Asset, AssetKind};
 use std::path::Path;
 
-/// CPU-owned glTF document metadata for typed asset and skin consumers.
+/// Lightweight glTF index metadata for callers that do not need decoded buffers.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct GltfDocumentAsset {
+pub struct GltfDocumentMetadata {
     /// Node references, mesh/skin assignments, and child indices.
     pub nodes: Vec<GltfNodeMetadata>,
     /// Mesh names and static primitive counts.
@@ -45,16 +44,8 @@ pub struct GltfSkinMetadata {
     pub skeleton: Option<usize>,
 }
 
-impl Asset for GltfDocumentAsset {
-    const KIND: AssetKind = AssetKind::GltfDocument;
-
-    fn load(path: &Path) -> anyhow::Result<Self> {
-        read_metadata(path)
-    }
-}
-
 /// Read node, static mesh, and skin references without loading buffers or images.
-pub fn read_metadata(path: &Path) -> anyhow::Result<GltfDocumentAsset> {
+pub fn read_metadata(path: &Path) -> anyhow::Result<GltfDocumentMetadata> {
     let gltf = gltf::Gltf::open(path).map_err(|error| {
         anyhow::anyhow!("Failed to read glTF metadata '{}': {error}", path.display())
     })?;
@@ -84,7 +75,7 @@ pub fn read_metadata(path: &Path) -> anyhow::Result<GltfDocumentAsset> {
         })
         .collect();
 
-    Ok(GltfDocumentAsset {
+    Ok(GltfDocumentMetadata {
         nodes,
         meshes,
         skins,
@@ -147,7 +138,7 @@ mod tests {
     #[test]
     fn reads_static_mesh_and_skin_metadata_without_loading_buffers() {
         let fixture = Fixture::new();
-        let asset = GltfDocumentAsset::load(&fixture.0).unwrap();
+        let asset = read_metadata(&fixture.0).unwrap();
 
         assert_eq!(asset.nodes.len(), 2);
         assert_eq!(asset.nodes[0].mesh, Some(0));
@@ -158,6 +149,5 @@ mod tests {
         assert_eq!(asset.skins[0].name.as_deref(), Some("Humanoid"));
         assert_eq!(asset.skins[0].joints, [1]);
         assert_eq!(asset.skins[0].skeleton, Some(1));
-        assert_eq!(GltfDocumentAsset::KIND, AssetKind::GltfDocument);
     }
 }

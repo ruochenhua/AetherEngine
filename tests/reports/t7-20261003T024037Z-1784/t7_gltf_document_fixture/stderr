@@ -1,0 +1,4 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.29s
+     Running unittests src\lib.rs (target\debug\deps\aether_engine-e4c4f7dbaae47b62.exe)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.26s
+     Running tests\t7_gltf_document_fixture.rs (target\debug\deps\t7_gltf_document_fixture-0206a007cbf33336.exe)

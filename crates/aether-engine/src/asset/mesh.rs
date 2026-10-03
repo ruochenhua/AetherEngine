@@ -1,7 +1,9 @@
 mod asset;
+mod skinned;
 use crate::math::Aabb;
 use bytemuck::{Pod, Zeroable};
 use glam::Vec3;
+pub use skinned::SkinnedVertex;
 use std::sync::Arc;
 
 /// CPU-side PBR material description used while loading models.

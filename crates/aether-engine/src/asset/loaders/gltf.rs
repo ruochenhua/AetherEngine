@@ -12,14 +12,21 @@ use glam::Mat4;
 
 use crate::asset::loaders::{compute_smooth_normals, compute_tangents, fill_missing_uvs};
 use crate::asset::mesh::{CpuMaterial, CpuMesh, CpuSubmesh};
+#[path = "gltf/document/mod.rs"]
+mod document;
 #[path = "gltf/helpers.rs"]
 mod helpers;
 #[path = "gltf/metadata.rs"]
 mod metadata;
 
+pub use document::{
+    load_document, AnimationChannel, AnimationClipAsset, AnimationValues, ChannelTarget,
+    GltfAnimation, GltfAnimationChannel, GltfDocumentAsset, GltfError, GltfImage, GltfImageFormat,
+    GltfMesh, GltfNode, GltfPrimitive, GltfSkin, Interpolation, Joint, SkeletonAsset,
+};
 use helpers::{transform_point, transform_tangent, transform_vector};
 pub use metadata::{
-    read_metadata, GltfDocumentAsset, GltfMeshMetadata, GltfNodeMetadata, GltfSkinMetadata,
+    read_metadata, GltfDocumentMetadata, GltfMeshMetadata, GltfNodeMetadata, GltfSkinMetadata,
 };
 
 /// Load a glTF file into a `CpuMesh`.

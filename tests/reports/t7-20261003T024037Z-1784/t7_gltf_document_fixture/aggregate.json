@@ -1,0 +1,129 @@
+{
+  "case_id": "t7_gltf_document_fixture",
+  "aggregate": "PASS",
+  "checks": [
+    {
+      "variant": "valid_128",
+      "name": "diagnostics",
+      "expected": [],
+      "actual": [],
+      "passed": true
+    },
+    {
+      "variant": "valid_128",
+      "name": "fallbacks",
+      "expected": [],
+      "actual": [],
+      "passed": true
+    },
+    {
+      "variant": "valid_128",
+      "name": "joint_count Eq",
+      "expected": 128,
+      "actual": 128,
+      "passed": true
+    },
+    {
+      "variant": "valid_128",
+      "name": "weight_validation probe",
+      "expected": {
+        "kind": "Bool",
+        "value": true
+      },
+      "actual": {
+        "kind": "Bool",
+        "value": true
+      },
+      "passed": true
+    },
+    {
+      "variant": "valid_128",
+      "name": "graph_acyclic probe",
+      "expected": {
+        "kind": "Bool",
+        "value": true
+      },
+      "actual": {
+        "kind": "Bool",
+        "value": true
+      },
+      "passed": true
+    },
+    {
+      "variant": "malformed_graph",
+      "name": "expected_error",
+      "expected": "Cycle",
+      "actual": "Cycle",
+      "passed": true
+    },
+    {
+      "variant": "invalid_129",
+      "name": "diagnostics",
+      "expected": [
+        {
+          "code": "UnsupportedJointCount",
+          "severity": "error"
+        }
+      ],
+      "actual": [
+        {
+          "code": "UnsupportedJointCount",
+          "severity": "error"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "variant": "invalid_129",
+      "name": "fallbacks",
+      "expected": [
+        {
+          "scope": "primitive",
+          "mode": "static"
+        }
+      ],
+      "actual": [
+        {
+          "mode": "static",
+          "scope": "primitive"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "variant": "invalid_129",
+      "name": "joint_count Eq",
+      "expected": 129,
+      "actual": 129,
+      "passed": true
+    },
+    {
+      "variant": "invalid_129",
+      "name": "static_fallback probe",
+      "expected": {
+        "kind": "Bool",
+        "value": true
+      },
+      "actual": {
+        "kind": "Bool",
+        "value": true
+      },
+      "passed": true
+    },
+    {
+      "variant": "invalid_129",
+      "name": "other_items_preserved probe",
+      "expected": {
+        "kind": "Bool",
+        "value": true
+      },
+      "actual": {
+        "kind": "Bool",
+        "value": true
+      },
+      "passed": true
+    }
+  ],
+  "fixture_exit_code": 0,
+  "case_identity_passed": true
+}

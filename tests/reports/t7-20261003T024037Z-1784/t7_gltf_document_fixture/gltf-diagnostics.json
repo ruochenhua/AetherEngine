@@ -1,0 +1,71 @@
+{
+  "case_id": "t7_gltf_document_fixture",
+  "kind": "Fixture",
+  "variants": [
+    {
+      "diagnostics": [],
+      "fallbacks": [],
+      "id": "valid_128",
+      "kind": "Render",
+      "metrics": {
+        "joint_count": 128
+      },
+      "probes": [
+        {
+          "name": "weight_validation",
+          "value": {
+            "kind": "Bool",
+            "value": true
+          }
+        },
+        {
+          "name": "graph_acyclic",
+          "value": {
+            "kind": "Bool",
+            "value": true
+          }
+        }
+      ]
+    },
+    {
+      "code": "Cycle",
+      "id": "malformed_graph",
+      "kind": "ExpectedError"
+    },
+    {
+      "diagnostics": [
+        {
+          "code": "UnsupportedJointCount",
+          "severity": "error"
+        }
+      ],
+      "fallbacks": [
+        {
+          "mode": "static",
+          "scope": "primitive"
+        }
+      ],
+      "id": "invalid_129",
+      "kind": "Render",
+      "metrics": {
+        "joint_count": 129
+      },
+      "probes": [
+        {
+          "name": "static_fallback",
+          "value": {
+            "kind": "Bool",
+            "value": true
+          }
+        },
+        {
+          "name": "other_items_preserved",
+          "value": {
+            "kind": "Bool",
+            "value": true
+          }
+        }
+      ]
+    }
+  ]
+}

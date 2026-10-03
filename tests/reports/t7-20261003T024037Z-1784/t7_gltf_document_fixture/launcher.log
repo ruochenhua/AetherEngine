@@ -1,0 +1,16 @@
+{
+  "case_id": "t7_gltf_document_fixture",
+  "run_id": "t7-20261003T024037Z-1784",
+  "runner": "t7-gltf-slice-runner/1",
+  "runner_pid": 1784,
+  "command": "cargo test -p aether-engine --lib && cargo test -p aether-engine --test t7_gltf_document_fixture -- --exact t7_gltf_document_fixture",
+  "exit_code": 0,
+  "started_at": "2026-10-03T02:40:37Z",
+  "ended_at": "2026-10-03T02:40:52.581690+00:00",
+  "os": "Windows-10-10.0.26200-SP0",
+  "machine": "",
+  "launcher_started": false,
+  "window_opened": false,
+  "child_processes_started": false,
+  "status": "PASS"
+}

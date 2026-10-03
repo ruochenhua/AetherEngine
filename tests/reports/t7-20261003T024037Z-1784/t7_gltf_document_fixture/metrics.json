@@ -1,0 +1,9 @@
+{
+  "case_id": "t7_gltf_document_fixture",
+  "kind": "Fixture",
+  "aggregate": "PASS",
+  "comparison": "not_applicable_cpu_fixture",
+  "variant_count": 3,
+  "passed_check_count": 11,
+  "check_count": 11
+}

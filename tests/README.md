@@ -105,6 +105,21 @@ and 5 seconds between TERM and KILL. Override them with
 `AETHER_TERMINATION_GRACE`, or the coordinator's `--handshake-timeout`,
 `--case-timeout`, and `--grace-period` options.
 
+## T7.1 glTF document and skeleton acceptance
+
+Run the owned-document fixture with:
+
+```bash
+./scripts/run-slice-tests.sh --slice T7.1
+```
+
+The CPU-only library and fixture tests check a 128-joint skin, cyclic node
+rejection, weight and inverse-bind validation, typed animation channels, and a
+129-joint primitive's static fallback while retaining another mesh item. They do not start the
+launcher or open a scene window. Each run writes `report.html`,
+`gltf-diagnostics.json`, `aggregate.json`, logs, metrics, and deterministic PNG
+sentinels under `tests/reports/<run-id>/t7_gltf_document_fixture/`.
+
 For explicit case lists, invoke `python3 scripts/runner_process.py --launcher
 <binary> --cases <json-file> --report-dir tests/reports/<unique-run-id>`. The
 JSON list contains `{ "id": "case-id", "scene": "scene-path", "launcher_args":

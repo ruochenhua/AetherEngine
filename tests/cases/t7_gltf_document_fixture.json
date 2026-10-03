@@ -1,0 +1,112 @@
+[
+  {
+    "manifest_version": 2,
+    "id": "t7_gltf_document_fixture",
+    "scene": "scenes/18_file_mesh.ron",
+    "launcher_args": [],
+    "render": {
+      "width": 1,
+      "height": 1,
+      "frames": 1,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0.0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/t7_gltf_document_fixture.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "the owned glTF document preserves skin nodes, mesh influences, and animation channels",
+      "node cycles and invalid weights fail with stable document error codes",
+      "128-joint skeletons load; 129-joint primitives retain a static fallback without dropping other items"
+    ],
+    "benchmark": null,
+    "variants": [
+      {
+        "id": "valid_128",
+        "launcher_args_append": [],
+        "time_override": null,
+        "camera_override": null,
+        "benchmark_override": null,
+        "expected_result": {
+          "kind": "Render",
+          "diagnostics": [],
+          "fallbacks": [],
+          "metrics": [
+            { "name": "joint_count", "operator": "Eq", "value": 128 }
+          ],
+          "hashes": [],
+          "probes": [
+            { "name": "weight_validation", "value": { "kind": "Bool", "value": true } },
+            { "name": "graph_acyclic", "value": { "kind": "Bool", "value": true } }
+          ],
+          "graph": null
+        }
+      },
+      {
+        "id": "malformed_graph",
+        "launcher_args_append": [],
+        "time_override": null,
+        "camera_override": null,
+        "benchmark_override": null,
+        "expected_result": {
+          "kind": "ExpectedError",
+          "code": "Cycle",
+          "diagnostics": []
+        }
+      },
+      {
+        "id": "invalid_129",
+        "launcher_args_append": [],
+        "time_override": null,
+        "camera_override": null,
+        "benchmark_override": null,
+        "expected_result": {
+          "kind": "Render",
+          "diagnostics": [
+            { "code": "UnsupportedJointCount", "severity": "error" }
+          ],
+          "fallbacks": [
+            { "scope": "primitive", "mode": "static" }
+          ],
+          "metrics": [
+            { "name": "joint_count", "operator": "Eq", "value": 129 }
+          ],
+          "hashes": [],
+          "probes": [
+            { "name": "static_fallback", "value": { "kind": "Bool", "value": true } },
+            { "name": "other_items_preserved", "value": { "kind": "Bool", "value": true } }
+          ],
+          "graph": null
+        }
+      }
+    ]
+  }
+]
