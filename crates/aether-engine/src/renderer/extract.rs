@@ -18,6 +18,7 @@ use crate::ecs::components::{MeshHandle, Transform, Visibility};
 use crate::ecs::World;
 use crate::math::{CullingVisibility, Frustum, Mat4};
 use crate::renderer::renderable::MaterialUniform;
+use crate::renderer::skinned::SkinnedRenderData;
 use crate::renderer::transparent::{TransparentBlendMode, TransparentMaterial};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -106,6 +107,8 @@ pub struct RenderBatch {
     pub emissive_texture: Option<Handle<CpuTexture>>,
     /// Optional general transparent material contract.
     pub transparent_material: Option<TransparentMaterial>,
+    /// Optional skinned geometry and palette for GBuffer/Shadow/WaterReflection.
+    pub skinned: Option<Arc<SkinnedRenderData>>,
     /// Instances to draw.
     pub instances: Vec<InstanceData>,
 }
@@ -124,7 +127,7 @@ pub fn opaque_batches(batches: &Arc<[RenderBatch]>) -> Arc<[RenderBatch]> {
 /// Extract render batches from the ECS World.
 ///
 /// Queries all entities with `(Transform, MeshHandle, MaterialUniform, Visibility)`
-/// and groups them by `(mesh, material)` into `RenderBatch`es for instanced drawing.
+/// and groups opaque entities by `(mesh, material)` into instanced `RenderBatch`es.
 pub fn extract_render_batches(world: &World) -> Vec<RenderBatch> {
     extract_render_batches_with_frustum_culling(world, None)
 }
@@ -139,7 +142,17 @@ pub fn extract_render_batches_with_frustum_culling(
     world: &World,
     frustum: Option<&Frustum>,
 ) -> Vec<RenderBatch> {
+    extract_render_batches_with_instancing(world, frustum, true)
+}
+
+/// Extract with optional opaque instancing; transparent items stay ordered individually.
+pub fn extract_render_batches_with_instancing(
+    world: &World,
+    frustum: Option<&Frustum>,
+    instancing_enabled: bool,
+) -> Vec<RenderBatch> {
     let mut batches: HashMap<BatchKey, RenderBatch> = HashMap::with_capacity(world.len() as usize);
+    let mut individual_batches = Vec::new();
 
     for (entity, transform, mesh_handle, material, visibility, transparent) in world
         .query::<(
@@ -184,9 +197,24 @@ pub fn extract_render_batches_with_frustum_culling(
         let normal_texture = texture_handle(material.normal_texture_id);
         let orm_texture = texture_handle(material.orm_texture_id);
         let emissive_texture = texture_handle(material.emissive_texture_id);
-        batches
-            .entry(key)
-            .or_insert_with(|| RenderBatch {
+        if instancing_enabled && transparent.is_none() {
+            batches
+                .entry(key)
+                .or_insert_with(|| RenderBatch {
+                    mesh: mesh_handle.mesh.clone(),
+                    material: *material,
+                    albedo_texture,
+                    normal_texture,
+                    orm_texture,
+                    emissive_texture,
+                    transparent_material: None,
+                    skinned: None,
+                    instances: Vec::new(),
+                })
+                .instances
+                .push(instance);
+        } else {
+            individual_batches.push(RenderBatch {
                 mesh: mesh_handle.mesh.clone(),
                 material: *material,
                 albedo_texture,
@@ -194,13 +222,28 @@ pub fn extract_render_batches_with_frustum_culling(
                 orm_texture,
                 emissive_texture,
                 transparent_material: transparent.cloned(),
-                instances: Vec::new(),
-            })
-            .instances
-            .push(instance);
+                skinned: None,
+                instances: vec![instance],
+            });
+        }
     }
 
-    batches.into_values().collect()
+    let mut batches = batches
+        .into_values()
+        .chain(individual_batches)
+        .collect::<Vec<_>>();
+    for batch in &mut batches {
+        batch
+            .instances
+            .sort_unstable_by_key(|instance| instance.entity_id);
+    }
+    batches.sort_unstable_by_key(|batch| {
+        batch
+            .instances
+            .first()
+            .map_or(u32::MAX, |instance| instance.entity_id)
+    });
+    batches
 }
 
 fn texture_handle(id: u64) -> Option<Handle<CpuTexture>> {
@@ -208,203 +251,5 @@ fn texture_handle(id: u64) -> Option<Handle<CpuTexture>> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::asset::mesh::GpuMesh;
-    use crate::asset::registry::BuiltinMeshRegistry;
-    use crate::asset::terrain_material::TerrainMaterial;
-    use crate::ecs::components::{Atmosphere, Clouds, GodRay, Terrain, Water};
-    use crate::ecs::components::{Name, Visibility};
-    use crate::ecs::World;
-    use crate::math::{Frustum, Vec3};
-    use crate::renderer::renderable::MaterialUniform;
-    use crate::scene::{
-        AtmosphereConfig, CloudConfig, GodRayConfig, TerrainGeometry, TerrainSource, WaterConfig,
-    };
-
-    fn default_terrain() -> Terrain {
-        Terrain {
-            source: TerrainSource::Procedural {
-                seed: 0,
-                frequency: 0.05,
-                amplitude: 32.0,
-            },
-            geometry: TerrainGeometry::default(),
-            material: TerrainMaterial::default(),
-            splatmap_path: None,
-            layer_configs: Vec::new(),
-        }
-    }
-    use std::sync::Arc;
-
-    fn headless_device() -> wgpu::Device {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter =
-            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
-                .expect("need adapter");
-        let (device, _queue) =
-            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-                .expect("need device");
-        device
-    }
-
-    #[test]
-    fn extract_without_culling_includes_all_visible() {
-        let device = headless_device();
-        let registry = BuiltinMeshRegistry::new();
-        let cube_cpu = registry.get("cube").unwrap();
-        let cube_gpu = Arc::new(GpuMesh::from_cpu(&device, &cube_cpu));
-
-        let mut world = World::new();
-        world.spawn((
-            Transform::default(),
-            MeshHandle::new(
-                cube_gpu.clone(),
-                crate::ecs::components::MeshSource::Builtin("cube".into()),
-                "cube",
-            ),
-            MaterialUniform::default(),
-            Visibility::default(),
-            Name("visible".into()),
-        ));
-
-        let batches = extract_render_batches(&world);
-        assert_eq!(batches.len(), 1);
-        assert_eq!(batches[0].instances.len(), 1);
-    }
-
-    #[test]
-    fn extract_with_culling_skips_outside_entities() {
-        let device = headless_device();
-        let registry = BuiltinMeshRegistry::new();
-        let cube_cpu = registry.get("cube").unwrap();
-        let cube_gpu = Arc::new(GpuMesh::from_cpu(&device, &cube_cpu));
-
-        let mut world = World::new();
-        // Inside the identity NDC cube.
-        world.spawn((
-            Transform::default(),
-            MeshHandle::new(
-                cube_gpu.clone(),
-                crate::ecs::components::MeshSource::Builtin("cube".into()),
-                "cube",
-            ),
-            MaterialUniform::default(),
-            Visibility::default(),
-            Name("inside".into()),
-        ));
-        // Far outside the identity NDC cube.
-        world.spawn((
-            Transform {
-                translation: Vec3::new(10.0, 0.0, 0.0),
-                ..Default::default()
-            },
-            MeshHandle::new(
-                cube_gpu.clone(),
-                crate::ecs::components::MeshSource::Builtin("cube".into()),
-                "cube",
-            ),
-            MaterialUniform::default(),
-            Visibility::default(),
-            Name("outside".into()),
-        ));
-
-        let frustum = Frustum::from_view_projection(Mat4::IDENTITY);
-        let batches = extract_render_batches_with_frustum_culling(&world, Some(&frustum));
-        assert_eq!(batches.len(), 1);
-        assert_eq!(batches[0].instances.len(), 1);
-    }
-
-    #[test]
-    fn extract_respects_visibility_component() {
-        let device = headless_device();
-        let registry = BuiltinMeshRegistry::new();
-        let cube_cpu = registry.get("cube").unwrap();
-        let cube_gpu = Arc::new(GpuMesh::from_cpu(&device, &cube_cpu));
-
-        let mut world = World::new();
-        world.spawn((
-            Transform::default(),
-            MeshHandle::new(
-                cube_gpu.clone(),
-                crate::ecs::components::MeshSource::Builtin("cube".into()),
-                "cube",
-            ),
-            MaterialUniform::default(),
-            Visibility(false),
-            Name("hidden".into()),
-        ));
-
-        let batches = extract_render_batches(&world);
-        assert!(batches.is_empty());
-    }
-
-    #[test]
-    fn extract_does_not_instance_batch_different_extended_materials() {
-        let device = headless_device();
-        let registry = BuiltinMeshRegistry::new();
-        let cube_cpu = registry.get("cube").unwrap();
-        let cube_gpu = Arc::new(GpuMesh::from_cpu(&device, &cube_cpu));
-
-        let normal_mapped = MaterialUniform {
-            normal_scale: 0.5,
-            normal_texture_id: 11,
-            ..MaterialUniform::default()
-        };
-
-        let mut world = World::new();
-        for (name, material) in [
-            ("plain", MaterialUniform::default()),
-            ("normal", normal_mapped),
-        ] {
-            world.spawn((
-                Transform::default(),
-                MeshHandle::new(
-                    cube_gpu.clone(),
-                    crate::ecs::components::MeshSource::Builtin("cube".into()),
-                    "cube",
-                ),
-                material,
-                Visibility::default(),
-                Name(name.into()),
-            ));
-        }
-
-        let batches = extract_render_batches(&world);
-        assert_eq!(batches.len(), 2);
-    }
-
-    #[test]
-    fn extract_optional_data_is_empty_by_default() {
-        let world = World::new();
-        let optional = extract_optional_pass_data(&world);
-        assert_eq!(optional, OptionalPassData::default());
-    }
-
-    #[test]
-    fn extract_optional_data_finds_all_components() {
-        let mut world = World::new();
-        world.spawn((default_terrain(),));
-        world.spawn((Water {
-            config: WaterConfig::default(),
-            dudv_texture: None,
-            normal_texture: None,
-        },));
-        world.spawn((Atmosphere {
-            config: AtmosphereConfig::default(),
-        },));
-        world.spawn((Clouds {
-            config: CloudConfig::default(),
-        },));
-        world.spawn((GodRay {
-            config: GodRayConfig::default(),
-        },));
-
-        let optional = extract_optional_pass_data(&world);
-        assert!(optional.terrain.is_some());
-        assert!(optional.water.is_some());
-        assert!(optional.atmosphere.is_some());
-        assert!(optional.clouds.is_some());
-        assert!(optional.god_ray.is_some());
-    }
-}
+#[path = "extract/tests.rs"]
+mod tests;

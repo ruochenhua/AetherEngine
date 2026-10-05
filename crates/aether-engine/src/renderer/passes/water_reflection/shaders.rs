@@ -5,6 +5,14 @@ struct VertexInput {
     @location(2) uv: vec2<f32>,
     @location(3) tangent: vec4<f32>,
 };
+struct SkinnedVertexInput {
+    @location(0) position: vec3<f32>,
+    @location(1) normal: vec3<f32>,
+    @location(2) uv: vec2<f32>,
+    @location(3) tangent: vec4<f32>,
+    @location(9) joints: vec4<u32>,
+    @location(10) weights: vec4<f32>,
+};
 struct InstanceInput {
     @location(4) model_matrix_0: vec4<f32>,
     @location(5) model_matrix_1: vec4<f32>,
@@ -32,6 +40,12 @@ struct ObjectData { albedo: vec4<f32>, roughness: f32, metallic: f32, };
 @group(1) @binding(0) var<uniform> obj: ObjectData;
 @group(2) @binding(0) var albedo_texture: texture_2d<f32>;
 @group(2) @binding(1) var albedo_sampler: sampler;
+struct JointPalette {
+    matrices: array<mat4x4<f32>, 128>,
+    joint_count: u32,
+    padding: array<u32, 3>,
+};
+@group(3) @binding(0) var<storage, read> joint_palette: JointPalette;
 
 @vertex
 fn vs_main(in: VertexInput, instance: InstanceInput) -> VertexOutput {
@@ -42,6 +56,38 @@ fn vs_main(in: VertexInput, instance: InstanceInput) -> VertexOutput {
     out.world_pos = world_pos.xyz;
     let nm = mat3x3<f32>(model[0].xyz, model[1].xyz, model[2].xyz);
     out.world_normal = normalize(nm * in.normal);
+    out.uv = in.uv;
+    return out;
+}
+
+fn weighted_skin_matrix(joints: vec4<u32>, weights: vec4<f32>) -> mat4x4<f32> {
+    var result = mat4x4<f32>(
+        vec4<f32>(0.0), vec4<f32>(0.0), vec4<f32>(0.0), vec4<f32>(0.0),
+    );
+    var total = 0.0;
+    for (var i = 0u; i < 4u; i += 1u) {
+        let weight = weights[i];
+        if (weight > 0.0 && joints[i] < joint_palette.joint_count) {
+            result += joint_palette.matrices[joints[i]] * weight;
+            total += weight;
+        }
+    }
+    if (total <= 0.000001) { return mat4x4<f32>(); }
+    return result * (1.0 / total);
+}
+
+@vertex
+fn vs_skinned(in: SkinnedVertexInput, instance: InstanceInput) -> VertexOutput {
+    var out: VertexOutput;
+    let model = mat4x4<f32>(instance.model_matrix_0, instance.model_matrix_1, instance.model_matrix_2, instance.model_matrix_3);
+    let skin = weighted_skin_matrix(in.joints, in.weights);
+    let local_position = skin * vec4<f32>(in.position, 1.0);
+    let local_normal = mat3x3<f32>(skin[0].xyz, skin[1].xyz, skin[2].xyz) * in.normal;
+    let world_pos = model * local_position;
+    out.clip_position = ru.proj * ru.view * world_pos;
+    out.world_pos = world_pos.xyz;
+    let nm = mat3x3<f32>(model[0].xyz, model[1].xyz, model[2].xyz);
+    out.world_normal = normalize(nm * normalize(local_normal));
     out.uv = in.uv;
     return out;
 }

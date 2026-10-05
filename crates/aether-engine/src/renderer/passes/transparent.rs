@@ -388,13 +388,15 @@ impl Pass for TransparentPass {
                     pass.set_vertex_buffer(0, draw.mesh.vertex_buffer.slice(..));
                     if let Some(index_buffer) = &draw.mesh.index_buffer {
                         pass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-                        pass.draw_indexed(
+                        crate::counted_draw!(
+                            pass,
+                            draw_indexed,
                             draw.mesh.index_offset..draw.mesh.index_offset + draw.mesh.index_count,
                             0,
                             0..1,
                         );
                     } else {
-                        pass.draw(0..draw.mesh.vertex_count, 0..1);
+                        crate::counted_draw!(pass, draw, 0..draw.mesh.vertex_count, 0..1);
                     }
                 }
                 TransparentDrawSource::Particle(index) => {
@@ -411,7 +413,7 @@ impl Pass for TransparentPass {
                     {
                         pass.set_bind_group(2, texture_group, &[]);
                     }
-                    pass.draw(0..6, index as u32..index as u32 + 1);
+                    crate::counted_draw!(pass, draw, 0..6, index as u32..index as u32 + 1);
                 }
             }
         }

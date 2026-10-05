@@ -71,6 +71,8 @@ pub struct InitContext<'a> {
     pub ibl_resources: Option<&'a IblResources>,
     /// GPU texture cache for resolving CPU texture handles.
     pub texture_cache: &'a GpuTextureCache,
+    /// Enable the local-light shader and its GPU bindings when supported.
+    pub local_lights_enabled: bool,
 }
 
 /// A render pass that declares its resource dependencies.

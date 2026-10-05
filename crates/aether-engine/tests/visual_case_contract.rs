@@ -1,9 +1,12 @@
 #[path = "support/visual_case.rs"]
 mod fixtures;
+#[path = "support/visual_variant.rs"]
+mod variant_fixture;
 
 use aether_engine::visual_case::VisualManifest;
-use fixtures::{case, variant};
+use fixtures::case;
 use serde_json::{json, Value};
+use variant_fixture::variant;
 
 fn parse(value: Value) -> Result<VisualManifest, aether_engine::visual_case::VisualCaseError> {
     VisualManifest::from_json(&json!([value]).to_string())

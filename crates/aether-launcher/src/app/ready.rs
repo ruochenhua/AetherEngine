@@ -3,11 +3,17 @@
 use std::ffi::OsString;
 use std::fs::File;
 use std::io::{self, Write};
+mod metadata;
+pub(super) use metadata::device_info;
 
 pub(super) struct ReadySignal<W: Write = File>(Option<W>);
 
 impl ReadySignal<File> {
     pub(super) fn from_env() -> Self {
+        #[cfg(windows)]
+        if let Some(path) = std::env::var_os("AETHER_READY_PATH") {
+            return Self(File::options().write(true).create_new(true).open(path).ok());
+        }
         Self::from_value(std::env::var_os("AETHER_READY_FD"))
     }
 

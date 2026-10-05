@@ -220,9 +220,9 @@ impl Pass for TerrainPass {
             );
             if let Some(ref ib) = lod_mesh.index_buffer {
                 pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
-                pass.draw_indexed(0..lod_mesh.index_count, 0, 0..1);
+                crate::counted_draw!(pass, draw_indexed, 0..lod_mesh.index_count, 0, 0..1);
             } else {
-                pass.draw(0..lod_mesh.vertex_count, 0..1);
+                crate::counted_draw!(pass, draw, 0..lod_mesh.vertex_count, 0..1);
             }
         }
     }

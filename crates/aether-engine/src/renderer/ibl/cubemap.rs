@@ -181,7 +181,7 @@ impl CubeMesh {
 
 pub(super) fn capture_views() -> [[f32; 16]; 6] {
     let look_at = |eye: [f32; 3], center: [f32; 3], up: [f32; 3]| {
-        glam::Mat4::look_at_rh(
+        glam::camera::rh::view::look_at_mat4(
             glam::Vec3::from_array(eye),
             glam::Vec3::from_array(center),
             glam::Vec3::from_array(up),
@@ -203,7 +203,7 @@ pub(super) fn capture_projection() -> [f32; 16] {
     // Correction: z_wgpu_ndc = (z_gl_ndc + 1) / 2
     //   z' = z_gl + w_gl,  w' = 2*w_gl    (maps z to [0,1])
     //   x' = 2*x_gl,      y' = 2*y_gl    (compensate to keep x/w, y/w unchanged)
-    let p_gl = glam::Mat4::perspective_rh(90.0f32.to_radians(), 1.0, 0.1, 10.0);
+    let p_gl = glam::camera::rh::proj::directx::perspective(90.0f32.to_radians(), 1.0, 0.1, 10.0);
     let correction = glam::Mat4::from_cols_array(&[
         2.0, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 2.0,
     ]);

@@ -15,6 +15,8 @@
 //!     width,
 //!     height,
 //!     ibl_resources: Some(ibl),
+//!     texture_cache,
+//!     local_lights_enabled: true,
 //! };
 //! let scheduler = PipelineBuilder::new()
 //!     .add_pass(GBufferPass::init(&ctx))

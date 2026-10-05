@@ -3,6 +3,10 @@
 //! The generic [`DeterministicSystem`] seam is the integration point for the
 //! concrete particle, physics, and animation coordinators planned in T5/T6/T7.
 
+/// CPU animation pose extraction and GPU-ready skin palettes.
+#[path = "animation/mod.rs"]
+pub mod animation;
+
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 use thiserror::Error;

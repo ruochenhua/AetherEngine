@@ -101,7 +101,7 @@ impl CpuCubemap {
                 rp.set_bind_group(1, &tex_bg, &[]);
                 rp.set_vertex_buffer(0, cube_mesh.vertex_buf.slice(..));
                 rp.set_index_buffer(cube_mesh.index_buf.slice(..), wgpu::IndexFormat::Uint32);
-                rp.draw_indexed(0..cube_mesh.index_count, 0, 0..1);
+                crate::counted_draw!(rp, draw_indexed, 0..cube_mesh.index_count, 0, 0..1);
             }
         }
         queue.submit(std::iter::once(encoder.finish()));

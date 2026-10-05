@@ -1,4 +1,4 @@
-use super::ortho_wgpu;
+use super::cascades::ortho_wgpu;
 use glam::Vec4;
 
 #[test]

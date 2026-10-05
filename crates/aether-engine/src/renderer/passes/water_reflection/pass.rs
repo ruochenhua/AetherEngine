@@ -217,7 +217,7 @@ impl Pass for WaterReflectionPass {
         let mut instance_offset = 0usize;
         for (batch_index, batch) in self.batches.iter().enumerate() {
             let instance_count = batch.instances.len() as u32;
-            if instance_count == 0 || batch.mesh.vertex_count == 0 {
+            if instance_count == 0 {
                 continue;
             }
 
@@ -225,7 +225,6 @@ impl Pass for WaterReflectionPass {
             pass.set_bind_group(1, &self.object_bind_group, &[offset]);
             pass.set_bind_group(2, &self.texture_bind_groups[batch_index], &[]);
 
-            pass.set_vertex_buffer(0, batch.mesh.vertex_buffer.slice(..));
             let instance_byte_start =
                 (instance_offset * std::mem::size_of::<InstanceData>()) as wgpu::BufferAddress;
             let instance_byte_end = instance_byte_start
@@ -236,13 +235,40 @@ impl Pass for WaterReflectionPass {
                 self.instance_buffer
                     .slice(instance_byte_start..instance_byte_end),
             );
-            if let Some(ref ib) = batch.mesh.index_buffer {
-                pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
-                let start = batch.mesh.index_offset;
-                let end = start + batch.mesh.index_count;
-                pass.draw_indexed(start..end, 0, 0..instance_count);
+            if let Some(skinned) = &batch.skinned {
+                pass.set_pipeline(&self.skinned_pipeline);
+                pass.set_bind_group(3, skinned.bind_group.as_ref(), &[]);
+                pass.set_vertex_buffer(0, skinned.mesh.vertex_buffer.slice(..));
+                if let Some(index_buffer) = &skinned.mesh.index_buffer {
+                    pass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                    crate::counted_draw!(
+                        pass,
+                        draw_indexed,
+                        0..skinned.mesh.draw_count,
+                        0,
+                        0..instance_count
+                    );
+                } else {
+                    crate::counted_draw!(pass, draw, 0..skinned.mesh.draw_count, 0..instance_count);
+                }
             } else {
-                pass.draw(0..batch.mesh.vertex_count, 0..instance_count);
+                if batch.mesh.vertex_count != 0 {
+                    pass.set_pipeline(&self.pipeline);
+                    pass.set_vertex_buffer(0, batch.mesh.vertex_buffer.slice(..));
+                    if let Some(ref ib) = batch.mesh.index_buffer {
+                        pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
+                        let start = batch.mesh.index_offset;
+                        let end = start + batch.mesh.index_count;
+                        crate::counted_draw!(pass, draw_indexed, start..end, 0, 0..instance_count);
+                    } else {
+                        crate::counted_draw!(
+                            pass,
+                            draw,
+                            0..batch.mesh.vertex_count,
+                            0..instance_count
+                        );
+                    }
+                }
             }
             instance_offset += batch.instances.len();
         }
@@ -273,9 +299,9 @@ impl Pass for WaterReflectionPass {
                     );
                     if let Some(ref ib) = lod_mesh.index_buffer {
                         pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
-                        pass.draw_indexed(0..lod_mesh.index_count, 0, 0..1);
+                        crate::counted_draw!(pass, draw_indexed, 0..lod_mesh.index_count, 0, 0..1);
                     } else {
-                        pass.draw(0..lod_mesh.vertex_count, 0..1);
+                        crate::counted_draw!(pass, draw, 0..lod_mesh.vertex_count, 0..1);
                     }
                 }
             }

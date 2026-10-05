@@ -42,5 +42,9 @@ pub mod resource;
 pub mod resource_table;
 /// Pass scheduler and execution.
 pub mod scheduler;
+/// GPU skin data shared by opaque render consumers.
+pub mod skinned;
 /// CPU-side transparent material and draw-item contracts.
 pub mod transparent;
+/// Per-frame renderable visibility and screen-height LOD selection.
+pub mod visibility;

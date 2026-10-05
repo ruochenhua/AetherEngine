@@ -32,6 +32,7 @@ pub fn build_pipeline(
     height: u32,
     has_terrain: bool,
     transparent_enabled: bool,
+    local_lights_enabled: bool,
 ) -> Result<(Scheduler, IblResources), PipelineBuildError> {
     let ibl_resources = IblResources::generate(
         device,
@@ -51,6 +52,7 @@ pub fn build_pipeline(
         height,
         ibl_resources: Some(&ibl_resources),
         texture_cache,
+        local_lights_enabled,
     };
 
     let mut ssao = SSAOPass::init(&ctx);

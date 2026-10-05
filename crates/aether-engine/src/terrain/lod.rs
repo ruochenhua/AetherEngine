@@ -113,7 +113,7 @@ pub fn cull_and_select_lod(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::math::Mat4;
+    use crate::math::{look_at, perspective_projection};
 
     #[test]
     fn chunk_aabb_center_matches() {
@@ -148,8 +148,8 @@ mod tests {
         let mut chunks = build_chunk_grid(64.0, 32.0, 2);
         // Camera high above looking down with a narrow frustum; only a subset of
         // chunks near the view center should remain visible.
-        let view = Mat4::look_at_rh(Vec3::new(0.0, 100.0, 0.0), Vec3::ZERO, Vec3::NEG_Z);
-        let proj = Mat4::perspective_rh(30.0f32.to_radians(), 1.0, 0.1, 200.0);
+        let view = look_at(Vec3::new(0.0, 100.0, 0.0), Vec3::ZERO, Vec3::NEG_Z);
+        let proj = perspective_projection(30.0f32.to_radians(), 1.0, 0.1, 200.0);
         let frustum = Frustum::from_view_projection(proj * view);
         let visible = cull_and_select_lod(
             &mut chunks,

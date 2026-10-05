@@ -236,7 +236,7 @@ impl Pass for CompositePass {
         pass.set_bind_group(0, texture_bg, &[]);
         pass.set_bind_group(1, &self.uniform_bind_group, &[]);
         pass.set_vertex_buffer(0, self.quad_vertex_buffer.slice(..));
-        pass.draw(0..self.quad_vertex_count, 0..1);
+        crate::counted_draw!(pass, draw, 0..self.quad_vertex_count, 0..1);
     }
 }
 

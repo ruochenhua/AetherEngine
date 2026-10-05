@@ -5,6 +5,7 @@
 
 use wgpu::util::DeviceExt;
 
+mod shader_variant;
 mod shaders;
 
 #[cfg(test)]
@@ -20,14 +21,19 @@ pub(super) fn create_placeholder_ibl(device: &wgpu::Device) -> crate::renderer::
 pub(super) fn build_lighting_pipeline(
     device: &wgpu::Device,
     ibl: &crate::renderer::ibl::IblResources,
+    local_lights_enabled: bool,
 ) -> LightingPipelineObjects {
     // LightingPass outputs to SceneColor (Rgba16Float), not the swapchain
     let output_format = wgpu::TextureFormat::Rgba16Float;
-    let shader_source = shaders::LIGHTING_SHADER_SRC;
+    let local_lights_supported =
+        super::local_lights::gpu_path_enabled(local_lights_enabled, &device.limits());
+    let local_light_resources =
+        super::local_lights::GpuResources::new(device, local_lights_supported);
+    let shader_source = shader_variant::shader_source(local_lights_supported);
 
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("Lighting Shader"),
-        source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(shader_source)),
+        source: wgpu::ShaderSource::Wgsl(shader_source),
     });
 
     let texture_bind_group_layout =
@@ -196,37 +202,22 @@ pub(super) fn build_lighting_pipeline(
                 },
                 count: None,
             },
-            wgpu::BindGroupLayoutEntry {
-                binding: 5,
-                visibility: wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Storage { read_only: true },
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            },
-            wgpu::BindGroupLayoutEntry {
-                binding: 6,
-                visibility: wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            },
         ],
     });
 
+    let mut pipeline_bind_group_layouts = vec![
+        Some(&texture_bind_group_layout),
+        Some(&uniform_bind_group_layout),
+        Some(&shadow_bind_group_layout),
+        Some(&ibl_bind_group_layout),
+    ];
+    if let Some(layout) = local_light_resources.layout() {
+        pipeline_bind_group_layouts.push(Some(layout));
+    }
+
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("Lighting Pipeline Layout"),
-        bind_group_layouts: &[
-            Some(&texture_bind_group_layout),
-            Some(&uniform_bind_group_layout),
-            Some(&shadow_bind_group_layout),
-            Some(&ibl_bind_group_layout),
-        ],
+        bind_group_layouts: &pipeline_bind_group_layouts,
         immediate_size: 0,
     });
 
@@ -301,22 +292,6 @@ pub(super) fn build_lighting_pipeline(
         mapped_at_creation: false,
     });
 
-    let local_lights_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("Local Lights Storage Buffer"),
-        size: (std::mem::size_of::<crate::renderer::light::GpuLocalLight>()
-            * crate::renderer::light::MAX_LOCAL_LIGHTS) as wgpu::BufferAddress,
-        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-        mapped_at_creation: false,
-    });
-
-    let local_light_params_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("Local Light Params Buffer"),
-        size: std::mem::size_of::<crate::renderer::light::GpuLocalLightParams>()
-            as wgpu::BufferAddress,
-        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        mapped_at_creation: false,
-    });
-
     let uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("Lighting Uniform Bind Group"),
         layout: &uniform_bind_group_layout,
@@ -366,14 +341,6 @@ pub(super) fn build_lighting_pipeline(
                 binding: 4,
                 resource: wgpu::BindingResource::TextureView(&ibl.env_view),
             },
-            wgpu::BindGroupEntry {
-                binding: 5,
-                resource: local_lights_buffer.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 6,
-                resource: local_light_params_buffer.as_entire_binding(),
-            },
         ],
     });
 
@@ -381,8 +348,7 @@ pub(super) fn build_lighting_pipeline(
         pipelines,
         uniform_buffer,
         uniform_bind_group,
-        local_lights_buffer,
-        local_light_params_buffer,
+        local_lights: local_light_resources,
         quad_vertex_buffer,
         quad_vertex_count: 6,
         texture_bind_group_layout,
@@ -397,8 +363,7 @@ pub(super) struct LightingPipelineObjects {
     pub pipelines: [wgpu::RenderPipeline; 8],
     pub uniform_buffer: wgpu::Buffer,
     pub uniform_bind_group: wgpu::BindGroup,
-    pub local_lights_buffer: wgpu::Buffer,
-    pub local_light_params_buffer: wgpu::Buffer,
+    pub local_lights: super::local_lights::GpuResources,
     pub quad_vertex_buffer: wgpu::Buffer,
     pub quad_vertex_count: u32,
     pub texture_bind_group_layout: wgpu::BindGroupLayout,

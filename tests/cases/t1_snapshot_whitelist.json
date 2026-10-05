@@ -1,0 +1,29 @@
+[
+  {
+    "manifest_version": 2,
+    "id": "t1_snapshot_whitelist",
+    "scene": "scenes/18_file_mesh.ron",
+    "launcher_args": [],
+    "render": { "width": 1, "height": 1, "frames": 1, "no_gui_overlay": true, "png": "rgba8" },
+    "time": { "mode": "seek", "simulation_time": 0.0, "fixed_dt": 0.016666667, "max_substeps": 4, "max_seek_steps": 4096 },
+    "camera": { "source": "scene", "override": null },
+    "reference": { "path": "tests/reference/t1_snapshot_whitelist.png", "sha256": null, "source_commit": null, "os": null, "driver": null, "adapter": null, "runner_version": null, "width": null, "height": null, "format": null },
+    "compare": { "algorithm": "rgba8_normalized", "exact_hash": false, "allow_degraded_compare": false, "ssim_min": 0.99, "mae_max": 0.01, "diff_percent_max": 0.01 },
+    "criteria": [
+      "the schema v2 snapshot round-trips only the closed editor component whitelist",
+      "runtime Entity identity is absent and invalid duplicate component writes leave state unchanged",
+      "delete followed by undo restores the editor-visible state hash"
+    ],
+    "benchmark": null,
+    "variants": [
+      { "id": "default", "launcher_args_append": [], "time_override": null, "camera_override": null, "benchmark_override": null,
+        "expected_result": { "kind": "Render", "diagnostics": [], "fallbacks": [], "metrics": [{ "name": "schema_version", "operator": "Eq", "value": 2 }, { "name": "records", "operator": "Eq", "value": 4 }], "hashes": [], "probes": [
+          { "name": "closed_whitelist_round_trip", "value": { "kind": "Bool", "value": true } },
+          { "name": "runtime_entity_bits_absent", "value": { "kind": "Bool", "value": true } },
+          { "name": "duplicate_component_unchanged", "value": { "kind": "Bool", "value": true } },
+          { "name": "delete_undo_restores_state", "value": { "kind": "Bool", "value": true } }
+        ], "graph": null }
+      }
+    ]
+  }
+]

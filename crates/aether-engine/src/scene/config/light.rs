@@ -63,6 +63,21 @@ impl Default for LightConfig {
 }
 
 impl LightConfig {
+    /// Reject scenes that configure more than one directional sun.
+    pub fn validate_directional_count(lights: &[Self]) -> anyhow::Result<()> {
+        let mut directional_indices = lights.iter().enumerate().filter_map(|(index, light)| {
+            (light.light_type == LightType::Directional).then_some(index)
+        });
+        if let (Some(first), Some(second)) =
+            (directional_indices.next(), directional_indices.next())
+        {
+            anyhow::bail!(
+                "MultipleSuns: lights[{first}] and lights[{second}] are directional; a scene supports at most one sun"
+            );
+        }
+        Ok(())
+    }
+
     /// Validate values before spawning them into a render world.
     pub fn validate(&self, index: usize) -> anyhow::Result<()> {
         let path = format!("lights[{index}]");

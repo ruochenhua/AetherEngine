@@ -9,7 +9,7 @@
 use crate::asset::mesh::GpuMesh;
 use crate::asset::texture::GpuTexture;
 use crate::renderer::frame::RenderFrame;
-use crate::renderer::light::sun_direction_from_lighting;
+use crate::renderer::light::sun_direction_from_directional_light;
 use crate::renderer::pass::{InitContext, Pass, PassSignature, ResHandle};
 use crate::renderer::resource::{
     GDepth, ReflectionTexture, SceneColor, WaterColor, WaterReflectionColor,
@@ -164,12 +164,12 @@ impl Pass for WaterPass {
                 _pad2: 0.0,
                 _pad3: 0.0,
                 sun_direction: {
-                    let sun = sun_direction_from_lighting(frame.lighting);
+                    let sun = sun_direction_from_directional_light(&frame.optional.lighting.sun);
                     glam::Vec4::new(sun.x, sun.y, sun.z, 0.0)
                 },
                 sun_color: {
-                    let c = frame.lighting.light.color;
-                    let i = frame.lighting.light.intensity;
+                    let c = frame.optional.lighting.sun.color;
+                    let i = frame.optional.lighting.sun.intensity;
                     glam::Vec4::new(c[0] * i, c[1] * i, c[2] * i, 0.0)
                 },
                 depth_scale: cfg.depth_scale,
@@ -256,7 +256,7 @@ mod tests {
     use crate::renderer::camera::FlyCamera;
     use crate::renderer::extract::extract_optional_pass_data;
     use crate::renderer::frame::FrameConfig;
-    use crate::renderer::light::{sun_direction_from_lighting, LightingUniforms};
+    use crate::renderer::light::{sun_direction_from_directional_light, LightingUniforms};
     use crate::renderer::resource::ResourceTag;
     use crate::scene::WaterConfig;
     use glam::Vec3;
@@ -283,6 +283,7 @@ mod tests {
             height: 64,
             ibl_resources: None,
             texture_cache,
+            local_lights_enabled: true,
         }
     }
 
@@ -373,9 +374,15 @@ mod tests {
             dudv_texture: None,
             normal_texture: None,
         },));
-        let optional = extract_optional_pass_data(&world);
+        let mut optional = extract_optional_pass_data(&world);
+        optional.lighting.sun.direction = [0.0, -1.0, 0.0];
+        optional.lighting.sun.color = [0.25, 0.5, 0.75];
+        optional.lighting.sun.intensity = 2.0;
         let camera = FlyCamera::default();
-        let lighting = LightingUniforms::default();
+        let mut lighting = LightingUniforms::default();
+        lighting.light.direction = [1.0, 0.0, 0.0];
+        lighting.light.color = [1.0; 3];
+        lighting.light.intensity = 1.0;
         let assets = crate::asset::AssetManager::new();
         let frame = RenderFrame {
             batches: std::sync::Arc::from([]),
@@ -415,7 +422,7 @@ mod tests {
 
         let data = slice.get_mapped_range();
         let uniforms: &[WaterUniform] = bytemuck::cast_slice(&data);
-        let expected_sun = sun_direction_from_lighting(&lighting);
+        let expected_sun = sun_direction_from_directional_light(&optional.lighting.sun);
         let actual_sun = Vec3::new(
             uniforms[0].sun_direction.x,
             uniforms[0].sun_direction.y,
@@ -425,5 +432,11 @@ mod tests {
             actual_sun.abs_diff_eq(expected_sun, 1e-4),
             "expected sun_direction {expected_sun:?}, got {actual_sun:?}"
         );
+        assert!(Vec3::new(
+            uniforms[0].sun_color.x,
+            uniforms[0].sun_color.y,
+            uniforms[0].sun_color.z,
+        )
+        .abs_diff_eq(Vec3::new(0.5, 1.0, 1.5), 1e-4));
     }
 }

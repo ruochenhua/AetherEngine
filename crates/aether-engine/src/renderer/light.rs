@@ -97,22 +97,26 @@ impl Default for LightingUniforms {
     }
 }
 
-/// Compute the world-space direction *toward* the sun from the lighting uniforms.
+/// Compute the world-space direction *toward* the sun from its directional-light value.
 ///
 /// The directional light's `direction` points **from** the light toward the scene,
-/// so the direction *toward* the sun is its negation. This value is shared by
-/// Atmosphere, VolumetricCloud, GodRay, and Water passes so that the visual sun
-/// stays in a single coherent direction.
+/// so the direction *toward* the sun is its negation. Atmosphere, Cloud, GodRay,
+/// and Water consume this value from `LightingFrame.sun`.
 ///
 /// Falls back to a default low-sun direction if the configured light direction
 /// is a zero vector.
-pub fn sun_direction_from_lighting(lighting: &LightingUniforms) -> glam::Vec3 {
-    let d = glam::Vec3::from_array(lighting.light.direction);
+pub fn sun_direction_from_directional_light(light: &DirectionalLight) -> glam::Vec3 {
+    let d = glam::Vec3::from_array(light.direction);
     if d.length_squared() > 0.0 {
         -d.normalize()
     } else {
         glam::Vec3::new(0.0, 0.2, -1.0).normalize()
     }
+}
+
+/// Compatibility helper for callers that still hold legacy lighting uniforms.
+pub fn sun_direction_from_lighting(lighting: &LightingUniforms) -> glam::Vec3 {
+    sun_direction_from_directional_light(&lighting.light)
 }
 
 // ---------------------------------------------------------------------------
@@ -160,7 +164,7 @@ pub struct LocalLight {
 ///
 /// The layout is intentionally fixed at 64 bytes: four 16-byte slots keep
 /// the CPU representation and WGSL storage layout identical.
-#[repr(C)]
+#[repr(C, align(16))]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct GpuLocalLight {
     /// Position and range.
@@ -175,15 +179,14 @@ pub struct GpuLocalLight {
 
 /// Per-frame count for the local-light storage buffer.
 ///
-/// WGSL places the trailing vec3 at the next 16-byte boundary, so the
-/// uniform must occupy 32 bytes even though only `count` is read.
+/// Four scalar words keep the uniform layout at the frozen 16-byte ABI.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct GpuLocalLightParams {
     /// Number of valid entries in the storage buffer.
     pub count: u32,
     /// Uniform-buffer padding.
-    pub _pad: [u32; 7],
+    pub _pad: [u32; 3],
 }
 
 impl GpuLocalLight {
@@ -233,8 +236,9 @@ mod t2_abi_tests {
     #[test]
     fn gpu_local_light_has_stable_64_byte_layout() {
         assert_eq!(std::mem::size_of::<GpuLocalLight>(), 64);
-        assert_eq!(std::mem::align_of::<GpuLocalLight>(), 4);
-        assert_eq!(std::mem::size_of::<GpuLocalLightParams>(), 32);
+        assert_eq!(std::mem::align_of::<GpuLocalLight>(), 16);
+        assert_eq!(std::mem::size_of::<GpuLocalLightParams>(), 16);
+        assert_eq!(std::mem::align_of::<GpuLocalLightParams>(), 4);
     }
 }
 

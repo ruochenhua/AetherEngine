@@ -20,7 +20,7 @@ FAKE = r'''#!/usr/bin/env python3
 import json, os, signal, sys, time
 from pathlib import Path
 signal.alarm(10)
-mode = sys.argv[2]
+mode = (Path(sys.argv[2]).stem if len(sys.argv) > 2 and sys.argv[1] == '--scene' else sys.argv[2])
 root = Path(os.environ['FAKE_ROOT'])
 (root / (mode + '.started')).write_text(str(time.monotonic()))
 (root / (mode + '.argv')).write_text(json.dumps(sys.argv))
@@ -350,143 +350,50 @@ time.sleep(.1)
         with self.assertRaises(ProcessLookupError):
             os.kill(int((self.root / 'timeout.descendant').read_text()), 0)
 
-    def test_shell_comparison_and_reference_behavior(self):
+    def test_shell_v1_matrix_rejected_before_launcher_start(self):
         project = self.root / 'project'
         (project / 'scripts').mkdir(parents=True)
-        for filename in ('verify-regression.sh', 'runner_process.py', 'process_lease.py'):
-            shutil.copy(ROOT / 'scripts' / filename, project / 'scripts' / filename)
-        (project / 'tests/reference').mkdir(parents=True)
-        matrix = {'defaults': {'threshold': .99}, 'scenes': [
-            {'name': 'sample', 'scene': 'fake scene.ron', 'debug_mode': 6, 'ssao': True, 'ssr': True}]}
-        (project / 'tests/visual-matrix.json').write_text(json.dumps(matrix))
-        launcher = self.root / 'capture'
-        launcher.write_text('#!' + sys.executable + '\n' + '''
-import os, sys
-from pathlib import Path
-os.write(int(os.environ['AETHER_READY_FD']), b'R')
-if os.environ.get('FAKE_FAIL'): sys.exit(23)
-if not os.environ.get('FAKE_NO_IMG'):
-    Path(sys.argv[sys.argv.index('--screenshot')+1]).write_bytes(b'new')
-''')
-        launcher.chmod(0o755)
-        compare = self.root / 'compare.py'
-        compare.write_text('''import os, sys
-from pathlib import Path
-for flag in ('--diff', '--side-by-side'):
-    Path(sys.argv[sys.argv.index(flag)+1]).write_bytes(b'diff')
-print(os.environ.get('FAKE_METRICS', '{"ssim":1,"mae":0,"diff_pct":0}'))
-''')
-        env = dict(self.env, AETHER_LAUNCHER_BIN=str(launcher), AETHER_COMPARE_SCRIPT=str(compare),
-                   AETHER_REGRESSION_SETTLE_SECONDS='0', AETHER_HANDSHAKE_TIMEOUT='8')
-        reference = project / 'tests/reference/sample.png'
-
-        def run(name, status, code=0, extra=(), **variables):
-            result = subprocess.run([str(project / 'scripts/verify-regression.sh'), '--scene', 'sample',
-                                     '--report', name, *extra], env=dict(env, **variables),
-                                    capture_output=True, text=True, timeout=20)
-            self.assertEqual(result.returncode, code, result.stdout + result.stderr)
-            html = (project / 'tests/reports' / (name + '.html')).read_text()
-            self.assertIn('<!doctype html>', html)
-            self.assertIn(status, html)
-            return html
-
-        run('new', 'NEW')
-        self.assertFalse(reference.exists())
-        run('create', 'REF_CREATED', extra=('--update-references', '--reason', 'create baseline'))
-        self.assertEqual(reference.read_bytes(), b'new')
-        reference.write_bytes(b'old')
-        run('crash', 'CRASH', 1, ('--update-references', '--reason', 'refresh after approved change'), FAKE_FAIL='1')
-        self.assertEqual(reference.read_bytes(), b'old')
-        self.assertTrue(list((project / 'tests/reports').glob('*/sample/previous-output.png')))
-        run('missing', 'NO_IMG', 1, FAKE_NO_IMG='1')
-        run('update', 'REF_UPDATED', extra=('--update-references', '--reason', 'approved baseline refresh'))
-        update_html = (project / 'tests/reports' / 'update.html').read_text()
-        self.assertIn('approved baseline refresh', update_html)
-        html = run('pass', 'PASS')
-        self.assertIn('../output/sample.diff.png', html)
-        self.assertIn('../output/sample.side.png', html)
-        run('regression', 'REGRESSION', 1, FAKE_METRICS='{"ssim":0.9,"mae":2,"diff_pct":3}')
-        run('fallback', 'PASS', FAKE_METRICS='{"ssim":null,"diff_pct":1.5}')
-        missing_metrics = run('missing-metrics', 'PASS', FAKE_METRICS='{"ssim":null,"diff_pct":1.5}')
-        self.assertIn('<td>N/A</td><td>N/A</td><td>1.50%</td>', missing_metrics)
-        run('fallback-fail', 'REGRESSION', 1, FAKE_METRICS='{"ssim":null,"diff_pct":2.5}')
-        run('bad-json', 'COMPARE_ERROR', 1, FAKE_METRICS='invalid json')
-
-    def test_reference_update_requires_reason(self):
-        project = self.root / 'project'
-        (project / 'scripts').mkdir(parents=True)
-        (project / 'tests/reference').mkdir(parents=True)
-        for filename in ('verify-regression.sh', 'runner_process.py', 'process_lease.py'):
-            shutil.copy(ROOT / 'scripts' / filename, project / 'scripts' / filename)
-        (project / 'tests/visual-matrix.json').write_text(json.dumps({
-            'scenes': [{'name': 'sample', 'scene': 'fake scene.ron'}]}))
-        launcher = self.root / 'capture'
-        launcher.write_text('#!' + sys.executable + '\n' + '''
-import os, sys
-from pathlib import Path
-os.write(int(os.environ['AETHER_READY_FD']), b'R')
-Path(sys.argv[sys.argv.index('--screenshot') + 1]).write_bytes(b'new')
-''')
-        launcher.chmod(0o755)
-        result = subprocess.run(
-            [str(project / 'scripts/verify-regression.sh'), '--scene', 'sample',
-             '--report', 'missing-reason', '--update-references'],
-            env=dict(self.env, AETHER_LAUNCHER_BIN=str(launcher)),
-            capture_output=True, text=True, timeout=10)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertFalse((project / 'tests/reference/sample.png').exists())
+        (project / 'tests').mkdir()
+        for filename in ('verify-regression.sh','run_visual_regression.py','runner_process.py','process_lease.py','visual_manifest.py','visual_compare.py','visual_report.py'):
+            shutil.copy(ROOT/'scripts'/filename,project/'scripts'/filename)
+        (project/'tests/visual-matrix.json').write_text(json.dumps({'scenes':[{'name':'sample','scene':'scenes/01_deferred.ron'}]}))
+        result=subprocess.run([str(project/'scripts/verify-regression.sh')],env=dict(self.env,AETHER_LAUNCHER_BIN=str(self.fake)),capture_output=True,text=True,timeout=10)
+        self.assertNotEqual(result.returncode,0);self.assertIn('VisualCase v2 required',result.stderr)
+        self.assertFalse((self.root/'sample.started').exists())
 
     def test_matrix_simulation_time_is_forwarded_for_repeatable_capture(self):
         matrix = self.root / 'matrix.json'
-        matrix.write_text(json.dumps({
-            'defaults': {'simulation_time': 0.5},
-            'scenes': [{'name': 'sample', 'scene': 'repeatable.ron'}]}))
+        import migrate_visual_cases
+        cases, _ = migrate_visual_cases.convert({'defaults': {'simulation_time': 0.5},
+            'scenes': [{'name': 'sample', 'scene': 'scenes/01_deferred.ron'}]}, ROOT)
+        matrix.write_text(json.dumps(cases))
         report_dir = self.root / 'reports'
         result = subprocess.run(
             [sys.executable, str(RUNNER), '--launcher', str(self.fake), '--matrix', str(matrix),
              '--report-dir', str(report_dir), '--handshake-timeout', '8', '--case-timeout', '2'],
             env=self.env, capture_output=True, text=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr)
-        argv = json.loads((self.root / 'repeatable.ron.argv').read_text())
+        argv = json.loads((self.root / '01_deferred.argv').read_text())
         self.assertIn('--time-mode', argv)
         self.assertIn('seek', argv)
         self.assertIn('--simulation-time', argv)
         self.assertEqual(argv[argv.index('--simulation-time') + 1], '0.5')
 
-    def test_shell_cancellation_waits_for_supervisor(self):
-        project = self.root / 'project'
-        (project / 'scripts').mkdir(parents=True)
-        (project / 'tests').mkdir()
-        for filename in ('verify-regression.sh', 'runner_process.py', 'process_lease.py'):
-            shutil.copy(ROOT / 'scripts' / filename, project / 'scripts' / filename)
-        (project / 'tests/visual-matrix.json').write_text(json.dumps({'scenes': [
-            {'name': 'hang', 'scene': 'hang'}, {'name': 'ok', 'scene': 'ok'}]}))
-        env = dict(self.env, AETHER_LAUNCHER_BIN=str(self.fake), AETHER_HANDSHAKE_TIMEOUT='8',
-                   AETHER_TERMINATION_GRACE='.1', AETHER_REGRESSION_SETTLE_SECONDS='0')
-        proc = subprocess.Popen([str(project / 'scripts/verify-regression.sh')], env=env,
-                                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-        try:
-            deadline = time.monotonic() + 6
-            marker = self.root / 'hang.descendant'
-            while not marker.exists() and time.monotonic() < deadline:
-                time.sleep(.01)
-            self.assertTrue(marker.exists())
-            proc.terminate()
-            _, stderr = proc.communicate(timeout=8)
-            self.assertEqual(proc.returncode, 143, stderr)
-            records = list((project / 'tests/reports').glob('*/hang/launcher.log'))
-            self.assertEqual(len(records), 1)
-            record = json.loads(records[0].read_text())
-            self.assert_gone(record, 'hang')
-            self.assertFalse((self.root / 'ok.started').exists())
-            with self.assertRaises(ProcessLookupError):
-                os.kill(record['metadata']['runner_pid'], 0)
-        finally:
-            if proc.poll() is None:
-                proc.terminate()
-                proc.wait(timeout=10)
-            proc.stderr.close()
-
+    def test_matrix_launcher_args_are_forwarded_for_feature_fixtures(self):
+        matrix = self.root / 'matrix.json'
+        import migrate_visual_cases
+        cases, _ = migrate_visual_cases.convert({'scenes': [{'name': 'skinned',
+            'scene': 'scenes/01_deferred.ron','launcher_args': ['--animation','on']}]}, ROOT)
+        matrix.write_text(json.dumps(cases))
+        report_dir = self.root / 'reports'
+        result = subprocess.run(
+            [sys.executable, str(RUNNER), '--launcher', str(self.fake), '--matrix', str(matrix),
+             '--report-dir', str(report_dir), '--handshake-timeout', '8', '--case-timeout', '2'],
+            env=self.env, capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        argv = json.loads((self.root / '01_deferred.argv').read_text())
+        self.assertIn('--animation', argv)
+        self.assertEqual(argv[argv.index('--animation') + 1], 'on')
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

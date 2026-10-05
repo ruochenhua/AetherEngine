@@ -54,7 +54,9 @@ struct GpuLocalLight {
 
 struct LocalLightParams {
     count: u32,
-    _pad: vec3<u32>,
+    _pad0: u32,
+    _pad1: u32,
+    _pad2: u32,
 };
 
 @group(0) @binding(0) var gbuffer_position: texture_2d<f32>;
@@ -78,8 +80,10 @@ struct LocalLightParams {
 @group(0) @binding(5) var ao_texture: texture_2d<f32>;
 @group(0) @binding(6) var gbuffer_emissive: texture_2d<u32>;
 
-@group(3) @binding(5) var<storage, read> local_lights: array<GpuLocalLight>;
-@group(3) @binding(6) var<uniform> local_light_params: LocalLightParams;
+// LOCAL_LIGHT_BINDINGS_BEGIN
+@group(4) @binding(0) var<storage, read> local_lights: array<GpuLocalLight>;
+@group(4) @binding(1) var<uniform> local_light_params: LocalLightParams;
+// LOCAL_LIGHT_BINDINGS_END
 
 // ── Cook-Torrance BRDF ──────────────────────────────────────────────
 
@@ -268,6 +272,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
     let direct_light = lit_color * shadow_factor;
 
+    // LOCAL_LIGHT_EVALUATION_BEGIN
     // Local point/spot lights are evaluated without shadowing in T2. Their
     // deterministic order and count are supplied by the extract phase.
     var local_direct = vec3<f32>(0.0);
@@ -294,6 +299,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         }
     }
     let direct_with_locals = direct_light + local_direct;
+    // LOCAL_LIGHT_EVALUATION_END
 
     // IBL (Image-Based Lighting) — uses same F (Fresnel) and kD as direct light
     let R = reflect(-V, N);

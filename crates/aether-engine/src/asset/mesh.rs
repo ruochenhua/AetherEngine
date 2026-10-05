@@ -1,9 +1,11 @@
 mod asset;
 mod skinned;
+mod skinned_gpu;
 use crate::math::Aabb;
 use bytemuck::{Pod, Zeroable};
 use glam::Vec3;
 pub use skinned::SkinnedVertex;
+pub use skinned_gpu::GpuSkinnedMesh;
 use std::sync::Arc;
 
 /// CPU-side PBR material description used while loading models.

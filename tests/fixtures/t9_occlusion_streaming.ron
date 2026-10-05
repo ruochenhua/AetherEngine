@@ -1,0 +1,19 @@
+(
+    case_id: "t9_occlusion_streaming_research",
+    seed: 9004,
+    tile_width: 48,
+    tile_height: 27,
+    candidate_count: 10000,
+    warmup: 30,
+    samples: 120,
+    occluders: [
+        (x_min: 3, y_min: 2, x_max: 14, y_max: 8, depth_milli: 400),
+        (x_min: 17, y_min: 1, x_max: 28, y_max: 7, depth_milli: 360),
+        (x_min: 32, y_min: 4, x_max: 44, y_max: 10, depth_milli: 430),
+        (x_min: 6, y_min: 12, x_max: 18, y_max: 19, depth_milli: 380),
+        (x_min: 22, y_min: 10, x_max: 34, y_max: 17, depth_milli: 410),
+        (x_min: 38, y_min: 14, x_max: 46, y_max: 22, depth_milli: 350),
+        (x_min: 2, y_min: 21, x_max: 12, y_max: 26, depth_milli: 390),
+        (x_min: 18, y_min: 20, x_max: 30, y_max: 26, depth_milli: 420),
+    ],
+)

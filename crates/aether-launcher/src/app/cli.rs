@@ -3,6 +3,7 @@
 use aether_engine::time::TimeControl;
 use std::path::PathBuf;
 
+mod benchmark;
 mod parse;
 #[cfg(test)]
 mod tests;
@@ -18,9 +19,12 @@ pub(crate) struct CliArgs {
     pub(crate) freeze_time: bool,
     pub(crate) ssao_enabled: bool,
     pub(crate) no_ibl: bool,
+    /// Local-light pipeline feature; on by default, `--local-lights off` is the compatibility kill switch.
+    pub(crate) local_lights_enabled: bool,
     pub(crate) ssr_enabled: bool,
     pub(crate) transparent_enabled: bool,
     pub(crate) particles_enabled: bool,
+    pub(crate) animation_enabled: bool,
     pub(crate) debug_helpers_enabled: bool,
     pub(crate) physics_debug_enabled: bool,
     /// Physical pixel width for the window / screenshots.
@@ -28,6 +32,7 @@ pub(crate) struct CliArgs {
     /// Physical pixel height for the window / screenshots.
     pub(crate) height: Option<u32>,
     pub(crate) time: TimeControl,
+    pub(crate) benchmark: Option<benchmark::BenchmarkCapture>,
 }
 
 pub(crate) fn parse_env_or_exit() -> CliArgs {

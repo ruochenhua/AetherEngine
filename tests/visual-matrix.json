@@ -1,217 +1,2239 @@
-{
-  "defaults": {
-    "no_gui_overlay": true,
-    "freeze_time": true
+[
+  {
+    "manifest_version": 2,
+    "id": "01_deferred",
+    "scene": "scenes/01_deferred.ron",
+    "launcher_args": [],
+    "render": {
+      "width": 2560,
+      "height": 1440,
+      "frames": 60,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/01_deferred.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "立方体和反射球完整出现在铺砖地面上。",
+      "球体可见环境反射，两个物体都在地面投下清晰阴影。"
+    ],
+    "benchmark": null,
+    "variants": null
   },
-  "scenes": [
-    {
-      "name": "01_deferred",
-      "scene": "scenes/01_deferred.ron",
+  {
+    "manifest_version": 2,
+    "id": "02_multi_object",
+    "scene": "scenes/02_multi_object.ron",
+    "launcher_args": [],
+    "render": {
+      "width": 2560,
+      "height": 1440,
       "frames": 60,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/02_multi_object.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "配置的几何体和材质颜色都能分辨。",
+      "物体彼此未被遮没，地面接触关系和投影阴影清楚可读。"
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "03_shadow_demo",
+    "scene": "scenes/03_shadow_demo.ron",
+    "launcher_args": [],
+    "render": {
       "width": 2560,
       "height": 1440,
-      "threshold": 0.99
-    },
-    {
-      "name": "02_multi_object",
-      "scene": "scenes/02_multi_object.ron",
-      "frames": 60,
-      "width": 2560,
-      "height": 1440,
-      "threshold": 0.99
-    },
-    {
-      "name": "03_shadow_demo",
-      "scene": "scenes/03_shadow_demo.ron",
       "frames": 120,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/03_shadow_demo.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "场景几何体和承接阴影的地面都清楚可见。",
+      "至少一个物体在地面投下轮廓连贯的方向光阴影。"
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "03_shadow_debug",
+    "scene": "scenes/03_shadow_demo.ron",
+    "launcher_args": [
+      "--debug-mode",
+      "6"
+    ],
+    "render": {
       "width": 2560,
       "height": 1440,
-      "threshold": 0.99
-    },
-    {
-      "name": "03_shadow_debug",
-      "scene": "scenes/03_shadow_demo.ron",
       "frames": 120,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/03_shadow_debug.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "Debug mode 6 显示有明暗层次的阴影深度图。",
+      "深度图不能退化成整屏单一灰度或空白。"
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "04_ibl_debug",
+    "scene": "scenes/04_ibl_debug.ron",
+    "launcher_args": [],
+    "render": {
       "width": 2560,
       "height": 1440,
-      "debug_mode": 6,
-      "threshold": 0.99
-    },
-    {
-      "name": "04_ibl_debug",
-      "scene": "scenes/04_ibl_debug.ron",
       "frames": 120,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/04_ibl_debug.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "反射物体能呈现环境光照/环境贴图响应。",
+      "不同粗糙度材质的反射清晰度有可见差异。"
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "05_ssao_debug_mode14",
+    "scene": "scenes/05_ssao_debug.ron",
+    "launcher_args": [
+      "--debug-mode",
+      "14",
+      "--ssao"
+    ],
+    "render": {
       "width": 2560,
       "height": 1440,
-      "threshold": 0.99
-    },
-    {
-      "name": "05_ssao_debug_mode14",
-      "scene": "scenes/05_ssao_debug.ron",
       "frames": 1,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/05_ssao_debug_mode14.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "SSAO debug mode 显示灰度遮蔽结果。",
+      "接触/凹陷区域比开阔区域更暗，同时物体轮廓仍清楚。"
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "06_ssao_extreme_mode14",
+    "scene": "scenes/06_ssao_extreme.ron",
+    "launcher_args": [
+      "--debug-mode",
+      "14",
+      "--ssao"
+    ],
+    "render": {
       "width": 2560,
       "height": 1440,
-      "debug_mode": 14,
-      "ssao": true,
-      "threshold": 0.99
-    },
-    {
-      "name": "06_ssao_extreme_mode14",
-      "scene": "scenes/06_ssao_extreme.ron",
       "frames": 1,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/06_ssao_extreme_mode14.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "Extreme SSAO debug view 保留清楚的几何体轮廓和遮蔽层次。",
+      "接触/凹陷区域比开阔区域更暗，不能整幅发白或变成均匀灰面。"
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "07_ssr_debug",
+    "scene": "scenes/07_ssr_debug.ron",
+    "launcher_args": [
+      "--ssr"
+    ],
+    "render": {
       "width": 2560,
       "height": 1440,
-      "debug_mode": 14,
-      "ssao": true,
-      "threshold": 0.99
-    },
-    {
-      "name": "07_ssr_debug",
-      "scene": "scenes/07_ssr_debug.ron",
       "frames": 120,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/07_ssr_debug.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "反射物体及周边场景仍然可见。",
+      "反射响应出现在反射材质表面，不能用空白 debug 输出覆盖场景。"
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "08_terrain",
+    "scene": "scenes/08_terrain.ron",
+    "launcher_args": [],
+    "render": {
       "width": 2560,
       "height": 1440,
-      "ssr": true,
-      "threshold": 0.99
-    },
-    {
-      "name": "08_terrain",
-      "scene": "scenes/08_terrain.ron",
       "frames": 120,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/08_terrain.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "程序化地形形成连续起伏，预期地面区域没有几何缺洞。",
+      "地形材质层有可辨色调，不能整片被冲成单一白色。"
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "09_terrain",
+    "scene": "scenes/09_terrain.ron",
+    "launcher_args": [],
+    "render": {
       "width": 2560,
       "height": 1440,
-      "threshold": 0.99
-    },
-    {
-      "name": "09_terrain",
-      "scene": "scenes/09_terrain.ron",
       "frames": 120,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/09_terrain.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "LOD 地表由近到远连续，不出现明显裂缝或缺块。",
+      "相机视野内能看出地形起伏和远近细节变化。"
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "10_csm",
+    "scene": "scenes/10_csm.ron",
+    "launcher_args": [],
+    "render": {
       "width": 2560,
       "height": 1440,
-      "threshold": 0.99
-    },
-    {
-      "name": "10_csm",
-      "scene": "scenes/10_csm.ron",
       "frames": 120,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/10_csm.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "相机内的物体与受光地面保持可见。",
+      "近远级联阴影连续，不出现漏阴影条带或突兀空档。"
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "11_atmosphere",
+    "scene": "scenes/11_atmosphere.ron",
+    "launcher_args": [],
+    "render": {
       "width": 2560,
       "height": 1440,
-      "threshold": 0.99
-    },
-    {
-      "name": "11_atmosphere",
-      "scene": "scenes/11_atmosphere.ron",
       "frames": 120,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/11_atmosphere.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "天空经过地平线时有平滑的大气颜色渐变。",
+      "太阳散射亮区与远方地面可见，没有明显色带或整片空白天空。"
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "12_water",
+    "scene": "scenes/12_water.ron",
+    "launcher_args": [],
+    "render": {
       "width": 2560,
       "height": 1440,
-      "threshold": 0.99
-    },
-    {
-      "name": "12_water",
-      "scene": "scenes/12_water.ron",
       "frames": 120,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/12_water.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "水面连续可见，波浪造成的形状或光照变化可辨。",
+      "水面高光/明暗随波形变化，不应只是单色平面。"
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "13_clouds",
+    "scene": "scenes/13_clouds.ron",
+    "launcher_args": [],
+    "render": {
       "width": 2560,
       "height": 1440,
-      "threshold": 0.99
-    },
-    {
-      "name": "13_clouds",
-      "scene": "scenes/13_clouds.ron",
       "frames": 120,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/13_clouds.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "天空中能看到边缘柔和、具有层次的体积云团。",
+      "云团与地平线有区分，不应退化为整片不透明或空白区域。"
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "14_god_rays",
+    "scene": "scenes/14_god_rays.ron",
+    "launcher_args": [],
+    "render": {
       "width": 2560,
       "height": 1440,
-      "threshold": 0.99
-    },
-    {
-      "name": "14_god_rays",
-      "scene": "scenes/14_god_rays.ron",
       "frames": 1,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/14_god_rays.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "光源方向出现可辨认的光束。",
+      "遮挡物让光束明暗结构可读，画面没有被整屏平涂覆盖。"
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "16_terrain_perlin",
+    "scene": "scenes/16_terrain_perlin.ron",
+    "launcher_args": [],
+    "render": {
       "width": 2560,
       "height": 1440,
-      "threshold": 0.99
-    },
-    {
-      "name": "16_terrain_perlin",
-      "scene": "scenes/16_terrain_perlin.ron",
       "frames": 120,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/16_terrain_perlin.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "Perlin 地形表现出连续的多尺度起伏。",
+      "地形表面有可辨明暗/材质层次，不应空白或完全平坦。"
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "17_textured_terrain",
+    "scene": "scenes/17_textured_terrain.ron",
+    "launcher_args": [],
+    "render": {
       "width": 2560,
       "height": 1440,
-      "threshold": 0.99
-    },
-    {
-      "name": "17_textured_terrain",
-      "scene": "scenes/17_textured_terrain.ron",
       "frames": 120,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/17_textured_terrain.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "地形纹理/材质层覆盖地表并跟随起伏。",
+      "没有缺纹理回退、空白地表或大块缺洞。"
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "18_textured_water",
+    "scene": "scenes/18_textured_water.ron",
+    "launcher_args": [],
+    "render": {
       "width": 2560,
       "height": 1440,
-      "threshold": 0.99
-    },
-    {
-      "name": "18_textured_water",
-      "scene": "scenes/18_textured_water.ron",
       "frames": 120,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/18_textured_water.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "带纹理水面连续可见，波浪或反射变化可辨。",
+      "水面与天空、周边物体能清楚区分。"
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "19_water_reflection_test",
+    "scene": "scenes/19_water_reflection_test.ron",
+    "launcher_args": [],
+    "render": {
       "width": 2560,
       "height": 1440,
-      "threshold": 0.99
-    },
-    {
-      "name": "19_water_reflection_test",
-      "scene": "scenes/19_water_reflection_test.ron",
       "frames": 120,
-      "width": 2560,
-      "height": 1440,
-      "threshold": 0.99
+      "no_gui_overlay": true,
+      "png": "rgba8"
     },
-    {
-      "name": "20_terrain_water_clouds",
-      "scene": "scenes/20_terrain_water_clouds.ron",
-      "frames": 120,
-      "width": 2560,
-      "height": 1440,
-      "threshold": 0.99
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
     },
-    {
-      "name": "20_model_loading_nanosuit",
-      "scene": "scenes/20_model_loading_nanosuit.ron",
-      "frames": 120,
-      "width": 2560,
-      "height": 1440,
-      "threshold": 0.99
+    "camera": {
+      "source": "scene",
+      "override": null
     },
-    {
-      "name": "21_ssr_debug_clear_off",
-      "scene": "scenes/21_ssr_debug_clear.ron",
+    "reference": {
+      "path": "tests/reference/19_water_reflection_test.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "水面上方物体及其水中倒影都能看到。",
+      "倒影位置与水线/物体对应，不出现无关的空白或错位反射。"
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "t7_skinned_shadow_reflection",
+    "scene": "scenes/t7_skinned_shadow_reflection.ron",
+    "launcher_args": [
+      "--animation",
+      "on",
+      "--no-debug-helpers"
+    ],
+    "render": {
+      "width": 960,
+      "height": 540,
       "frames": 1,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0.0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/t7_skinned_shadow_reflection.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "蒙皮角色在指定 seek 姿态下完整可见。",
+      "阴影与水面倒影跟随同一动画姿态，不丢失角色网格。"
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "20_terrain_water_clouds",
+    "scene": "scenes/20_terrain_water_clouds.ron",
+    "launcher_args": [],
+    "render": {
+      "width": 2560,
+      "height": 1440,
+      "frames": 120,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/20_terrain_water_clouds.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "地形、水面和云层作为不同场景层同时可见。",
+      "组合场景没有缺失 pass、地表洞或整片空白区域。"
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "20_model_loading_nanosuit",
+    "scene": "scenes/20_model_loading_nanosuit.ron",
+    "launcher_args": [],
+    "render": {
+      "width": 2560,
+      "height": 1440,
+      "frames": 120,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/20_model_loading_nanosuit.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "Nanosuit 模型网格与预期纹理正常加载。",
+      "角色主体没有缺失几何体或大面积占位/洋红材质。"
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "21_ssr_debug_clear_off",
+    "scene": "scenes/21_ssr_debug_clear.ron",
+    "launcher_args": [],
+    "render": {
       "width": 1280,
       "height": 720,
-      "ssr": false,
-      "threshold": 0.99
-    },
-    {
-      "name": "21_ssr_debug_clear_on",
-      "scene": "scenes/21_ssr_debug_clear.ron",
       "frames": 1,
-      "width": 1280,
-      "height": 720,
-      "ssr": true,
-      "threshold": 0.99
+      "no_gui_overlay": true,
+      "png": "rgba8"
     },
-    {
-      "name": "t2_three_local_lights",
-      "scene": "scenes/23_three_local_lights.ron",
-      "frames": 60,
-      "width": 1280,
-      "height": 720,
-      "debug_mode": 7,
-      "threshold": 0.99
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
     },
-    {
-      "name": "t3_pbr_material_grid",
-      "scene": "scenes/24_t3_pbr_material_grid.ron",
-      "frames": 60,
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/21_ssr_debug_clear_off.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "SSR 开启且 debug clear 关闭时，场景几何体和反射材质仍清楚可见。",
+      "没有意外的全屏清屏或空白覆盖层。"
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "21_ssr_debug_clear_on",
+    "scene": "scenes/21_ssr_debug_clear.ron",
+    "launcher_args": [
+      "--ssr"
+    ],
+    "render": {
       "width": 1280,
       "height": 720,
-      "threshold": 0.99
-    }
-  ]
-}
+      "frames": 1,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/21_ssr_debug_clear_on.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "SSR 开启且 debug clear 打开时，场景几何体和反射材质仍清楚可见。",
+      "SSR 结果可见；clear 开关影响范围限于预期 debug 区域。"
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "t2_three_local_lights",
+    "scene": "scenes/23_three_local_lights.ron",
+    "launcher_args": [
+      "--debug-mode",
+      "7"
+    ],
+    "render": {
+      "width": 1280,
+      "height": 720,
+      "frames": 60,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/t2_three_local_lights.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "红、绿、蓝三个局部光源分别照亮预期区域，并与太阳光并存。",
+      "三份局部光照贡献相互可分辨，没有灯光丢失或漫溢全场。"
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "t2_local_lights_disabled_compat",
+    "scene": "scenes/01_deferred.ron",
+    "launcher_args": [
+      "--local-lights",
+      "off"
+    ],
+    "render": {
+      "width": 2560,
+      "height": 1440,
+      "frames": 60,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/01_deferred.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "关闭局部光后不绑定 local-light group、不运行局部光着色，并保持方向光兼容画面。",
+      "输出与已批准的 01_deferred reference 在冻结阈值内一致。"
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "t3_pbr_material_grid",
+    "scene": "scenes/24_t3_pbr_material_grid.ron",
+    "launcher_args": [],
+    "render": {
+      "width": 1280,
+      "height": 720,
+      "frames": 60,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/t3_pbr_material_grid.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "材质格中的所有单元均可见，表面细节没有丢失。",
+      "粗糙度/金属度组合呈现不同高光和反射，单元没有空白或缺失。"
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "t4_transparent_resource_graph",
+    "scene": "scenes/t4_transparent_water_composite.ron",
+    "launcher_args": [
+      "--transparent",
+      "on",
+      "--no-debug-helpers"
+    ],
+    "render": {
+      "width": 1280,
+      "height": 720,
+      "frames": 60,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0.0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/t4_transparent_resource_graph.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "TransparentColor is cleared and written before Composite.",
+      "Transparent and Water output both remain visible."
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "t4_transparent_overlap",
+    "scene": "scenes/t4_transparent_overlap.ron",
+    "launcher_args": [
+      "--transparent",
+      "on",
+      "--no-debug-helpers"
+    ],
+    "render": {
+      "width": 1280,
+      "height": 720,
+      "frames": 60,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0.0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/t4_transparent_overlap.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "Far red and near blue alpha objects overlap in the expected depth order.",
+      "The additive center object and opaque backdrop remain visible."
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "t4_transparent_water_composite",
+    "scene": "scenes/t4_transparent_water_composite.ron",
+    "launcher_args": [
+      "--transparent",
+      "on",
+      "--no-debug-helpers"
+    ],
+    "render": {
+      "width": 1280,
+      "height": 720,
+      "frames": 60,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0.0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/t4_transparent_water_composite.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "Water and alpha/additive objects are visible together.",
+      "The result shows the configured water reflection and composite overlay."
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "t4_water_off_transparent_off",
+    "scene": "scenes/t4_transparent_overlap.ron",
+    "launcher_args": [
+      "--transparent",
+      "off",
+      "--no-debug-helpers"
+    ],
+    "render": {
+      "width": 1280,
+      "height": 720,
+      "frames": 60,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0.0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/t4_water_off_transparent_off.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "Feature-off renders the opaque compatibility scene without a TransparentColor dependency."
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "t4_water_off_transparent_on",
+    "scene": "scenes/t4_transparent_overlap.ron",
+    "launcher_args": [
+      "--transparent",
+      "on",
+      "--no-debug-helpers"
+    ],
+    "render": {
+      "width": 1280,
+      "height": 720,
+      "frames": 60,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0.0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/t4_water_off_transparent_on.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "Transparent objects render without Water configured."
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "t4_water_on_transparent_off",
+    "scene": "scenes/t4_transparent_water_composite.ron",
+    "launcher_args": [
+      "--transparent",
+      "off",
+      "--no-debug-helpers"
+    ],
+    "render": {
+      "width": 1280,
+      "height": 720,
+      "frames": 60,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0.0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/t4_water_on_transparent_off.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "Water renders with the transparent pass disabled."
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "t4_water_on_transparent_on",
+    "scene": "scenes/t4_transparent_water_composite.ron",
+    "launcher_args": [
+      "--transparent",
+      "on",
+      "--no-debug-helpers"
+    ],
+    "render": {
+      "width": 1280,
+      "height": 720,
+      "frames": 60,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0.0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/t4_water_on_transparent_on.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "Water and transparent content render together without blank regions."
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "t5_particle_fire_seek_0p50",
+    "scene": "scenes/t5_particle_fire.ron",
+    "launcher_args": [
+      "--transparent",
+      "on",
+      "--particles",
+      "on",
+      "--no-debug-helpers"
+    ],
+    "render": {
+      "width": 1280,
+      "height": 720,
+      "frames": 60,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0.5,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/t5_particle_fire_seek_0p50.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "Fire particles are visible at the fixed 0.50 second seek.",
+      "A second same-time capture has the same output hash."
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "t5_particle_smoke_seek_0p50",
+    "scene": "scenes/t5_particle_smoke.ron",
+    "launcher_args": [
+      "--transparent",
+      "on",
+      "--particles",
+      "on",
+      "--no-debug-helpers"
+    ],
+    "render": {
+      "width": 1280,
+      "height": 720,
+      "frames": 60,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0.5,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/t5_particle_smoke_seek_0p50.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "Smoke particles appear in the configured emitter region at 0.50 seconds."
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "t5_particle_dust_seek_0p50",
+    "scene": "scenes/t5_particle_dust.ron",
+    "launcher_args": [
+      "--transparent",
+      "on",
+      "--particles",
+      "on",
+      "--no-debug-helpers"
+    ],
+    "render": {
+      "width": 1280,
+      "height": 720,
+      "frames": 60,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0.5,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/t5_particle_dust_seek_0p50.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "Dust particles appear in the configured emitter region at 0.50 seconds."
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "t5_particle_billboard",
+    "scene": "scenes/t5_particle_billboard.ron",
+    "launcher_args": [
+      "--transparent",
+      "on",
+      "--particles",
+      "on",
+      "--no-debug-helpers"
+    ],
+    "render": {
+      "width": 1280,
+      "height": 720,
+      "frames": 60,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0.5,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/t5_particle_billboard.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "The billboard fixture renders multiple camera-facing particle quads."
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "t6_physics_stack_seek_10s",
+    "scene": "scenes/t6_physics_stack.ron",
+    "launcher_args": [
+      "--physics-debug",
+      "off",
+      "--no-debug-helpers"
+    ],
+    "render": {
+      "width": 1280,
+      "height": 720,
+      "frames": 60,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 10.0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/t6_physics_stack_seek_10s.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "Physics stack settles after a deterministic 10 second seek.",
+      "Dynamic objects remain visible and supported by the ground."
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "t6_physics_ramp_seek_1s",
+    "scene": "scenes/t6_physics_ramp.ron",
+    "launcher_args": [
+      "--physics-debug",
+      "off",
+      "--no-debug-helpers"
+    ],
+    "render": {
+      "width": 1280,
+      "height": 720,
+      "frames": 60,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 1.0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/t6_physics_ramp_seek_1s.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "The dynamic sphere rolls down the ramp after a 1 second seek."
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "t6_physics_debug_on",
+    "scene": "scenes/t6_physics_debug.ron",
+    "launcher_args": [
+      "--physics-debug",
+      "on",
+      "--no-debug-helpers"
+    ],
+    "render": {
+      "width": 1280,
+      "height": 720,
+      "frames": 60,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 1.0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/t6_physics_debug_on.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "Collider debug outlines correspond to the physical objects."
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "t6_physics_debug_off",
+    "scene": "scenes/t6_physics_debug.ron",
+    "launcher_args": [
+      "--physics-debug",
+      "off",
+      "--no-debug-helpers"
+    ],
+    "render": {
+      "width": 1280,
+      "height": 720,
+      "frames": 60,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 1.0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/t6_physics_debug_off.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "Physics debug outlines are absent while scene geometry remains visible."
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "t6_physics_stack_100_seek_10s",
+    "scene": "scenes/t6_physics_stack_100.ron",
+    "launcher_args": [
+      "--physics-debug",
+      "off",
+      "--no-debug-helpers"
+    ],
+    "render": {
+      "width": 1280,
+      "height": 720,
+      "frames": 60,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 10.0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/t6_physics_stack_100_seek_10s.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "100 dynamic Box/Sphere bodies complete a deterministic 10 second seek.",
+      "All bodies remain within the supported ground area without a blank render."
+    ],
+    "benchmark": null,
+    "variants": null
+  }
+]

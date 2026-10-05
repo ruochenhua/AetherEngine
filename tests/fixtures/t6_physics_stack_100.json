@@ -1,0 +1,7 @@
+{
+  "scene": "scenes/t6_physics_stack_100.ron",
+  "dynamic_bodies": 100,
+  "layout": "10x10 mixed Box/Sphere",
+  "simulation_time_seconds": 10.0,
+  "proof_limit": "Scene fixture and capture do not report live body count; engine deterministic CPU test provides 100-body state hash and allocation evidence."
+}

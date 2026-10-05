@@ -26,7 +26,8 @@
     <strong>使用方式：</strong>先在本页选择一个任务包，再把对应的独立 HTML 交给智能体执行；只有遇到跨层接口或评分证据问题，才回看<a href="../2026-09-17-non-raytracing-engine-roadmap.html">完整规范参考</a>。完成后在任务包中勾选 checklist，并把 HTML 报告路径写回任务包。
   </div>
 
-  <h2>总 checklist</h2>
+  <div class="callout amber" id="t0-t6-status-audit"><strong>2026-10-05 状态更新：</strong>T0 的 VisualCase v2、Windows 进程监督、比较报告与 TimeControl 分片入口已补齐，三份 primary 报告通过；26 个 release 候选均已采集，01_deferred 已人工验收并 promote，剩余 25 个待逐项处理。T2.1/T2.2 自动验证通过，T2.2 三局部光候选等待人工确认；T2.3 与其他未闭合项按检查记录继续处理。<a href="verification-summary-20261005.md">T0–T9 验证总览</a> · <a href="t0-t6-status-audit.md">T0–T6 检查记录</a> · <a href="../../../tests/reports/t0-candidate-review-20261005/self-review.html">T0 逐图自检</a> · <a href="../../../tests/reports/t2-abi-review-20261005T041353Z/t2_three_local_lights/report.html">T2.2 视觉候选</a></div>
+<h2>总 checklist</h2>
   <ul class="checklist">
     <li><label><input type="checkbox" data-check="overview-ready">已读取当前任务包，而不是整份完整规范</label></li>
     <li><label><input type="checkbox" data-check="contract-frozen">已确认接口、所有权、错误和回退合同</label></li>
@@ -52,16 +53,16 @@
 
   <h2>独立任务包</h2>
   <div class="grid">
-    <article class="card"><span class="tag">T0 · W0–W2 · 4d</span><span class="status">ready</span><h3>验证基础与确定性时间</h3><p>VisualCase v2、单 runner、进程租约、HTML comparator、TimeControl。</p><a href="t0-foundation.html">打开 T0 执行包 →</a></article>
-    <article class="card"><span class="tag">T1 · W0–W2 · 8d</span><span class="status">ready</span><h3>编辑器事务与快照</h3><p>封闭 ComponentRecord、复制/重命名、atomic apply、command replay。</p><a href="t1-editor.html">打开 T1 执行包 →</a></article>
-    <article class="card"><span class="tag">T2 · W3–W6 · 12d</span><span class="status">ready</span><h3>多光源</h3><p>LightingFrame、local-light ABI、32 光源上限和消费者接线。</p><a href="t2-lighting.html">打开 T2 执行包 →</a></article>
-    <article class="card"><span class="tag">T3 · W3–W8 · 14d</span><span class="status">ready</span><h3>材质解析与 PBR 消费链</h3><p>ResolvedMaterial、Normal/ORM/Emissive、TBN、Inspector 原子编辑。</p><a href="t3-material.html">打开 T3 执行包 →</a></article>
-    <article class="card"><span class="tag">T4 · W9–W11 · 12d</span><span class="status">ready</span><h3>透明与 Composite</h3><p>TransparentColor、排序/blend/depth、Water graph、四格 sentinel。</p><a href="t4-transparent.html">打开 T4 执行包 →</a></article>
-    <article class="card"><span class="tag">T5 · W9–W13 · 12d</span><span class="status">ready</span><h3>CPU 粒子</h3><p>确定性 simulation、64B GPU item、billboard、Inspector controls。</p><a href="t5-particles.html">打开 T5 执行包 →</a></article>
-    <article class="card"><span class="tag">T6 · W14–W22 · 26d</span><span class="status">ready</span><h3>物理生命周期</h3><p>Rapier adapter、typed physics API、seek、debug frame、picking。</p><a href="t6-physics.html">打开 T6 执行包 →</a></article>
-    <article class="card"><span class="tag">T7 · W23–W34 · 29d</span><span class="status">ready</span><h3>glTF 与动画</h3><p>owned document、128-joint skinning、typed channels、pose hash。</p><a href="t7-animation.html">打开 T7 执行包 →</a></article>
+    <article class="card"><span class="tag">T0 · W0–W2 · 4d</span><span class="status">分片验证通过，发布验收待补</span><h3>验证基础与确定性时间</h3><p>VisualCase v2、单 runner、进程租约、HTML comparator、TimeControl。</p><a href="t0-foundation.html">打开 T0 执行包 →</a></article>
+    <article class="card"><span class="tag">T1 · W0–W2 · 8d</span><span class="status">核心复测通过，出口待补齐</span><h3>编辑器事务与快照</h3><p>封闭 ComponentRecord、复制/重命名、atomic apply、command replay。</p><a href="t1-editor.html">打开 T1 执行包 →</a></article>
+    <article class="card"><span class="tag">T2 · W3–W6 · 12d</span><span class="status">功能可运行，合同有缺口</span><h3>多光源</h3><p>LightingFrame、local-light ABI、32 光源上限和消费者接线。</p><a href="t2-lighting.html">打开 T2 执行包 →</a></article>
+    <article class="card"><span class="tag">T3 · W3–W8 · 14d</span><span class="status">核心复测通过，消费链接口待补齐</span><h3>材质解析与 PBR 消费链</h3><p>ResolvedMaterial、Normal/ORM/Emissive、TBN、Inspector 原子编辑。</p><a href="t3-material.html">打开 T3 执行包 →</a></article>
+    <article class="card"><span class="tag">T4 · W9–W11 · 12d</span><span class="status">渲染可运行，GPU 证据待补齐</span><h3>透明与 Composite</h3><p>TransparentColor、排序/blend/depth、Water graph、四格 sentinel。</p><a href="t4-transparent.html">打开 T4 执行包 →</a></article>
+    <article class="card"><span class="tag">T5 · W9–W13 · 12d</span><span class="status">粒子可见，开关接线待修正</span><h3>CPU 粒子</h3><p>确定性 simulation、64B GPU item、billboard、Inspector controls。</p><a href="t5-particles.html">打开 T5 执行包 →</a></article>
+    <article class="card"><span class="tag">T6 · W14–W22 · 26d</span><span class="status">物理核心通过，运行证据待补齐</span><h3>物理生命周期</h3><p>Rapier adapter、typed physics API、seek、debug frame、picking。</p><a href="t6-physics.html">打开 T6 执行包 →</a></article>
+    <article class="card"><span class="tag">T7 · W23–W34 · 29d</span><span class="status">accepted</span><h3>glTF 与动画</h3><p>owned document、128-joint skinning、typed channels、pose hash。</p><a href="t7-animation.html">打开 T7 执行包 →</a></article>
     <article class="card"><span class="tag">T8 · W14–W40 · 45d</span><span class="status">complete</span><h3>资产、Prefab 与热重载</h3><p>typed AssetStore、owned downcast、generation、GPU commit、LKG。</p><a href="t8-assets.html">打开 T8 执行包 →</a></article>
-    <article class="card"><span class="tag">T9 · W0/W23–W40 · 30d</span><span class="status">ready</span><h3>性能与可见性</h3><p>BenchmarkCase、LOD、paired instancing、MetricGuard、研究 RFC。</p><a href="t9-performance.html">打开 T9 执行包 →</a></article>
+    <article class="card"><span class="tag">T9 · W0/W23–W40 · 30d</span><span class="status">accepted</span><h3>性能与可见性</h3><p>T9.1 基线与兼容性指标已验收；T9.2/T9.3 已验收，T9.4 研究结论为 production NO-GO。</p><a href="t9-performance.html">打开 T9 执行包 →</a></article>
   </div>
 
   <h2>统一交付规则</h2>

@@ -11,6 +11,8 @@ use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::KeyCode;
+#[cfg(target_os = "windows")]
+use winit::platform::windows::WindowAttributesExtWindows;
 use winit::window::{WindowAttributes, WindowId};
 
 impl ApplicationHandler for App {
@@ -25,18 +27,27 @@ impl ApplicationHandler for App {
             (None, Some(height)) => winit::dpi::PhysicalSize::new(1280, height).into(),
             (None, None) => winit::dpi::LogicalSize::new(1280u32, 720u32).into(),
         };
+        let capture_run =
+            self.pending_screenshot_path.is_some() && self.exit_after_frames.is_some();
+        let mut attributes = WindowAttributes::default()
+            .with_title("Aether Engine Launcher")
+            .with_inner_size(inner_size);
+        if capture_run {
+            attributes =
+                attributes.with_position(winit::dpi::PhysicalPosition::new(-20_000, -20_000));
+            #[cfg(target_os = "windows")]
+            {
+                attributes = attributes.with_skip_taskbar(true);
+            }
+        }
         let window = Arc::new(
             event_loop
-                .create_window(
-                    WindowAttributes::default()
-                        .with_title("Aether Engine Launcher")
-                        .with_inner_size(inner_size),
-                )
+                .create_window(attributes)
                 .expect("Failed to create window"),
         );
 
         let ctx = pollster::block_on(RenderContext::new(window.clone()));
-        self.gpu_info = format!("{} ({:?})", ctx.adapter_info.name, ctx.adapter_info.backend);
+        self.gpu_info = super::ready::device_info(&ctx.adapter_info);
 
         let viewport_id = self.egui_ctx.viewport_id();
         let egui_winit_state = egui_winit::State::new(
@@ -72,6 +83,7 @@ impl ApplicationHandler for App {
             ctx.config.height,
             has_terrain,
             self.transparent_enabled,
+            self.cli.local_lights_enabled,
         )
         .expect("Failed to build render pipeline");
         self.has_terrain_pipeline = has_terrain;

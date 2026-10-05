@@ -107,6 +107,26 @@ fn parse_multiple_objects_with_light() {
 }
 
 #[test]
+fn multiple_directional_lights_are_rejected_with_scene_paths() {
+    let error = SceneDescription::from_ron(
+        r#"SceneDescription(
+            name: "Multiple Suns",
+            camera: (position: (0.0, 0.0, 5.0)),
+            lights: [
+                (light_type: Directional, direction: (0.0, -1.0, 0.0)),
+                (light_type: Directional, direction: (1.0, -1.0, 0.0)),
+            ],
+        )"#,
+    )
+    .expect_err("multiple suns must be rejected");
+
+    let message = error.to_string();
+    assert!(message.contains("MultipleSuns"), "{message}");
+    assert!(message.contains("lights[0]"), "{message}");
+    assert!(message.contains("lights[1]"), "{message}");
+}
+
+#[test]
 fn scene_description_supports_three_distinct_local_lights() {
     let scene = SceneDescription::from_ron(
         r#"SceneDescription(

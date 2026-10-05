@@ -153,7 +153,7 @@ pub(crate) fn open_cli_scene(app: &mut App, ctx: &RenderContext) {
 /// Process a pending scene load request from the menu.
 pub(crate) fn process_pending_load(app: &mut App) {
     if let Some(idx) = app.pending_load.take() {
-        let entry = &app.scene_entries[idx];
+        let path = app.scene_entries[idx].path.clone();
         if let LauncherState::Running {
             ref mut world,
             ref mut lighting,
@@ -161,7 +161,7 @@ pub(crate) fn process_pending_load(app: &mut App) {
         {
             let ctx = app.ctx.as_ref().unwrap();
             match SceneLoader::open_scene(
-                &entry.path,
+                &path,
                 &ctx.device,
                 &app.mesh_registry,
                 &mut app.asset_manager,
@@ -181,6 +181,7 @@ pub(crate) fn process_pending_load(app: &mut App) {
                     }
                     update_camera_from_world(&mut app.camera, world);
                     app.pending_terrain_pipeline_rebuild = true;
+                    super::editor::activate_scene(app, path.clone());
                 }
                 Err(e) => {
                     error!("Open scene error: {:?}", e);

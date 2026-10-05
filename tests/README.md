@@ -31,6 +31,17 @@ This directory holds visual regression tests for Aether Engine scenes.
 
 4. **Report** — Results are written to `tests/reports/<timestamp>-report.html`.
 
+## T9 performance slices
+
+- `./scripts/run-slice-tests.sh --slice T9.1` runs the bounded baseline capture.
+- `./scripts/run-slice-tests.sh --slice T9.2` runs 1k/10k visibility and LOD captures. Both launcher windows run hidden offscreen and exit after 150 frames.
+- `./scripts/run-slice-tests.sh --slice T9.3` captures the same 10k fixture with opaque instancing off/on, validates visual/state equivalence and the 30% draw-call gate, then writes a paired HTML report. Each launcher capture exits after 150 frames.
+- `./scripts/run-slice-tests.sh --slice T9.4` runs an explicit opt-in, offscreen wgpu occlusion prototype (30 warm-up + 120 GPU-timestamp samples where supported), verifies its visibility mask against a CPU reference, and writes a streaming-memory model plus RFC/report. It never starts the launcher or opens a window. GPU timestamps unavailable on the adapter remain `null`; that yields a production no-go instead of fabricated timings.
+- T9.3 acceptance contract and current status: `docs/plans/2026-09-17-non-raytracing-engine-roadmap/t9.3-execution.md`.
+- T9.4 research contract and current status: `docs/plans/2026-09-17-non-raytracing-engine-roadmap/t9.4-execution.md`.
+- `bash tests/benchmark-report-test.sh` and `bash tests/visibility-report-test.sh` run the focused report contract tests.
+- `python scripts/test_t9_research_report.py` checks T9.4 report and unavailable-metric handling without a GPU or launcher.
+
 ## Adding a new reference
 
 When a new scene is introduced or a deliberate visual change is accepted:
@@ -119,6 +130,34 @@ rejection, weight and inverse-bind validation, typed animation channels, and a
 launcher or open a scene window. Each run writes `report.html`,
 `gltf-diagnostics.json`, `aggregate.json`, logs, metrics, and deterministic PNG
 sentinels under `tests/reports/<run-id>/t7_gltf_document_fixture/`.
+
+## T7.2/T7.3 glTF skinning and playback review
+
+Build the release launcher and capture the dedicated glTF actor:
+
+```powershell
+cargo build -p aether-launcher --release
+python scripts/run_t7_skinning_visual.py
+```
+
+The runner loads `tests/fixtures/t7_animated_actor.gltf`, samples its
+`RaiseArms` clip, extracts a GPU palette, and captures bind and animated poses
+through GBuffer, Shadow, and WaterReflection. It renders one frame and exits;
+on Windows the test window remains off-screen. The report includes the image,
+launcher logs, command, aggregate data, and SHA-256 pose states at 0, 0.25, 0.5,
+and 0.75 seconds. The current manual-review artifact is under
+`tests/reports/t7-manual-review-20261003/t7_gltf_animation_playback/`.
+
+This acceptance actor exercises the typed document and animation pipeline.
+General scene-config spawning and editor playback controls remain separate
+follow-up work.
+
+To inspect live playback, start the release launcher with
+`--scene scenes/t7_skinned_shadow_reflection.ron --animation on` in its default
+wall-clock mode and leave the GUI overlay enabled. The Inspector's Animation
+section provides Play/Pause, time seek, speed, and loop controls. Deterministic
+`seek`/`freeze` captures hold the clip endpoint so the bind and animated poses
+remain directly comparable.
 
 For explicit case lists, invoke `python3 scripts/runner_process.py --launcher
 <binary> --cases <json-file> --report-dir tests/reports/<unique-run-id>`. The

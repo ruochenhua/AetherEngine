@@ -84,6 +84,7 @@ impl SceneLoader {
         assets: &mut AssetManager,
         world: &mut World,
     ) -> anyhow::Result<LightingUniforms> {
+        crate::scene::LightConfig::validate_directional_count(&desc.lights)?;
         for (index, light) in desc.lights.iter().enumerate() {
             light.validate(index)?;
         }
@@ -123,6 +124,7 @@ impl SceneLoader {
         }
         objects::build_objects(desc, device, registry, assets, world)?;
         prefab::build_prefab_instances(desc, device, registry, assets, world)?;
+        crate::renderer::lighting::extract_lighting_frame(world, desc.ambient)?;
         Ok(lighting::build_lighting_uniforms(desc))
     }
 

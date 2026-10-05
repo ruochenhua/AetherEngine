@@ -14,6 +14,8 @@ pub mod input;
 pub mod math;
 /// Deterministic CPU particle simulation.
 pub mod particles;
+/// Deterministic performance sample and report contracts.
+pub mod performance;
 pub mod physics;
 pub mod renderer;
 pub mod scene;

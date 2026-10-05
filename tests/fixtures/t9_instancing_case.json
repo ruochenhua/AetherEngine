@@ -1,0 +1,29 @@
+{
+  "case_id": "t9_instancing_paired_10k",
+  "scene": "t9_instancing_paired_10k",
+  "fixture_source": "scripts/build_t9_baseline_scene.py",
+  "camera": {
+    "source": "scene",
+    "override": null
+  },
+  "render": {
+    "width": 1280,
+    "height": 720,
+    "format": "rgba8"
+  },
+  "time": {
+    "mode": "fixed_step",
+    "simulation_time": 0.0,
+    "fixed_dt": 0.016666667
+  },
+  "entity_count": 10000,
+  "seed": 9003,
+  "warmup": 30,
+  "samples": 120,
+  "feature_flags": {
+    "instancing": false,
+    "visibility": true,
+    "lod": false
+  },
+  "baseline_commit": "0725ce0a36e25de4ea9f292208d44e4989cd4668"
+}

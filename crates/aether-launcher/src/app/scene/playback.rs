@@ -3,6 +3,7 @@
 use crate::app::{particle_runtime::physics_runtime::*, App, LauncherState};
 
 pub(super) fn process_pending(app: &mut App) {
+    crate::app::editor::apply_pending_operation(app);
     let Some(action) = app.particle_runtime.pending_action.take() else {
         return;
     };

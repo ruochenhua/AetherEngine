@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Serial case coordinator. AETHER_READY_FD carries one byte after first frame.
 
---cases accepts [{id, scene, launcher_args}]. --matrix adapts the existing v1
-visual matrix without changing its schema. Repeat --case to select a list in
+--cases accepts internal execution records [{id, scene, launcher_args}].
+--matrix accepts only the production-validated v2 schema. Repeat --case to select a list in
 manifest order. Diagnostics live in an exclusive per-run report directory.
 """
 import argparse
@@ -42,6 +42,13 @@ class Runner:
 
     @staticmethod
     def take_ready(lease, read_fd, record):
+        if os.name == 'nt':
+            if lease.state == State.Bound:
+                path = Path(record['ready_path'])
+                if path.exists() and path.read_bytes() == b'R':
+                    lease.mark_ready(lease.nonce)
+                    record['ready_at'] = time.monotonic()
+            return
         if lease.state == State.Bound and select.select([read_fd], [], [], 0)[0]:
             if os.read(read_fd, 1):
                 lease.mark_ready(lease.nonce)
@@ -59,6 +66,7 @@ class Runner:
                                'machine': platform.machine(), 'python': platform.python_version(),
                                'device': 'not queried (runner does not open a GPU session)'}}
         read_fd, write_fd = os.pipe()
+        record['ready_path'] = str((directory / 'ready-byte').resolve())
         try:
             # Preserve a previous screenshot as an artifact, while allowing
             # the shell's existing missing-image check to detect a failed capture.
@@ -68,11 +76,16 @@ class Runner:
                     output.replace(directory / 'previous-output.png')
             with (directory / 'stdout').open('wb') as stdout, (directory / 'stderr').open('wb') as stderr:
                 env = dict(os.environ, AETHER_READY_FD=str(write_fd))
+                env['AETHER_DEVICE_METADATA_PATH'] = str((directory / 'device.json').resolve())
+                if os.name == 'nt':
+                    env.pop('AETHER_READY_FD', None)
+                    env['AETHER_READY_PATH'] = record['ready_path']
                 record['spawned_at'] = time.monotonic()
                 self.supervisor.spawn(lease, argv, stdout, stderr, env, write_fd)
                 os.close(write_fd)
                 write_fd = None
-                deadline = record['spawned_at'] + self.handshake_timeout
+                record['bound_at'] = lease.bound_at
+                deadline = record['bound_at'] + self.handshake_timeout
                 while True:
                     if self.cancelled:
                         raise Diagnostic('RunnerCancelled')
@@ -117,6 +130,9 @@ class Runner:
                           signal=-code if code is not None and code < 0 else None,
                           states=lease.states, signals=lease.signals,
                           group_empty=lease.group_empty, cleaned_at=lease.cleaned_at)
+            record['isolation_backend'] = 'windows-job-object' if os.name == 'nt' else 'posix-process-group'
+            if (directory / 'device.json').exists():
+                record['metadata']['device'] = json.loads((directory / 'device.json').read_text(encoding='utf-8'))
             (directory / 'launcher.log').write_text(json.dumps(record, indent=2) + '\n')
             if lease.state == State.Cleaned:
                 self.active = None
@@ -124,30 +140,14 @@ class Runner:
 
 
 def load_cases(args):
-    data = json.loads(Path(args.cases or args.matrix).read_text())
+    data = json.loads(Path(args.cases or args.matrix).read_text(encoding='utf-8'))
     if args.cases:
         cases = data
     else:
-        defaults = data.get('defaults', {})
-        cases = []
-        for item in data['scenes']:
-            name = item['name']
-            output = str(Path(args.output_dir) / (name + '.png'))
-            argv = ['--screenshot', output, '--exit-after-frames', str(item.get('frames', defaults.get('frames', 60)))]
-            if item.get('debug_mode'):
-                argv += ['--debug-mode', str(item['debug_mode'])]
-            for flag in ('ssao', 'ssr'):
-                if item.get(flag, False):
-                    argv += ['--' + flag]
-            simulation_time = item.get('simulation_time', defaults.get('simulation_time'))
-            if simulation_time is not None:
-                argv += ['--time-mode', item.get('time_mode', defaults.get('time_mode', 'seek')),
-                         '--simulation-time', str(simulation_time)]
-            elif item.get('freeze_time', defaults.get('freeze_time', True)):
-                argv += ['--freeze-time']
-            argv += ['--width', str(item.get('width', defaults.get('width', 1280))),
-                     '--height', str(item.get('height', defaults.get('height', 720)))]
-            cases.append({'id': name, 'scene': item['scene'], 'launcher_args': argv, 'output': output})
+        if not isinstance(data, list) or any(c.get('manifest_version') != 2 for c in data):
+            raise ValueError('VisualCase v2 required; migrate the v1 matrix before running')
+        from visual_manifest import execution_cases
+        cases = execution_cases(args.matrix, args.report_dir)
     ids = [case['id'] for case in cases]
     if len(ids) != len(set(ids)) or any(not name or Path(name).name != name or name in ('.', '..') for name in ids):
         raise ValueError('case IDs must be unique directory names')

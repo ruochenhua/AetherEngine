@@ -42,7 +42,7 @@ pub(super) fn execute(
         rpass.set_bind_group(0, trace_bg, &[]);
         rpass.set_bind_group(1, &pass.settings_bind_group, &[]);
         rpass.set_vertex_buffer(0, pass.quad_vertex_buffer.slice(..));
-        rpass.draw(0..pass.quad_vertex_count, 0..1);
+        crate::counted_draw!(rpass, draw, 0..pass.quad_vertex_count, 0..1);
     }
 
     // Stage 2: Bilateral upsample (uses upsample_bind_group WITH SsrTraceResult)
@@ -72,6 +72,6 @@ pub(super) fn execute(
         rpass.set_bind_group(0, up_bg, &[]);
         rpass.set_bind_group(1, &pass.settings_bind_group, &[]);
         rpass.set_vertex_buffer(0, pass.quad_vertex_buffer.slice(..));
-        rpass.draw(0..pass.quad_vertex_count, 0..1);
+        crate::counted_draw!(rpass, draw, 0..pass.quad_vertex_count, 0..1);
     }
 }

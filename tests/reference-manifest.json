@@ -1,0 +1,14 @@
+{
+  "01_deferred": {
+    "path": "tests/reference/01_deferred.png",
+    "sha256": "cc1829add55fd279eb83c805bee597d46818685f485a8478183f31d9e53ab7d5",
+    "source_commit": "7c6792825add554a8ded1eb16e6355ccda31904f",
+    "os": "windows",
+    "driver": "NVIDIA 616.64",
+    "adapter": "NVIDIA GeForce RTX 3070 Ti Laptop GPU",
+    "runner_version": "visual-case-runner/2",
+    "width": 2560,
+    "height": 1440,
+    "format": "png-rgba8"
+  }
+}

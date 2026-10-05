@@ -4,7 +4,7 @@ use crate::ecs::World;
 use crate::renderer::extract::extract_optional_pass_data;
 use crate::renderer::frame::FrameConfig;
 use crate::renderer::frame::RenderFrame;
-use crate::renderer::light::{sun_direction_from_lighting, LightingUniforms};
+use crate::renderer::light::{sun_direction_from_directional_light, LightingUniforms};
 use crate::renderer::pass::Pass;
 use crate::renderer::resource_table::ResourceTable;
 use glam::Vec3;
@@ -43,7 +43,7 @@ fn god_ray_uniform_default_is_aligned() {
 }
 
 /// Verifies that the sun direction written to the GodRay uniform buffer
-/// matches the shared `sun_direction_from_lighting` helper.
+/// matches the unified `LightingFrame.sun` direction source.
 #[test]
 fn god_ray_pass_uses_light_direction_for_sun() {
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
@@ -65,10 +65,12 @@ fn god_ray_pass_uses_light_direction_for_sun() {
             exposure: 0.2,
         },
     },));
-    let optional = extract_optional_pass_data(&world);
+    let mut optional = extract_optional_pass_data(&world);
+    optional.lighting.sun.direction = [0.0, -1.0, 0.0];
 
     let camera = crate::renderer::camera::FlyCamera::default();
-    let lighting = LightingUniforms::default();
+    let mut lighting = LightingUniforms::default();
+    lighting.light.direction = [1.0, 0.0, 0.0];
     let assets = crate::asset::AssetManager::new();
     let texture_cache = crate::asset::texture_cache::GpuTextureCache::new(&device, &queue);
     let frame = crate::renderer::frame::RenderFrame {
@@ -109,7 +111,7 @@ fn god_ray_pass_uses_light_direction_for_sun() {
 
     let data = slice.get_mapped_range();
     let uniforms: &[GodRayUniform] = bytemuck::cast_slice(&data);
-    let expected_sun = sun_direction_from_lighting(&lighting);
+    let expected_sun = sun_direction_from_directional_light(&optional.lighting.sun);
     let actual_sun = Vec3::new(
         uniforms[0].sun_direction.x,
         uniforms[0].sun_direction.y,

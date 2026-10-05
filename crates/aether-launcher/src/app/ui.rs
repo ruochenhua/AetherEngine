@@ -1,19 +1,16 @@
 //! egui UI rendering for the launcher.
 
+mod animation_panel;
+mod editor_operations;
+mod hierarchy;
 mod physics_panel;
 mod renderer_controls;
 
 use super::{App, LauncherState};
 use crate::inspector::{self, InspectorTarget};
-use aether_engine::ecs::components::{Camera, MeshHandle, Name};
+use aether_engine::ecs::components::Camera;
 use aether_engine::ecs::Entity;
 use tracing::error;
-
-#[derive(Clone)]
-struct HierarchyItem {
-    entity: Entity,
-    name: String,
-}
 
 /// Render the full launcher UI and return egui draw data.
 pub(crate) fn render(
@@ -71,6 +68,9 @@ pub(crate) fn render(
     let fullscreen_3d = &mut app.fullscreen_3d;
     let debug_mode = app.debug_mode;
     let pending_select_entity = &mut app.pending_select_entity;
+    let pending_editor_operation = &mut app.pending_editor_operation;
+    let has_saved_scene = app.cli.scene.is_some();
+    let editor_operation_message = app.editor_operation_message.clone();
     let playback_state = app.particle_runtime.playback;
     let playback_action = &mut app.particle_runtime.pending_action;
     let physics_debug_enabled = &mut app.cli.physics_debug_enabled;
@@ -84,6 +84,18 @@ pub(crate) fn render(
         .physics
         .as_ref()
         .map_or(0, aether_engine::physics::PhysicsRuntime::collider_count);
+    let mut animation_controls =
+        app.animation_fixture
+            .as_ref()
+            .map(|fixture| animation_panel::Controls {
+                clip_name: fixture.clip_name().to_owned(),
+                time: fixture.time(),
+                duration: fixture.duration(),
+                playing: fixture.is_playing(),
+                speed: fixture.speed(),
+                looping: fixture.is_looping(),
+            });
+    let mut animation_changes = animation_panel::Changes::default();
 
     // Extract inspector data before UI (mutable borrow needed for editing)
     let mut inspector_target: Option<InspectorTarget> = None;
@@ -95,40 +107,16 @@ pub(crate) fn render(
         }
     }
 
-    // Extract hierarchy data (mesh entities + named scene-level actors)
-    let mut hierarchy_items: Vec<HierarchyItem> = Vec::new();
-    if let LauncherState::Running { ref world, .. } = app.state {
-        // Collect first, then sort by name for stable ordering.
-        // This ensures display names remain tied to the same entity
-        // even if hecs query iteration order shifts after component edits.
-        let mut raw: Vec<(Entity, String)> = Vec::new();
-        for (entity, mesh_handle) in world.query::<(Entity, &MeshHandle)>().iter() {
-            raw.push((entity, mesh_handle.name.clone()));
-        }
-        for (entity, name) in world.query::<(Entity, &Name)>().iter() {
-            // Skip mesh entities: they already use their mesh name above.
-            if world.query_one::<&MeshHandle>(entity).get().is_err() {
-                raw.push((entity, name.0.clone()));
-            }
-        }
-        raw.sort_by(|a, b| a.1.cmp(&b.1));
-
-        let mut name_counts: std::collections::HashMap<String, usize> =
-            std::collections::HashMap::new();
-        for (entity, base_name) in raw {
-            let count = name_counts.entry(base_name.clone()).or_insert(0);
-            let display_name = if *count == 0 {
-                base_name.clone()
-            } else {
-                format!("{} ({})", base_name, count)
-            };
-            *count += 1;
-            hierarchy_items.push(HierarchyItem {
-                entity,
-                name: display_name,
-            });
-        }
-    }
+    let hierarchy_items = match &app.state {
+        LauncherState::Running { world, .. } => hierarchy::collect(world),
+        LauncherState::Menu => Vec::new(),
+    };
+    let selected_operation_name = selected_entity.and_then(|entity| {
+        hierarchy_items
+            .iter()
+            .find(|item| item.entity == entity)
+            .and_then(|item| item.operation_name.clone())
+    });
 
     let egui_output = app.egui_ctx.run_ui(raw_input, |ui| {
         *scroll_input += ui.ctx().input(|i| i.smooth_scroll_delta.y * 0.01);
@@ -181,6 +169,27 @@ pub(crate) fn render(
                                 }
                             });
                             ui.menu_button("Create", |ui| {
+                                let (response, operation) = editor_operations::add_light_button(
+                                    ui,
+                                    selected_operation_name.as_deref(),
+                                    has_saved_scene,
+                                );
+                                if response.clicked() {
+                                    *pending_editor_operation = operation;
+                                }
+                                let (response, operation) =
+                                    editor_operations::add_spot_light_button(
+                                        ui,
+                                        selected_operation_name.as_deref(),
+                                        has_saved_scene,
+                                    );
+                                if response.clicked() {
+                                    *pending_editor_operation = operation;
+                                }
+                                if let Some(message) = editor_operation_message.as_deref() {
+                                    ui.small(message);
+                                }
+                                ui.separator();
                                 if ui.button("Add Cube").clicked() {
                                     app.pending_add_cube = true;
                                     ui.close();
@@ -258,6 +267,10 @@ pub(crate) fn render(
                                         physics_body_count,
                                         physics_collider_count,
                                     );
+
+                                    if let Some(controls) = animation_controls.as_mut() {
+                                        animation_changes = animation_panel::render(ui, controls);
+                                    }
 
                                     // Inspector
                                     if let Some(ref mut target) = inspector_target.as_mut() {
@@ -349,6 +362,7 @@ pub(crate) fn render(
 
     // Write back inspector changes
     if let Some(ref target) = inspector_target {
+        let undo_count = app.undo_stack.len();
         if let LauncherState::Running { ref mut world, .. } = app.state {
             let _ = inspector::apply(
                 target,
@@ -384,6 +398,24 @@ pub(crate) fn render(
                     app.camera.far = camera.far;
                 }
             }
+        }
+        if app.undo_stack.len() > undo_count {
+            app.undo_action_order
+                .push(super::editor::UndoActionKind::Legacy);
+            app.redo_action_order.clear();
+        }
+    }
+
+    if let (Some(fixture), Some(controls)) =
+        (app.animation_fixture.as_mut(), animation_controls.as_ref())
+    {
+        if let Err(message) = fixture.apply_controls(
+            controls.speed,
+            controls.looping,
+            animation_changes.command,
+            animation_changes.seek,
+        ) {
+            error!("Animation control edit rejected: {message}");
         }
     }
 

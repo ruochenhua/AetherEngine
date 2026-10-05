@@ -142,7 +142,7 @@ pub fn pick_entity(world: &mut World, ray: &Ray) -> Option<hecs::Entity> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use glam::{Mat4, Vec3};
+    use crate::math::{look_at, perspective_projection};
 
     #[test]
     fn test_ray_aabb_intersect_centered_cube() {
@@ -181,8 +181,8 @@ mod tests {
     fn test_screen_ray_center() {
         // Camera at (3,3,3) looking at origin
         let camera_pos = Vec3::new(3.0, 3.0, 3.0);
-        let view = Mat4::look_at_rh(camera_pos, Vec3::ZERO, Vec3::Y);
-        let proj = Mat4::perspective_rh(45.0f32.to_radians(), 1.0, 0.1, 100.0);
+        let view = look_at(camera_pos, Vec3::ZERO, Vec3::Y);
+        let proj = perspective_projection(45.0f32.to_radians(), 1.0, 0.1, 100.0);
         let width = 800.0;
         let height = 600.0;
         let ray = screen_ray(

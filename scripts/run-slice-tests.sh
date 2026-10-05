@@ -8,16 +8,86 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_ROOT"
 
 usage() {
-    echo "Usage: $0 --slice T7.1|T8.1|T8.2|T8.3|T8.4" >&2
+    echo "Usage: $0 --slice T0.1|T0.2|T0.3|T1.1|T1.2|T1.3|T2.1|T2.2|T7.1|T8.1|T8.2|T8.3|T8.4|T9.1|T9.2|T9.3|T9.4" >&2
 }
 
-if [[ $# -ne 2 || "$1" != "--slice" || ( "$2" != "T7.1" && "$2" != "T8.1" && "$2" != "T8.2" && "$2" != "T8.3" && "$2" != "T8.4" ) ]]; then
+    if [[ $# -ne 2 || "$1" != "--slice" || ( "$2" != "T0.1" && "$2" != "T0.2" && "$2" != "T0.3" && "$2" != "T1.1" && "$2" != "T1.2" && "$2" != "T1.3" && "$2" != "T2.1" && "$2" != "T2.2" && "$2" != "T7.1" && "$2" != "T8.1" && "$2" != "T8.2" && "$2" != "T8.3" && "$2" != "T8.4" && "$2" != "T9.1" && "$2" != "T9.2" && "$2" != "T9.3" && "$2" != "T9.4" ) ]]; then
     usage
     exit 2
 fi
 
+if [[ "$2" == "T0.1" || "$2" == "T0.2" || "$2" == "T0.3" ]]; then
+    if [[ -n "${AETHER_SLICE_PYTHON_BIN:-}" ]]; then
+        exec "$AETHER_SLICE_PYTHON_BIN" -X utf8 "$SCRIPT_DIR/run_t0_foundation_slice.py" --slice "$2"
+    elif python3 -c 'import sys' >/dev/null 2>&1; then
+        exec python3 -X utf8 "$SCRIPT_DIR/run_t0_foundation_slice.py" --slice "$2"
+    else
+        exec python -X utf8 "$SCRIPT_DIR/run_t0_foundation_slice.py" --slice "$2"
+    fi
+fi
+
+if [[ "$2" == "T2.1" ]]; then
+    exec bash "$SCRIPT_DIR/verify-lighting-t2.sh" "t2-$(date -u +%Y%m%dT%H%M%SZ)-T2.1"
+fi
+
+if [[ "$2" == "T2.2" ]]; then
+    exec bash "$SCRIPT_DIR/verify-lighting-t2-abi.sh" "t2-$(date -u +%Y%m%dT%H%M%SZ)-T2.2"
+fi
+
+if [[ "$2" == "T1.1" || "$2" == "T1.2" || "$2" == "T1.3" ]]; then
+    exec bash "$SCRIPT_DIR/run-t1-editor-tests.sh" --slice "$2"
+fi
+
 if [[ "$2" == "T7.1" ]]; then
     exec bash "$SCRIPT_DIR/run-t7-gltf-tests.sh" --slice T7.1
+fi
+
+if [[ "$2" == "T9.1" ]]; then
+    if [[ -n "${AETHER_SLICE_PYTHON_BIN:-}" ]]; then
+        exec "$AETHER_SLICE_PYTHON_BIN" "$SCRIPT_DIR/run_t9_baseline.py"
+    elif python3 -c 'import sys' >/dev/null 2>&1; then
+        exec python3 "$SCRIPT_DIR/run_t9_baseline.py"
+    elif command -v python >/dev/null 2>&1; then
+        exec python "$SCRIPT_DIR/run_t9_baseline.py"
+    fi
+    echo "Python 3 is required to run the T9.1 bounded capture" >&2
+    exit 2
+fi
+
+if [[ "$2" == "T9.2" ]]; then
+    if [[ -n "${AETHER_SLICE_PYTHON_BIN:-}" ]]; then
+        exec "$AETHER_SLICE_PYTHON_BIN" "$SCRIPT_DIR/run_t9_visibility.py"
+    elif python3 -c 'import sys' >/dev/null 2>&1; then
+        exec python3 "$SCRIPT_DIR/run_t9_visibility.py"
+    elif command -v python >/dev/null 2>&1; then
+        exec python "$SCRIPT_DIR/run_t9_visibility.py"
+    fi
+    echo "Python 3 is required to run the T9.2 bounded capture" >&2
+    exit 2
+fi
+
+if [[ "$2" == "T9.3" ]]; then
+    if [[ -n "${AETHER_SLICE_PYTHON_BIN:-}" ]]; then
+        exec "$AETHER_SLICE_PYTHON_BIN" "$SCRIPT_DIR/run_t9_instancing.py"
+    elif python3 -c 'import sys' >/dev/null 2>&1; then
+        exec python3 "$SCRIPT_DIR/run_t9_instancing.py"
+    elif command -v python >/dev/null 2>&1; then
+        exec python "$SCRIPT_DIR/run_t9_instancing.py"
+    fi
+    echo "Python 3 is required to run the T9.3 paired capture" >&2
+    exit 2
+fi
+
+if [[ "$2" == "T9.4" ]]; then
+    if [[ -n "${AETHER_SLICE_PYTHON_BIN:-}" ]]; then
+        exec "$AETHER_SLICE_PYTHON_BIN" "$SCRIPT_DIR/run_t9_research.py"
+    elif python3 -c 'import sys' >/dev/null 2>&1; then
+        exec python3 "$SCRIPT_DIR/run_t9_research.py"
+    elif python -c 'import sys' >/dev/null 2>&1; then
+        exec python "$SCRIPT_DIR/run_t9_research.py"
+    fi
+    echo "Python 3 is required to run the T9.4 bounded research capture" >&2
+    exit 2
 fi
 
 if [[ -n "${AETHER_SLICE_PYTHON_BIN:-}" ]]; then

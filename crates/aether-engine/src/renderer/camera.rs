@@ -75,12 +75,12 @@ impl FlyCamera {
 
     /// View matrix.
     pub fn view_matrix(&self) -> Mat4 {
-        Mat4::look_at_rh(self.position, self.position + self.forward(), Vec3::Y)
+        look_at(self.position, self.position + self.forward(), Vec3::Y)
     }
 
     /// Projection matrix.
     pub fn projection_matrix(&self, aspect: f32) -> Mat4 {
-        Mat4::perspective_rh(self.fov, aspect, self.near, self.far)
+        perspective_projection(self.fov, aspect, self.near, self.far)
     }
 
     /// Compute the world-space view frustum for this camera.
@@ -184,8 +184,8 @@ mod tests {
 
     #[test]
     fn camera_frustum_planes_orthographic() {
-        let view = Mat4::look_at_rh(Vec3::new(0.0, 0.0, 5.0), Vec3::ZERO, Vec3::Y);
-        let proj = Mat4::orthographic_rh(-4.0, 4.0, -3.0, 3.0, 0.1, 100.0);
+        let view = look_at(Vec3::new(0.0, 0.0, 5.0), Vec3::ZERO, Vec3::Y);
+        let proj = glam::camera::rh::proj::directx::orthographic(-4.0, 4.0, -3.0, 3.0, 0.1, 100.0);
         let frustum = Frustum::from_view_projection(proj * view);
 
         // Orthographic left/right normals are parallel to world X.

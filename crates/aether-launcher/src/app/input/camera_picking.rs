@@ -24,6 +24,7 @@ pub(crate) fn update_camera_and_picking(app: &mut App, dt: f32, egui_consumed: b
         }
     }
 
+    let mut legacy_edit_recorded = false;
     if !egui_consumed {
         if let LauncherState::Running { ref mut world, .. } = app.state {
             let ctx = app.ctx.as_ref().unwrap();
@@ -73,6 +74,7 @@ pub(crate) fn update_camera_and_picking(app: &mut App, dt: f32, egui_consumed: b
                                         },
                                     );
                                     app.redo_stack.clear();
+                                    legacy_edit_recorded = true;
                                 }
                             }
                         }
@@ -105,5 +107,8 @@ pub(crate) fn update_camera_and_picking(app: &mut App, dt: f32, egui_consumed: b
                 }
             }
         }
+    }
+    if legacy_edit_recorded {
+        super::super::editor::mark_legacy_edit(app);
     }
 }

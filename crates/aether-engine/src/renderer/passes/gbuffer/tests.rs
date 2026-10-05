@@ -22,6 +22,7 @@ fn init_ctx<'a>(device: &'a wgpu::Device, queue: &'a wgpu::Queue) -> InitContext
         height: 64,
         ibl_resources: None,
         texture_cache,
+        local_lights_enabled: true,
     }
 }
 

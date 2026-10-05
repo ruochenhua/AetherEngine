@@ -265,6 +265,12 @@ fn delete_undo_redo_and_replay_preserve_state_hash() {
         .unwrap();
     let restored_hash = EditorHistory::state_hash(&world).unwrap();
     assert!(world.query::<&Name>().iter().any(|name| name.0 == "Source"));
+    assert_eq!(
+        OperationLog::from_jsonl(&fs::read_to_string(&log_path).unwrap())
+            .unwrap()
+            .apply_count(),
+        0
+    );
     history
         .redo(&mut context(&mut world, &lighting, &scene_path, &log_path))
         .unwrap();
@@ -284,4 +290,80 @@ fn delete_undo_redo_and_replay_preserve_state_hash() {
         EditorHistory::state_hash(&replay_world).unwrap()
     );
     assert_ne!(restored_hash, deleted_hash);
+}
+
+#[test]
+fn ten_copy_rename_pairs_replay_to_the_same_state_hash() {
+    let (scene_path, log_path) = temp_paths("ten-copy-rename-replay");
+    let (mut world, _) = named_world("Source");
+    let lighting = LightingUniforms::default();
+    let mut history = EditorHistory::default();
+
+    for index in 1..=10 {
+        let copied_name = format!("Source {index}");
+        history
+            .apply(
+                &mut context(&mut world, &lighting, &scene_path, &log_path),
+                EditorOperation::Copy {
+                    source_name: "Source".into(),
+                    new_name: copied_name.clone(),
+                },
+            )
+            .unwrap();
+        history
+            .apply(
+                &mut context(&mut world, &lighting, &scene_path, &log_path),
+                EditorOperation::Rename {
+                    entity_name: copied_name,
+                    new_name: format!("Edited {index}"),
+                },
+            )
+            .unwrap();
+    }
+
+    let jsonl = history.operation_log().to_jsonl().unwrap();
+    let replay_log = OperationLog::from_jsonl(&jsonl).unwrap();
+    assert_eq!(replay_log.apply_count(), 20);
+    assert!(scene_path.is_file());
+    assert!(log_path.is_file());
+    let expected_hash = EditorHistory::state_sha256(&world).unwrap();
+
+    let (mut replay_world, _) = named_world("Source");
+    let mut replay_history = EditorHistory::default();
+    replay_history
+        .replay(
+            &mut context(&mut replay_world, &lighting, &scene_path, &log_path),
+            &replay_log,
+        )
+        .unwrap();
+
+    assert_eq!(
+        EditorHistory::state_sha256(&replay_world).unwrap(),
+        expected_hash
+    );
+    for index in 1..=10 {
+        assert!(replay_world
+            .query::<&Name>()
+            .iter()
+            .any(|name| name.0 == format!("Edited {index}")));
+    }
+}
+
+#[test]
+fn state_sha256_is_stable_and_changes_with_world_state() {
+    let (mut world, _) = named_world("Source");
+    let first = EditorHistory::state_sha256(&world).unwrap();
+    let second = EditorHistory::state_sha256(&world).unwrap();
+    assert_eq!(first, second);
+    assert_eq!(first.len(), 64);
+    assert!(first
+        .bytes()
+        .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase()));
+
+    world.spawn((
+        Transform::default(),
+        Visibility(true),
+        Name("Additional".into()),
+    ));
+    assert_ne!(first, EditorHistory::state_sha256(&world).unwrap());
 }

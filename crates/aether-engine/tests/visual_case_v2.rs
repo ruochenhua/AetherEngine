@@ -3,7 +3,10 @@ use serde_json::{json, Value};
 
 #[path = "support/visual_case.rs"]
 mod fixtures;
-use fixtures::{case, variant};
+#[path = "support/visual_variant.rs"]
+mod variant_fixture;
+use fixtures::case;
+use variant_fixture::variant;
 
 fn parse(cases: Vec<Value>) -> Result<VisualManifest, aether_engine::visual_case::VisualCaseError> {
     VisualManifest::from_json(&serde_json::to_string(&cases).unwrap())

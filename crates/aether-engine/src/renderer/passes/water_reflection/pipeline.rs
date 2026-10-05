@@ -125,6 +125,13 @@ impl WaterReflectionPass {
             multiview_mask: None,
             cache: None,
         });
+        let skinned_pipeline = super::skinned::create_pipeline(
+            device,
+            &shader,
+            &uniform_bind_group_layout,
+            &object_bind_group_layout,
+            &texture_bind_group_layout,
+        );
 
         // Terrain reflection shader: splatted albedo with simple forward lighting.
         let terrain_shader_source = super::shaders::TERRAIN_REFLECTION_SHADER_SRC;
@@ -255,6 +262,7 @@ impl WaterReflectionPass {
         Self {
             device: device.clone(),
             pipeline,
+            skinned_pipeline,
             uniform_buffer,
             uniform_bind_group,
             object_buffer,

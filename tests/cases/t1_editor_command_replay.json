@@ -1,0 +1,32 @@
+[
+  {
+    "manifest_version": 2,
+    "id": "t1_editor_command_replay",
+    "scene": "scenes/18_file_mesh.ron",
+    "launcher_args": [],
+    "render": { "width": 1, "height": 1, "frames": 1, "no_gui_overlay": true, "png": "rgba8" },
+    "time": { "mode": "seek", "simulation_time": 0.0, "fixed_dt": 0.016666667, "max_substeps": 4, "max_seek_steps": 4096 },
+    "camera": { "source": "scene", "override": null },
+    "reference": { "path": "tests/reference/t1_editor_command_replay.png", "sha256": null, "source_commit": null, "os": null, "driver": null, "adapter": null, "runner_version": null, "width": null, "height": null, "format": null },
+    "compare": { "algorithm": "rgba8_normalized", "exact_hash": false, "allow_degraded_compare": false, "ssim_min": 0.99, "mae_max": 0.01, "diff_percent_max": 0.01 },
+    "criteria": [
+      "ten copy/rename pairs save, reload, and replay to the same stable editor state hash",
+      "the generic Light operation is represented in the replayable operation log",
+      "the launcher UI button click emits a generic Light operation without mutating ECS directly"
+    ],
+    "benchmark": null,
+    "variants": [
+      { "id": "default", "launcher_args_append": [], "time_override": null, "camera_override": null, "benchmark_override": null,
+        "expected_result": { "kind": "Render", "diagnostics": [], "fallbacks": [], "metrics": [{ "name": "operations", "operator": "Eq", "value": 21 }, { "name": "copy_rename_pairs", "operator": "Eq", "value": 10 }], "hashes": [], "probes": [
+          { "name": "state_hash_replays", "value": { "kind": "Bool", "value": true } },
+          { "name": "all_ten_pairs_present", "value": { "kind": "Bool", "value": true } },
+          { "name": "generic_light_operation_replayed", "value": { "kind": "Bool", "value": true } },
+          { "name": "ui_event_to_operation", "value": { "kind": "Bool", "value": true } },
+          { "name": "queued_operation_persisted", "value": { "kind": "Bool", "value": true } },
+          { "name": "undo_updates_replay_log", "value": { "kind": "Bool", "value": true } },
+          { "name": "redo_updates_replay_log", "value": { "kind": "Bool", "value": true } }
+        ], "graph": null }
+      }
+    ]
+  }
+]

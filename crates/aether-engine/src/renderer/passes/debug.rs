@@ -164,19 +164,19 @@ impl Pass for DebugLinePass {
         // Editor helpers are hidden for clean visual regression captures.
         if self.helpers_enabled && self.grid_vertex_count > 0 {
             pass.set_vertex_buffer(0, self.grid_vertex_buffer.slice(..));
-            pass.draw(0..self.grid_vertex_count, 0..1);
+            crate::counted_draw!(pass, draw, 0..self.grid_vertex_count, 0..1);
         }
 
         // Draw world-axis gizmo at origin
         if self.helpers_enabled && self.gizmo_vertex_count > 0 {
             pass.set_vertex_buffer(0, self.gizmo_vertex_buffer.slice(..));
-            pass.draw(0..self.gizmo_vertex_count, 0..1);
+            crate::counted_draw!(pass, draw, 0..self.gizmo_vertex_count, 0..1);
         }
 
         // Draw dynamic lines (e.g. transform gizmo at selected entity)
         if self.dynamic_vertex_count > 0 {
             pass.set_vertex_buffer(0, self.dynamic_vertex_buffer.slice(..));
-            pass.draw(0..self.dynamic_vertex_count, 0..1);
+            crate::counted_draw!(pass, draw, 0..self.dynamic_vertex_count, 0..1);
         }
     }
 }

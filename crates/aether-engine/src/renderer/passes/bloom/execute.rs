@@ -64,7 +64,7 @@ pub(super) fn execute(
         rpass.set_bind_group(0, pass.extract_bg.as_ref().unwrap(), &[]);
         rpass.set_bind_group(1, &pass.uniform_bind_group, &[]);
         rpass.set_vertex_buffer(0, pass.quad_vertex_buffer.slice(..));
-        rpass.draw(0..pass.quad_vertex_count, 0..1);
+        crate::counted_draw!(rpass, draw, 0..pass.quad_vertex_count, 0..1);
     }
 
     // 2-4. Downsample chain
@@ -106,7 +106,7 @@ pub(super) fn execute(
         rpass.set_pipeline(&pass.downsample_pipeline);
         rpass.set_bind_group(0, *bg, &[]);
         rpass.set_vertex_buffer(0, pass.quad_vertex_buffer.slice(..));
-        rpass.draw(0..pass.quad_vertex_count, 0..1);
+        crate::counted_draw!(rpass, draw, 0..pass.quad_vertex_count, 0..1);
     }
 
     // 5-6. Upsample chain with additive blending (Mip2→Mip1, Mip1→Mip0)
@@ -143,7 +143,7 @@ pub(super) fn execute(
         rpass.set_pipeline(&pass.upsample_pipeline);
         rpass.set_bind_group(0, *bg, &[]);
         rpass.set_vertex_buffer(0, pass.quad_vertex_buffer.slice(..));
-        rpass.draw(0..pass.quad_vertex_count, 0..1);
+        crate::counted_draw!(rpass, draw, 0..pass.quad_vertex_count, 0..1);
     }
 
     // 7. Final upsample: Mip0 → BloomTexture (Clear — first write)
@@ -167,7 +167,7 @@ pub(super) fn execute(
         rpass.set_pipeline(&pass.upsample_pipeline);
         rpass.set_bind_group(0, pass.upsample2_bg.as_ref().unwrap(), &[]);
         rpass.set_vertex_buffer(0, pass.quad_vertex_buffer.slice(..));
-        rpass.draw(0..pass.quad_vertex_count, 0..1);
+        crate::counted_draw!(rpass, draw, 0..pass.quad_vertex_count, 0..1);
     }
 
     // 8. Composite: HDR + Bloom → BloomResult
@@ -192,6 +192,6 @@ pub(super) fn execute(
         rpass.set_bind_group(0, pass.composite_bg.as_ref().unwrap(), &[]);
         rpass.set_bind_group(1, &pass.uniform_bind_group, &[]);
         rpass.set_vertex_buffer(0, pass.quad_vertex_buffer.slice(..));
-        rpass.draw(0..pass.quad_vertex_count, 0..1);
+        crate::counted_draw!(rpass, draw, 0..pass.quad_vertex_count, 0..1);
     }
 }

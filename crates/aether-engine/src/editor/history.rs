@@ -8,9 +8,11 @@ use crate::ecs::components::{
 use crate::ecs::{Entity, World};
 use crate::renderer::renderable::MaterialUniform;
 use glam::{Quat, Vec3};
+use sha2::{Digest, Sha256};
 
 struct HistoryEntry {
     inverse: Inverse,
+    operation: EditorOperation,
 }
 
 /// Undo/redo owner for editor transactions.
@@ -29,13 +31,17 @@ impl EditorHistory {
         operation: EditorOperation,
     ) -> Result<(), EditorError> {
         let (inverse, rollback) = apply_operation(ctx.world, &operation)?;
+        let history_operation = operation.clone();
         let next_log = self.log.appended(operation);
         if let Err(error) = persist(ctx, &next_log) {
             rollback_operation(ctx.world, rollback).map_err(EditorError::RollbackFailed)?;
             return Err(error);
         }
         self.log = next_log;
-        self.undo.push(HistoryEntry { inverse });
+        self.undo.push(HistoryEntry {
+            inverse,
+            operation: history_operation,
+        });
         self.redo.clear();
         Ok(())
     }
@@ -52,11 +58,14 @@ impl EditorHistory {
                 return Err(error);
             }
         };
-        if let Err(error) = persist(ctx, &self.log) {
+        let mut next_log = self.log.clone();
+        next_log.entries.pop();
+        if let Err(error) = persist(ctx, &next_log) {
             rollback_operation(ctx.world, rollback).map_err(EditorError::RollbackFailed)?;
             self.undo.push(entry);
             return Err(error);
         }
+        self.log = next_log;
         entry.inverse = next_inverse;
         self.redo.push(entry);
         Ok(())
@@ -74,11 +83,13 @@ impl EditorHistory {
                 return Err(error);
             }
         };
-        if let Err(error) = persist(ctx, &self.log) {
+        let next_log = self.log.appended(entry.operation.clone());
+        if let Err(error) = persist(ctx, &next_log) {
             rollback_operation(ctx.world, rollback).map_err(EditorError::RollbackFailed)?;
             self.redo.push(entry);
             return Err(error);
         }
+        self.log = next_log;
         entry.inverse = next_inverse;
         self.undo.push(entry);
         Ok(())
@@ -112,6 +123,22 @@ impl EditorHistory {
             hash = hash.wrapping_mul(0x100000001b3);
         }
         Ok(format!("{hash:016x}"))
+    }
+
+    /// Calculate a deterministic SHA-256 hash of named editor-visible world state.
+    pub fn state_sha256(world: &World) -> Result<String, EditorError> {
+        let mut snapshots = world
+            .query::<(Entity, &Name)>()
+            .iter()
+            .map(|(entity, _)| capture_snapshot(world, entity))
+            .collect::<Result<Vec<_>, _>>()?;
+        snapshots.sort_by(|left, right| left.entity_name.cmp(&right.entity_name));
+        let bytes = serde_json::to_vec(&snapshots)
+            .map_err(|error| EditorError::Serialization(error.to_string()))?;
+        Ok(Sha256::digest(bytes)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect())
     }
 
     /// Number of undo records.

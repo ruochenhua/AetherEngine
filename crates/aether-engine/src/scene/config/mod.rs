@@ -78,6 +78,7 @@ impl SceneDescription {
     /// Parse a scene from a RON string.
     pub fn from_ron(content: &str) -> anyhow::Result<Self> {
         let desc: SceneDescription = ron::de::from_str(content)?;
+        LightConfig::validate_directional_count(&desc.lights)?;
         Ok(desc)
     }
 }

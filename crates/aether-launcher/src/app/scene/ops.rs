@@ -11,6 +11,7 @@ pub(crate) fn process_post_ui_ops(app: &mut App) {
     // New scene
     if app.pending_new_scene {
         app.pending_new_scene = false;
+        super::super::editor::start_unsaved_scene(app);
         if let LauncherState::Running {
             ref mut world,
             ref mut lighting,
@@ -90,6 +91,7 @@ pub(crate) fn process_post_ui_ops(app: &mut App) {
                         update_camera_from_world(&mut app.camera, world);
                         info!("Opened scene from {:?}", path);
                         app.pending_terrain_pipeline_rebuild = true;
+                        super::super::editor::activate_scene(app, path.clone());
                     }
                     Err(e) => {
                         error!("Open scene error: {:?}", e);
@@ -161,6 +163,7 @@ pub(crate) fn process_post_ui_ops(app: &mut App) {
                         if let Err(e) = super::save::write_scene_atomic(&path, &ron) {
                             error!("Save scene error: {:?}", e);
                         } else {
+                            super::super::editor::update_save_path(app, path.clone());
                             info!("Saved scene to {:?}", path);
                         }
                     }

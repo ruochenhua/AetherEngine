@@ -179,6 +179,7 @@ mod tests {
             height: 64,
             ibl_resources: None,
             texture_cache,
+            local_lights_enabled: true,
         }
     }
 
@@ -266,10 +267,11 @@ mod tests {
             },
         },));
 
-        let optional = extract_optional_pass_data(&world);
+        let mut optional = extract_optional_pass_data(&world);
+        optional.lighting.sun.direction = [0.0, -1.0, 0.0];
         let camera = FlyCamera::default();
         let mut lighting = LightingUniforms::default();
-        lighting.light.direction = [-0.2, -0.9, -0.3];
+        lighting.light.direction = [1.0, 0.0, 0.0];
         let assets = crate::asset::AssetManager::new();
         let frame = RenderFrame {
             batches: std::sync::Arc::from([]),
@@ -288,7 +290,8 @@ mod tests {
 
         let bytes = pollster::block_on(read_uniform_buffer(&device, &queue, &pass.uniform_buffer));
         let uniform: AtmosphereUniform = *bytemuck::from_bytes(&bytes);
-        let expected = -Vec3::from_array(lighting.light.direction).normalize();
+        let expected =
+            crate::renderer::light::sun_direction_from_directional_light(&optional.lighting.sun);
         let actual = Vec3::from_array(uniform.sun_direction);
         assert!(
             actual.abs_diff_eq(expected, 1e-4),

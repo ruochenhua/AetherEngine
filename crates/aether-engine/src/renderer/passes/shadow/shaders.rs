@@ -2,6 +2,11 @@
 
 pub(super) const SHADOW_SHADER_SRC: &str = r#"
 struct VertexInput { @location(0) position: vec3<f32>, @location(1) normal: vec3<f32>, @location(2) uv: vec2<f32>, @location(3) tangent: vec4<f32>, };
+struct SkinnedVertexInput {
+    @location(0) position: vec3<f32>, @location(1) normal: vec3<f32>,
+    @location(2) uv: vec2<f32>, @location(3) tangent: vec4<f32>,
+    @location(9) joints: vec4<u32>, @location(10) weights: vec4<f32>,
+};
 struct InstanceInput {
     @location(4) model_matrix_0: vec4<f32>,
     @location(5) model_matrix_1: vec4<f32>,
@@ -15,11 +20,45 @@ struct VertexOutput {
 };
 struct LightVP { light_view_proj: mat4x4<f32>, };
 @group(0) @binding(0) var<uniform> lvp: LightVP;
+struct JointPalette {
+    matrices: array<mat4x4<f32>, 128>,
+    joint_count: u32,
+    padding: array<u32, 3>,
+};
+@group(1) @binding(0) var<storage, read> joint_palette: JointPalette;
+
+fn weighted_skin_matrix(joints: vec4<u32>, weights: vec4<f32>) -> mat4x4<f32> {
+    var result = mat4x4<f32>(
+        vec4<f32>(0.0), vec4<f32>(0.0), vec4<f32>(0.0), vec4<f32>(0.0),
+    );
+    var total = 0.0;
+    for (var i = 0u; i < 4u; i += 1u) {
+        let weight = weights[i];
+        if (weight > 0.0 && joints[i] < joint_palette.joint_count) {
+            result += joint_palette.matrices[joints[i]] * weight;
+            total += weight;
+        }
+    }
+    if (total <= 0.000001) { return mat4x4<f32>(); }
+    return result * (1.0 / total);
+}
+
 @vertex
 fn vs_main(in: VertexInput, instance: InstanceInput) -> VertexOutput {
     var out: VertexOutput;
     let model = mat4x4<f32>(instance.model_matrix_0, instance.model_matrix_1, instance.model_matrix_2, instance.model_matrix_3);
     let world_position = (model * vec4<f32>(in.position, 1.0)).xyz;
+    out.clip_position = lvp.light_view_proj * vec4<f32>(world_position, 1.0);
+    out.world_position = world_position;
+    return out;
+}
+
+@vertex
+fn vs_skinned(in: SkinnedVertexInput, instance: InstanceInput) -> VertexOutput {
+    var out: VertexOutput;
+    let model = mat4x4<f32>(instance.model_matrix_0, instance.model_matrix_1, instance.model_matrix_2, instance.model_matrix_3);
+    let local_position = weighted_skin_matrix(in.joints, in.weights) * vec4<f32>(in.position, 1.0);
+    let world_position = (model * local_position).xyz;
     out.clip_position = lvp.light_view_proj * vec4<f32>(world_position, 1.0);
     out.world_position = world_position;
     return out;

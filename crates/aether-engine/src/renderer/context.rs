@@ -1,6 +1,8 @@
 use std::sync::Arc;
 use winit::window::Window;
 
+mod device;
+
 /// Rendering context.
 ///
 /// Holds the wgpu device, queue, surface, and the owned window that the
@@ -50,16 +52,7 @@ impl RenderContext {
             .expect("Failed to find suitable GPU adapter");
 
         let adapter_info = adapter.get_info();
-
-        let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor {
-                label: Some("Device"),
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::default(),
-                experimental_features: Default::default(),
-                memory_hints: Default::default(),
-                trace: Default::default(),
-            })
+        let (device, queue) = device::request_device(&adapter)
             .await
             .expect("Failed to create device");
 

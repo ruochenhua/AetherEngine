@@ -18,11 +18,13 @@ use std::sync::{Arc, RwLock};
 mod pass;
 mod pipeline;
 mod shaders;
+mod skinned;
 mod terrain;
 /// Planar reflection pass state.
 pub struct WaterReflectionPass {
     device: wgpu::Device,
     pipeline: wgpu::RenderPipeline,
+    skinned_pipeline: wgpu::RenderPipeline,
     uniform_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
     object_buffer: wgpu::Buffer,

@@ -26,7 +26,7 @@ fn save_screenshot(
     height: u32,
     bytes_per_row: u32,
     path: &std::path::Path,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<String> {
     buffer.slice(..).map_async(wgpu::MapMode::Read, |_| {});
     let _ = device.poll(wgpu::PollType::wait_indefinitely());
 
@@ -47,11 +47,12 @@ fn save_screenshot(
     drop(data);
     buffer.unmap();
 
+    let digest = aether_engine::performance::sha256_hex(&rgba);
     let img = image::RgbaImage::from_raw(width, height, rgba)
         .ok_or_else(|| anyhow::anyhow!("Failed to create image buffer"))?;
     img.save(path)?;
 
-    Ok(())
+    Ok(digest)
 }
 
 /// Execute one full render frame.
@@ -114,6 +115,9 @@ pub(crate) fn frame(
     let mut extract_ms = 0.0;
     let mut apply_ms = 0.0;
     let mut execute_ms = 0.0;
+    let mut draw_call_count = 0;
+    let mut visible_entity_ids = Vec::new();
+    let mut visibility_frame = None;
 
     match &mut app.state {
         LauncherState::Menu => {
@@ -147,25 +151,50 @@ pub(crate) fn frame(
 
             // Update lighting from ECS (camera position + light data)
             lighting.camera_pos = app.camera.position.to_array();
-            let lighting_frame = aether_engine::renderer::lighting::extract_lighting_frame(
-                world,
-                lighting.ambient_intensity,
-            );
-            lighting.light = lighting_frame.sun;
 
             let t_extract_0 = Instant::now();
-            let (batches, mut optional) = simulation::extract(
+            let (mut batches, optional, extracted_visibility) = simulation::extract(
                 &mut app.particle_runtime.particles,
                 &mut app.particle_runtime.physics,
                 &mut app.cli,
                 &mut app.asset_manager,
-                app.freeze_time
-                    || app.particle_runtime.playback
-                        != super::particle_runtime::physics_runtime::PlaybackState::Playing,
                 world,
-                dt,
+                simulation::RenderExtractContext {
+                    simulation_paused: app.freeze_time
+                        || app.particle_runtime.playback
+                            != super::particle_runtime::physics_runtime::PlaybackState::Playing,
+                    dt,
+                    camera: &app.camera,
+                    viewport_width: ctx.config.width,
+                    viewport_height: ctx.config.height,
+                    lod_history: &mut app.visibility_lod_history,
+                },
             );
-            optional.lighting = lighting_frame;
+            lighting.light = optional.lighting.sun;
+            visibility_frame = extracted_visibility;
+            if app.cli.animation_enabled {
+                if app.animation_fixture.is_none() {
+                    app.animation_fixture = match super::animation_fixture::create(
+                        &ctx.device,
+                        &ctx.queue,
+                    ) {
+                        Ok(batch) => Some(batch),
+                        Err(error) => {
+                            tracing::error!(%error, "T7.2 animation fixture could not be created");
+                            None
+                        }
+                    };
+                }
+                if let Some(fixture) = app.animation_fixture.as_mut() {
+                    fixture.append_batches(&mut batches, &ctx.queue, dt, &app.cli.time);
+                }
+            }
+            if app.cli.benchmark.is_some() {
+                visible_entity_ids = batches
+                    .iter()
+                    .flat_map(|batch| batch.instances.iter().map(|instance| instance.entity_id))
+                    .collect();
+            }
             extract_ms = t_extract_0.elapsed().as_secs_f64() * 1000.0;
 
             // Update shared terrain geometry cache when the scene contains terrain.
@@ -250,7 +279,10 @@ pub(crate) fn frame(
             apply_ms = t_apply_0.elapsed().as_secs_f64() * 1000.0;
 
             let t_execute_0 = Instant::now();
-            scheduler.execute_all(&mut encoder, &target_view, &frame, app.gpu_timer.as_mut());
+            let (_, calls) = aether_engine::performance::capture_draw_calls(|| {
+                scheduler.execute_all(&mut encoder, &target_view, &frame, app.gpu_timer.as_mut())
+            });
+            draw_call_count = calls;
             execute_ms = t_execute_0.elapsed().as_secs_f64() * 1000.0;
         }
     }
@@ -327,6 +359,14 @@ pub(crate) fn frame(
     }
     let frame_time = frame_start.elapsed();
     app.input.end_frame();
+    if let Some(benchmark) = app.cli.benchmark.as_mut() {
+        benchmark.record_frame(
+            extract_ms,
+            draw_call_count,
+            &visible_entity_ids,
+            visibility_frame.as_ref(),
+        );
+    }
 
     trace!(
         "frame_timing total_ms={:.2} acquire_ms={:.2} extract_ms={:.2} apply_ms={:.2} execute_ms={:.2} submit_to_present_ms={:.2}",
@@ -338,10 +378,11 @@ pub(crate) fn frame(
         (post_submit_time - submit_time).as_secs_f64() * 1000.0,
     );
 
+    let mut screenshot_sha256 = None;
     if should_screenshot {
         if let Some(buf) = app.screenshot_buffer.take() {
             if let Some(path) = app.pending_screenshot_path.take() {
-                if let Err(e) = save_screenshot(
+                match save_screenshot(
                     &ctx.device,
                     &buf,
                     ctx.config.width,
@@ -349,9 +390,11 @@ pub(crate) fn frame(
                     app.screenshot_bytes_per_row,
                     &path,
                 ) {
-                    error!("Screenshot failed: {:?}", e);
-                } else {
-                    info!("Screenshot saved to {:?}", path);
+                    Ok(hash) => {
+                        screenshot_sha256 = Some(hash);
+                        info!("Screenshot saved to {:?}", path);
+                    }
+                    Err(e) => error!("Screenshot failed: {:?}", e),
                 }
                 app.screenshot_taken = true;
             }
@@ -359,6 +402,38 @@ pub(crate) fn frame(
     }
 
     if app.exit_after_frames.is_some_and(|n| app.frame_count >= n) {
+        if let Some(benchmark) = app.cli.benchmark.take() {
+            let adapter = &ctx.adapter_info;
+            let driver = format!("{} {}", adapter.driver, adapter.driver_info);
+            let device = aether_engine::performance::DeviceIdentity {
+                device: adapter.name.clone(),
+                os: std::env::consts::OS.to_owned(),
+                arch: std::env::consts::ARCH.to_owned(),
+                driver: if driver.trim().is_empty() {
+                    "unknown".to_owned()
+                } else {
+                    driver
+                },
+                adapter: format!("{} ({:?})", adapter.name, adapter.backend),
+                resolution: [ctx.config.width, ctx.config.height],
+            };
+            let state_hash = match &app.state {
+                LauncherState::Running { world, .. } => {
+                    match aether_engine::editor::EditorHistory::state_sha256(world) {
+                        Ok(hash) => Some(hash),
+                        Err(failure) => {
+                            error!(%failure, "Benchmark scene state hash failed");
+                            None
+                        }
+                    }
+                }
+                LauncherState::Menu => None,
+            };
+            match benchmark.write_report(device, screenshot_sha256, state_hash) {
+                Ok(path) => info!("Performance report saved to {:?}", path),
+                Err(failure) => error!("Performance report failed: {failure}"),
+            }
+        }
         if let Err(error) = app.asset_manager.shutdown() {
             tracing::error!(%error, "asset worker shutdown failed");
         }

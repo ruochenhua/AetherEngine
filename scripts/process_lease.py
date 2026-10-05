@@ -62,6 +62,9 @@ def identity_for(pid):
 
 
 def supported():
+    if os.name == 'nt':
+        from windows_job import supported as windows_supported
+        return windows_supported()
     if sys.platform not in ('darwin', 'linux') or not hasattr(os, 'fork'):
         return False
     if signal.getsignal(signal.SIGCHLD) == signal.SIG_IGN:
@@ -83,6 +86,7 @@ class ProvisionalLease:
         self.signals = []
         self.group_empty = False
         self.cleaned_at = None
+        self.bound_at = None
         self.lock = threading.RLock()
 
     def transition(self, state):
@@ -98,8 +102,14 @@ class ProvisionalLease:
             raise Diagnostic('AlreadyCleaned' if self.state == State.Cleaned else 'IllegalTransition')
         self.state = state
         self.states.append(state.value)
+        if state == State.Bound:
+            self.bound_at = time.monotonic()
 
     def validate(self, nonce):
+        if os.name == 'nt':
+            if self.process is None or self.identity is None:
+                raise Diagnostic('ProcessIsolationLost')
+            return self.process.validate(self, nonce)
         try:
             if (nonce != self.nonce or self.identity is None or self.process is None
                     or self.process.returncode is not None
@@ -127,6 +137,11 @@ class ProvisionalLease:
 
 
 class Supervisor:
+    def __new__(cls, *args, **kwargs):
+        if os.name == 'nt':
+            from windows_job import Supervisor as WindowsSupervisor
+            return WindowsSupervisor(*args, **kwargs)
+        return super().__new__(cls)
     def __init__(self, grace_period=5):
         if not supported():
             raise Diagnostic('UnsupportedProcessIsolation')

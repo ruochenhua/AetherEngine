@@ -3,8 +3,10 @@
 //! Thin orchestration layer. Builds the Scheduler from passes,
 //! injects per-frame data via `RenderFrame`, and delegates execution.
 
+mod animation_fixture;
 mod asset_hot_reload;
 mod cli;
+mod editor;
 mod handler;
 mod input;
 mod material_reload;
@@ -26,6 +28,7 @@ use aether_engine::{
         light::LightingUniforms,
         passes::{fxaa::FxaaQuality, tone_mapping::ToneMappingMode},
         scheduler::Scheduler,
+        visibility::LodHistory,
     },
     terrain::TerrainGeometry,
 };
@@ -62,6 +65,7 @@ pub(crate) struct App {
     pub(crate) egui_renderer: Option<egui_wgpu::Renderer>,
     pub(crate) input: InputManager,
     pub(crate) camera: FlyCamera,
+    pub(crate) visibility_lod_history: LodHistory,
     pub(crate) mesh_registry: BuiltinMeshRegistry,
     pub(crate) asset_manager: AssetManager,
     pub(crate) asset_hot_reload_watcher: asset_hot_reload::AssetHotReloadWatcher,
@@ -108,6 +112,11 @@ pub(crate) struct App {
     pub(crate) pending_add_sphere: bool,
     pub(crate) pending_add_terrain: bool,
     pub(crate) pending_add_water: bool,
+    pub(crate) pending_editor_operation: Option<aether_engine::editor::EditorOperation>,
+    pub(crate) editor_history: aether_engine::editor::EditorHistory,
+    pub(crate) editor_operation_message: Option<String>,
+    pub(crate) undo_action_order: Vec<editor::UndoActionKind>,
+    pub(crate) redo_action_order: Vec<editor::UndoActionKind>,
     pub(crate) pending_despawn_entity: Option<Entity>,
     pub(crate) pending_terrain_pipeline_rebuild: bool,
     pub(crate) undo_stack: Vec<crate::inspector::EditorCommand>,
@@ -122,6 +131,7 @@ pub(crate) struct App {
     pub(crate) screenshot_buffer: Option<wgpu::Buffer>,
     pub(crate) screenshot_bytes_per_row: u32,
     pub(crate) cli: CliArgs,
+    pub(crate) animation_fixture: Option<animation_fixture::AnimationFixture>,
     pub(crate) no_gui_overlay: bool,
     pub(crate) exit_after_frames: Option<u32>,
     pub(crate) freeze_time: bool,
@@ -162,6 +172,7 @@ impl App {
                 near: 0.1,
                 far: 1000.0,
             },
+            visibility_lod_history: LodHistory::default(),
             mesh_registry: BuiltinMeshRegistry::new(),
             asset_manager: AssetManager::new(),
             asset_hot_reload_watcher: asset_hot_reload::AssetHotReloadWatcher::default(),
@@ -208,6 +219,11 @@ impl App {
             pending_add_sphere: false,
             pending_add_terrain: false,
             pending_add_water: false,
+            pending_editor_operation: None,
+            editor_history: aether_engine::editor::EditorHistory::default(),
+            editor_operation_message: None,
+            undo_action_order: Vec::new(),
+            redo_action_order: Vec::new(),
             pending_despawn_entity: None,
             pending_terrain_pipeline_rebuild: false,
             undo_stack: Vec::new(),
@@ -222,6 +238,7 @@ impl App {
             screenshot_buffer: None,
             screenshot_bytes_per_row: 0,
             cli,
+            animation_fixture: None,
             no_gui_overlay,
             exit_after_frames,
             freeze_time,
@@ -233,24 +250,12 @@ impl App {
 
     /// Pop the top command from the undo stack and revert it.
     fn apply_undo(&mut self) {
-        let Some(cmd) = self.undo_stack.pop() else {
-            return;
-        };
-        if let LauncherState::Running { ref mut world, .. } = self.state {
-            let redo = crate::inspector::apply_undo(world, &cmd);
-            self.redo_stack.push(redo);
-        }
+        editor::apply_undo(self);
     }
 
     /// Pop the top command from the redo stack and re-apply it.
     fn apply_redo(&mut self) {
-        let Some(cmd) = self.redo_stack.pop() else {
-            return;
-        };
-        if let LauncherState::Running { ref mut world, .. } = self.state {
-            let undo = crate::inspector::apply_undo(world, &cmd);
-            self.undo_stack.push(undo);
-        }
+        editor::apply_redo(self);
     }
 
     /// Rebuild the render pipeline if the terrain presence in the world has
@@ -289,6 +294,7 @@ impl App {
             height,
             has_terrain,
             self.transparent_enabled,
+            self.cli.local_lights_enabled,
         ) {
             Ok((scheduler, ibl_resources)) => {
                 info!("rebuilt pipeline with passes: {:?}", scheduler.pass_names());

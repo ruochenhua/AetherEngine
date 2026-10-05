@@ -16,7 +16,7 @@ mod types;
 pub use types::CloudUniform;
 
 use crate::renderer::frame::RenderFrame;
-use crate::renderer::light::sun_direction_from_lighting;
+use crate::renderer::light::sun_direction_from_directional_light;
 use crate::renderer::pass::{InitContext, Pass, PassSignature, ResHandle};
 use crate::renderer::resource::{CloudColor, GDepth};
 use crate::renderer::resource_table::ResourceTable;
@@ -106,12 +106,12 @@ impl Pass for VolumetricCloudPass {
             let inner_radius = planet_radius + cfg.bottom_altitude;
             let outer_radius = planet_radius + cfg.top_altitude;
 
-            let light_dir = sun_direction_from_lighting(frame.lighting);
+            let light_dir = sun_direction_from_directional_light(&frame.optional.lighting.sun);
             let sun_toward = light_dir;
             let light_factor = sun_toward.dot(Vec3::Y).clamp(0.0, 1.0);
 
-            let raw_light_color =
-                Vec3::from_array(frame.lighting.light.color) * frame.lighting.light.intensity;
+            let sun = &frame.optional.lighting.sun;
+            let raw_light_color = Vec3::from_array(sun.color) * sun.intensity;
             let real_light_color = raw_light_color;
 
             let proj = frame.camera.projection_matrix(frame.aspect);
@@ -220,7 +220,7 @@ mod tests {
     use crate::renderer::camera::FlyCamera;
     use crate::renderer::extract::extract_optional_pass_data;
     use crate::renderer::frame::{FrameConfig, RenderFrame};
-    use crate::renderer::light::{sun_direction_from_lighting, LightingUniforms};
+    use crate::renderer::light::{sun_direction_from_directional_light, LightingUniforms};
     use crate::scene::config::CloudConfig;
     use glam::Vec3;
     use std::sync::Arc;
@@ -333,10 +333,16 @@ mod tests {
                 ..CloudConfig::default()
             },
         },));
-        let optional = extract_optional_pass_data(&world);
+        let mut optional = extract_optional_pass_data(&world);
+        optional.lighting.sun.direction = [0.0, -1.0, 0.0];
+        optional.lighting.sun.color = [0.2, 0.4, 0.6];
+        optional.lighting.sun.intensity = 2.0;
 
         let camera = FlyCamera::default();
-        let lighting = LightingUniforms::default();
+        let mut lighting = LightingUniforms::default();
+        lighting.light.direction = [1.0, 0.0, 0.0];
+        lighting.light.color = [1.0; 3];
+        lighting.light.intensity = 1.0;
         let assets = crate::asset::AssetManager::new();
         let texture_cache = crate::asset::texture_cache::GpuTextureCache::new(&device, &queue);
         let frame = RenderFrame {
@@ -380,10 +386,11 @@ mod tests {
         let uniforms: &[CloudUniform] = bytemuck::cast_slice(&data);
         assert_eq!(uniforms[0].sphere_outer_params.x, 6480.0);
         assert_eq!(uniforms[0].noise_scales.w, 150.0);
-        assert!((uniforms[0].light_color.w - 0.57735).abs() < 0.001);
+        assert!((uniforms[0].light_color.w - 1.0).abs() < 0.001);
+        assert_eq!(uniforms[0].light_color.to_array()[..3], [0.4, 0.8, 1.2]);
 
         // The sun direction written to the shader must match the shared helper.
-        let expected_sun = sun_direction_from_lighting(&lighting);
+        let expected_sun = sun_direction_from_directional_light(&optional.lighting.sun);
         let actual_sun = Vec3::new(
             uniforms[0].sun_direction.x,
             uniforms[0].sun_direction.y,

@@ -2,7 +2,7 @@
 
 use super::{AtmospherePass, AtmosphereUniform};
 use crate::renderer::frame::RenderFrame;
-use crate::renderer::light::sun_direction_from_lighting;
+use crate::renderer::light::sun_direction_from_directional_light;
 use crate::renderer::pass::{InitContext, Pass, PassSignature};
 use crate::renderer::resource::{GDepth, SceneColor};
 use crate::renderer::resource_table::ResourceTable;
@@ -60,7 +60,7 @@ impl Pass for AtmospherePass {
     fn apply_frame(&mut self, frame: &RenderFrame) {
         if let Some(atmos) = frame.optional.atmosphere.clone() {
             self.has_atmosphere = true;
-            let sun_toward = sun_direction_from_lighting(frame.lighting);
+            let sun_toward = sun_direction_from_directional_light(&frame.optional.lighting.sun);
 
             let proj = frame.camera.projection_matrix(frame.aspect);
             let view = frame.camera.view_matrix();
@@ -128,6 +128,6 @@ impl Pass for AtmospherePass {
         pass.set_bind_group(0, &self.uniform_bind_group, &[]);
         pass.set_bind_group(1, texture_bg, &[]);
         pass.set_vertex_buffer(0, self.quad_vertex_buffer.slice(..));
-        pass.draw(0..self.quad_vertex_count, 0..1);
+        crate::counted_draw!(pass, draw, 0..self.quad_vertex_count, 0..1);
     }
 }

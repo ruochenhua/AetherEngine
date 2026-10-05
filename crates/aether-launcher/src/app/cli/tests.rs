@@ -56,6 +56,15 @@ fn parses_particle_billboard_fixture_switch() {
 }
 
 #[test]
+fn parses_skinned_animation_fixture_switch() {
+    let enabled = parse_args(&args(&["aether-launcher", "--animation", "on"])).unwrap();
+    assert!(enabled.animation_enabled);
+    let disabled = parse_args(&args(&["aether-launcher", "--animation", "off"])).unwrap();
+    assert!(!disabled.animation_enabled);
+    assert!(parse_args(&args(&["aether-launcher", "--animation", "loop"])).is_err());
+}
+
+#[test]
 fn debug_helpers_can_be_hidden_for_visual_acceptance_captures() {
     let cli = parse_args(&args(&["aether-launcher", "--no-debug-helpers"])).unwrap();
     assert!(!cli.debug_helpers_enabled);
@@ -80,6 +89,19 @@ fn parses_no_ibl_flag() {
 }
 
 #[test]
+fn local_lights_default_on_and_can_be_disabled() {
+    let default = parse_args(&args(&["aether-launcher"])).unwrap();
+    assert!(default.local_lights_enabled);
+
+    let enabled = parse_args(&args(&["aether-launcher", "--local-lights", "on"])).unwrap();
+    assert!(enabled.local_lights_enabled);
+
+    let disabled = parse_args(&args(&["aether-launcher", "--local-lights", "off"])).unwrap();
+    assert!(!disabled.local_lights_enabled);
+    assert!(parse_args(&args(&["aether-launcher", "--local-lights", "maybe"])).is_err());
+}
+
+#[test]
 fn app_honors_ssr_cli_flag() {
     let cli = CliArgs {
         scene: None,
@@ -90,14 +112,17 @@ fn app_honors_ssr_cli_flag() {
         freeze_time: false,
         ssao_enabled: false,
         no_ibl: false,
+        local_lights_enabled: true,
         ssr_enabled: true,
         transparent_enabled: false,
         particles_enabled: false,
+        animation_enabled: false,
         debug_helpers_enabled: true,
         physics_debug_enabled: false,
         width: None,
         height: None,
         time: aether_engine::time::TimeControl::default(),
+        benchmark: None,
     };
     let app = App::new(cli);
     assert!(app.ssr_enabled);
@@ -174,4 +199,108 @@ fn rejects_invalid_numeric_time_values_and_seek_limit() {
         "9",
     ]))
     .is_err());
+}
+
+#[test]
+fn benchmark_capture_requires_a_bounded_30_120_run_and_source_fingerprint() {
+    let case_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures/t9_benchmark_case.json");
+    let case_path = case_path.to_string_lossy().into_owned();
+    let output_path = std::path::PathBuf::from("tests/reports/t9-test/benchmark.json");
+    let args = args(&[
+        "aether-launcher",
+        "--scene",
+        "tests/reports/t9-test/t9_baseline_report.ron",
+        "--screenshot",
+        "tests/reports/t9-test/output.png",
+        "--exit-after-frames",
+        "150",
+        "--no-gui-overlay",
+        "--width",
+        "1280",
+        "--height",
+        "720",
+        "--time-mode",
+        "fixed-step",
+        "--simulation-time",
+        "0",
+        "--fixed-dt",
+        "0.016666667",
+        "--benchmark-case",
+        &case_path,
+        "--benchmark-output",
+        output_path.to_str().unwrap(),
+        "--benchmark-commit",
+        "7c6792825add554a8ded1eb16e6355ccda31904f",
+        "--benchmark-source-fingerprint",
+        &"d".repeat(64),
+        "--benchmark-source-dirty",
+        "true",
+    ]);
+    let parsed = parse_args(&args).unwrap();
+    assert!(parsed.benchmark.is_some());
+    assert_eq!(parsed.exit_after_frames, Some(150));
+}
+
+#[test]
+fn benchmark_capture_rejects_an_unbounded_partial_argument_set() {
+    assert!(parse_args(&args(&[
+        "aether-launcher",
+        "--benchmark-case",
+        "tests/fixtures/t9_benchmark_case.json",
+    ]))
+    .is_err());
+}
+
+#[test]
+fn visibility_benchmark_requires_a_metrics_sidecar() {
+    let fixture = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures/t9_benchmark_case.json");
+    let case_text = std::fs::read_to_string(fixture)
+        .unwrap()
+        .replace("\"visibility\": false", "\"visibility\": true");
+    let case_path = std::env::temp_dir().join(format!(
+        "aether-t9-visibility-case-{}.json",
+        std::process::id()
+    ));
+    std::fs::write(&case_path, case_text).unwrap();
+    let case_path = case_path.to_string_lossy().into_owned();
+    let output_path = "tests/reports/t9-test/benchmark.json";
+    let args = args(&[
+        "aether-launcher",
+        "--scene",
+        "tests/reports/t9-test/t9_baseline_report.ron",
+        "--screenshot",
+        "tests/reports/t9-test/output.png",
+        "--exit-after-frames",
+        "150",
+        "--no-gui-overlay",
+        "--width",
+        "1280",
+        "--height",
+        "720",
+        "--time-mode",
+        "fixed-step",
+        "--simulation-time",
+        "0",
+        "--fixed-dt",
+        "0.016666667",
+        "--benchmark-case",
+        &case_path,
+        "--benchmark-output",
+        output_path,
+        "--benchmark-commit",
+        "7c6792825add554a8ded1eb16e6355ccda31904f",
+        "--benchmark-source-fingerprint",
+        &"d".repeat(64),
+        "--benchmark-source-dirty",
+        "true",
+    ]);
+    let result = parse_args(&args);
+    let _ = std::fs::remove_file(case_path);
+    let error = match result {
+        Ok(_) => panic!("visibility capture without its metrics sidecar should fail"),
+        Err(error) => error,
+    };
+    assert!(error.to_string().contains("--benchmark-visibility-output"));
 }

@@ -52,8 +52,8 @@ pub(super) fn execute(
     rpass.set_vertex_buffer(0, pass.mesh.vertex_buffer.slice(..));
     if let Some(ref index_buffer) = pass.mesh.index_buffer {
         rpass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-        rpass.draw_indexed(0..pass.mesh.index_count, 0, 0..1);
+        crate::counted_draw!(rpass, draw_indexed, 0..pass.mesh.index_count, 0, 0..1);
     } else {
-        rpass.draw(0..pass.mesh.vertex_count, 0..1);
+        crate::counted_draw!(rpass, draw, 0..pass.mesh.vertex_count, 0..1);
     }
 }

@@ -12,7 +12,7 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 
 cases=(
   "t3_material_resolver|scene::material::tests"
-  "t3_material_schema|parse_extended_material_preserves_texture_usage_metadata"
+  "t3_material_schema|extended_ron_material_preserves_texture_usage_metadata"
   "t3_material_legacy|scene::serializer::tests::serialize_to_ron_roundtrips"
 )
 
@@ -31,6 +31,9 @@ for item in "${cases[@]}"; do
   status="PASS"
 
   if ! cargo test -p aether-engine "$test_filter" --no-fail-fast >"$output_file" 2>&1; then
+    status="FAIL"
+    overall=1
+  elif ! grep -Eq 'test result: ok\. [1-9][0-9]* passed' "$output_file"; then
     status="FAIL"
     overall=1
   fi

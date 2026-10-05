@@ -20,7 +20,7 @@ rg -q 'tell front window to do script' "$RUNNER"
 rg -q 'trap .*cleanup' "$RUNNER"
 rg -q 'terminate_process_tree' "$RUNNER"
 rg -q 'ACTIVE_RUNNER_PID' "$REGRESSION_RUNNER"
-test "$(rg -c 'python3 .*runner_process.py' "$REGRESSION_RUNNER")" -eq 1
+test "$(rg -c '"\$SCRIPT_DIR/run_visual_regression\.py"' "$REGRESSION_RUNNER")" -eq 1
 ! rg -q 'osascript|tell application' "$REGRESSION_RUNNER" "$PROJECT_ROOT/scripts/runner_process.py" "$PROJECT_ROOT/scripts/process_lease.py"
 rg -q 'trap .*cleanup' "$REGRESSION_RUNNER"
 

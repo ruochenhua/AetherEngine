@@ -2,7 +2,7 @@
 
 use super::{GodRayPass, GodRayUniform};
 use crate::renderer::frame::RenderFrame;
-use crate::renderer::light::sun_direction_from_lighting;
+use crate::renderer::light::sun_direction_from_directional_light;
 use crate::renderer::pass::{InitContext, Pass, PassSignature};
 use crate::renderer::resource::{GDepth, GodRayColor};
 use crate::renderer::resource_table::ResourceTable;
@@ -50,7 +50,7 @@ impl Pass for GodRayPass {
             let view = frame.camera.view_matrix();
             let view_proj = proj * view;
             let inv_view_proj = view_proj.inverse();
-            let sun_toward = sun_direction_from_lighting(frame.lighting);
+            let sun_toward = sun_direction_from_directional_light(&frame.optional.lighting.sun);
 
             let cfg = &god_ray.config;
             let uniforms = GodRayUniform {
@@ -107,6 +107,6 @@ impl Pass for GodRayPass {
         pass.set_bind_group(0, &self.uniform_bind_group, &[]);
         pass.set_bind_group(1, texture_bg, &[]);
         pass.set_vertex_buffer(0, self.quad_vertex_buffer.slice(..));
-        pass.draw(0..self.quad_vertex_count, 0..1);
+        crate::counted_draw!(pass, draw, 0..self.quad_vertex_count, 0..1);
     }
 }

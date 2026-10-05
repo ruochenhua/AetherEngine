@@ -28,8 +28,15 @@ pub struct OptionalPassData {
 
 /// Extract optional pass data from the ECS World.
 pub fn extract_optional_pass_data(world: &World) -> OptionalPassData {
+    let lighting = match crate::renderer::lighting::extract_lighting_frame(world, 0.0) {
+        Ok(frame) => frame,
+        Err(error) => {
+            tracing::error!(%error, "invalid ECS lighting frame; using direction-only fallback");
+            LightingFrame::default()
+        }
+    };
     OptionalPassData {
-        lighting: crate::renderer::lighting::extract_lighting_frame(world, 0.0),
+        lighting,
         terrain: world.query::<&Terrain>().iter().next().cloned(),
         water: world.query::<&Water>().iter().next().cloned(),
         atmosphere: world.query::<&Atmosphere>().iter().next().cloned(),

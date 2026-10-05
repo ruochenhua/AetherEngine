@@ -2,6 +2,7 @@ use super::*;
 use crate::renderer::camera::FlyCamera;
 use crate::renderer::frame::{FrameConfig, RenderFrame};
 use crate::renderer::light::LightingUniforms;
+use glam::Vec4Swizzles;
 
 fn headless_queue() -> (wgpu::Device, wgpu::Queue) {
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());

@@ -10,7 +10,7 @@ use std::time::Duration;
 static NEXT_FIXTURE: AtomicUsize = AtomicUsize::new(1);
 
 #[derive(Debug, Eq, PartialEq)]
-pub(super) struct TextAsset(String);
+pub(super) struct TextAsset(pub(super) String);
 
 impl Asset for TextAsset {
     const KIND: AssetKind = AssetKind::GltfDocument;
@@ -232,28 +232,6 @@ fn reload_success_increments_generation_and_invalidates_old_handle() {
     let new_handle = store.current_handle::<TextAsset>(&asset_id).unwrap();
     assert_eq!(new_handle.generation(), 2);
     assert_eq!(store.get(new_handle).unwrap().0, "version two");
-    store.shutdown().unwrap();
-}
-
-#[test]
-fn failed_reload_keeps_the_previous_generation_available() {
-    let fixture = FixtureDir::new();
-    fixture.write("model.gltf", "last known good");
-    let mut store = fixture.store();
-    let (handle, _) = store.request::<TextAsset>(Path::new("model.gltf")).unwrap();
-    finish_one(&mut store, handle);
-
-    fixture.write("model.gltf", "fail");
-    let _ticket = store.reload(handle).unwrap();
-    let outcome = finish_one(&mut store, handle);
-    assert!(matches!(
-        outcome.state,
-        LoadStateView::Failed {
-            has_last_good: true,
-            ..
-        }
-    ));
-    assert_eq!(store.get(handle).unwrap().0, "last known good");
     store.shutdown().unwrap();
 }
 
