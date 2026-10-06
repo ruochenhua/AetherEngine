@@ -1328,7 +1328,10 @@
     "manifest_version": 2,
     "id": "t3_pbr_material_grid",
     "scene": "scenes/24_t3_pbr_material_grid.ron",
-    "launcher_args": [],
+    "launcher_args": [
+      "--material-extraction",
+      "on"
+    ],
     "render": {
       "width": 1280,
       "height": 720,
@@ -1800,6 +1803,114 @@
     "criteria": [
       "Fire particles are visible at the fixed 0.50 second seek.",
       "A second same-time capture has the same output hash."
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "t5_particle_fire_particles_only_seek_0p50",
+    "scene": "scenes/t5_particle_fire.ron",
+    "launcher_args": [
+      "--transparent",
+      "off",
+      "--particles",
+      "on",
+      "--no-debug-helpers"
+    ],
+    "render": {
+      "width": 1280,
+      "height": 720,
+      "frames": 60,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0.5,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/t5_particle_fire_particles_only_seek_0p50.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "Fire particles are visible at the fixed 0.50 second seek when transparency is disabled."
+    ],
+    "benchmark": null,
+    "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "t3_pbr_material_grid_legacy",
+    "scene": "scenes/24_t3_pbr_material_grid.ron",
+    "launcher_args": [
+      "--material-extraction",
+      "off"
+    ],
+    "render": {
+      "width": 1280,
+      "height": 720,
+      "frames": 60,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/t3_pbr_material_grid_legacy.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "材质格中的所有单元均可见，表面细节没有丢失。",
+      "粗糙度/金属度组合呈现不同高光和反射，单元没有空白或缺失。"
     ],
     "benchmark": null,
     "variants": null

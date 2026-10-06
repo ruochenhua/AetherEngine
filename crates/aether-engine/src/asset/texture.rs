@@ -86,19 +86,46 @@ impl GpuTexture {
         cpu: &CpuTexture,
         label: Option<&str>,
     ) -> Self {
+        Self::from_cpu_with_srgb(device, queue, cpu, label, false)
+    }
+
+    /// Create a GPU texture and select an sRGB format for color slots when supported.
+    pub fn from_cpu_with_srgb(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        cpu: &CpuTexture,
+        label: Option<&str>,
+        srgb: bool,
+    ) -> Self {
         let size = wgpu::Extent3d {
             width: cpu.width,
             height: cpu.height,
             depth_or_array_layers: 1,
         };
 
-        let format = match cpu.format {
-            TextureFormat::R8 => wgpu::TextureFormat::R8Unorm,
-            TextureFormat::Rg8 => wgpu::TextureFormat::Rg8Unorm,
-            TextureFormat::Rgb8 => wgpu::TextureFormat::Rgba8Unorm, // RGB8 not supported, pad to RGBA
-            TextureFormat::Rgba8 => wgpu::TextureFormat::Rgba8Unorm,
-            TextureFormat::Rgba16F => wgpu::TextureFormat::Rgba16Float,
-            TextureFormat::Rgba32F => wgpu::TextureFormat::Rgba32Float,
+        let format = match (cpu.format, srgb) {
+            (TextureFormat::R8, _) => wgpu::TextureFormat::R8Unorm,
+            (TextureFormat::Rg8, _) => wgpu::TextureFormat::Rg8Unorm,
+            (TextureFormat::Rgb8, true) => wgpu::TextureFormat::Rgba8UnormSrgb,
+            (TextureFormat::Rgb8, false) => wgpu::TextureFormat::Rgba8Unorm,
+            (TextureFormat::Rgba8, true) => wgpu::TextureFormat::Rgba8UnormSrgb,
+            (TextureFormat::Rgba8, false) => wgpu::TextureFormat::Rgba8Unorm,
+            (TextureFormat::Rgba16F, _) => wgpu::TextureFormat::Rgba16Float,
+            (TextureFormat::Rgba32F, _) => wgpu::TextureFormat::Rgba32Float,
+        };
+        let padded_rgb = (cpu.format == TextureFormat::Rgb8).then(|| {
+            let mut rgba = Vec::with_capacity((cpu.width * cpu.height * 4) as usize);
+            for pixel in cpu.data.chunks_exact(3) {
+                rgba.extend_from_slice(pixel);
+                rgba.push(255);
+            }
+            rgba
+        });
+        let upload_data = padded_rgb.as_deref().unwrap_or(&cpu.data);
+        let upload_channels = if padded_rgb.is_some() {
+            4
+        } else {
+            cpu.channels
         };
 
         let texture = device.create_texture(&wgpu::TextureDescriptor {
@@ -119,10 +146,10 @@ impl GpuTexture {
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
-            &cpu.data,
+            upload_data,
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
-                bytes_per_row: Some(cpu.width * cpu.channels),
+                bytes_per_row: Some(cpu.width * upload_channels),
                 rows_per_image: Some(cpu.height),
             },
             size,

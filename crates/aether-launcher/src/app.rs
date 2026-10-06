@@ -248,6 +248,24 @@ impl App {
         }
     }
 
+    pub(crate) fn write_render_graph_snapshot(&self) {
+        let (Some(path), Some(scheduler)) = (
+            self.cli.render_graph_output.as_ref(),
+            self.scheduler.as_ref(),
+        ) else {
+            return;
+        };
+        if let Some(parent) = path.parent().filter(|value| !value.as_os_str().is_empty()) {
+            if let Err(error) = std::fs::create_dir_all(parent) {
+                tracing::error!(?path, %error, "failed to create render graph artifact directory");
+                return;
+            }
+        }
+        if let Err(error) = std::fs::write(path, scheduler.graph_artifact_json()) {
+            tracing::error!(?path, %error, "failed to write render graph artifact");
+        }
+    }
+
     /// Pop the top command from the undo stack and revert it.
     fn apply_undo(&mut self) {
         editor::apply_undo(self);
@@ -294,11 +312,13 @@ impl App {
             height,
             has_terrain,
             self.transparent_enabled,
+            self.cli.particles_enabled,
             self.cli.local_lights_enabled,
         ) {
             Ok((scheduler, ibl_resources)) => {
                 info!("rebuilt pipeline with passes: {:?}", scheduler.pass_names());
                 self.scheduler = Some(scheduler);
+                self.write_render_graph_snapshot();
                 self.ibl_resources = Some(ibl_resources);
                 self.has_terrain_pipeline = has_terrain;
                 self.gpu_timer = aether_engine::renderer::gpu_timer::GpuTimer::new(

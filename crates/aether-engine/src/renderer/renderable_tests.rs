@@ -48,3 +48,26 @@ fn object_uniform_carries_extended_texture_presence_flags() {
     assert_eq!(object.orm_present, 1);
     assert_eq!(object.emissive_present, 1);
 }
+
+#[test]
+fn extracted_object_uniform_packs_configured_orm_channels() {
+    use crate::renderer::extracted_material::ExtractedMaterial;
+    use crate::scene::config::material::{OrmSwizzle, TextureChannel};
+
+    let config = MaterialConfig {
+        orm_swizzle: OrmSwizzle {
+            ao: TextureChannel::A,
+            roughness: TextureChannel::Zero,
+            metallic: TextureChannel::One,
+        },
+        ..MaterialConfig::default()
+    };
+    let resolution = MaterialResolver::new("project")
+        .resolve(&config, &mut AssetManager::new())
+        .unwrap();
+    let extracted = ExtractedMaterial::from_resolution(&resolution);
+
+    let object = ObjectUniform::from_extracted_material(&extracted);
+
+    assert_eq!(object.orm_swizzle, 3 | (4 << 3) | (5 << 6));
+}

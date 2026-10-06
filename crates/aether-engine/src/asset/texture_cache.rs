@@ -52,4 +52,21 @@ mod tests {
         let b = cache.get_or_upload(handle, &assets);
         assert!(Arc::ptr_eq(&a, &b));
     }
+
+    #[test]
+    fn color_and_data_slots_upload_with_distinct_gpu_formats() {
+        let (device, queue) = headless_device_queue();
+        let mut assets = AssetManager::new();
+        let handle = assets
+            .load_from("shared_texture", CpuTexture::from_color(180, 90, 45, 255))
+            .unwrap();
+        let cache = GpuTextureCache::new(&device, &queue);
+
+        let color = cache.get_or_upload_with_srgb(handle, &assets, true);
+        let data = cache.get_or_upload_with_srgb(handle, &assets, false);
+
+        assert_eq!(color.format, wgpu::TextureFormat::Rgba8UnormSrgb);
+        assert_eq!(data.format, wgpu::TextureFormat::Rgba8Unorm);
+        assert!(!Arc::ptr_eq(&color, &data));
+    }
 }

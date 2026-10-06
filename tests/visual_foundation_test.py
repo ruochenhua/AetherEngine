@@ -106,8 +106,11 @@ if os.environ.get('FAKE_DEVICE'):shutil.copyfile(os.environ['FAKE_DEVICE'],os.en
 
     def test_matrix_has_only_v2_and_backup_has_exact_migration_ids(self):
         data=json.loads((ROOT/'tests/visual-matrix.json').read_text());old=json.loads((ROOT/'tests/visual-matrix.v1.bak').read_text())
-        self.assertEqual([c['id'] for c in data],[c['name'] for c in old['scenes']]);self.assertEqual(len(data),26)
-        self.assertTrue(all(c['manifest_version']==2 for c in data));self.assertEqual(len(manifest.materialize(ROOT/'tests/visual-matrix.json')),26)
+        current_ids=[c['id'] for c in data];migrated_ids=[c['name'] for c in old['scenes']]
+        self.assertEqual(len(migrated_ids),26);self.assertTrue(set(migrated_ids).issubset(current_ids))
+        self.assertEqual(len(current_ids),len(set(current_ids)))
+        self.assertTrue(all(c['manifest_version']==2 for c in data))
+        self.assertEqual(len(manifest.materialize(ROOT/'tests/visual-matrix.json')),len(data))
 
     def test_v1_unknown_and_invalid_paths_rejected_before_spawn(self):
         for value in [{'scenes':[]},[dict(self.case,unknown=True)],[dict(self.case,scene='scenes/../secret')]]:

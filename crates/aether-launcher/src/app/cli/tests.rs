@@ -56,6 +56,17 @@ fn parses_particle_billboard_fixture_switch() {
 }
 
 #[test]
+fn material_extraction_defaults_on_and_keeps_a_legacy_switch() {
+    let default = parse_args(&args(&["aether-launcher"])).unwrap();
+    assert!(default.material_extraction_enabled);
+    let enabled = parse_args(&args(&["aether-launcher", "--material-extraction", "on"])).unwrap();
+    assert!(enabled.material_extraction_enabled);
+    let disabled = parse_args(&args(&["aether-launcher", "--material-extraction", "off"])).unwrap();
+    assert!(!disabled.material_extraction_enabled);
+    assert!(parse_args(&args(&["aether-launcher", "--material-extraction", "yes"])).is_err());
+}
+
+#[test]
 fn parses_skinned_animation_fixture_switch() {
     let enabled = parse_args(&args(&["aether-launcher", "--animation", "on"])).unwrap();
     assert!(enabled.animation_enabled);
@@ -70,6 +81,29 @@ fn debug_helpers_can_be_hidden_for_visual_acceptance_captures() {
     assert!(!cli.debug_helpers_enabled);
     let default = parse_args(&args(&["aether-launcher"])).unwrap();
     assert!(default.debug_helpers_enabled);
+}
+
+#[test]
+fn render_graph_output_accepts_one_artifact_path() {
+    let cli = parse_args(&args(&[
+        "aether-launcher",
+        "--render-graph-output",
+        "tests/reports/graph.json",
+    ]))
+    .unwrap();
+    assert_eq!(
+        cli.render_graph_output,
+        Some(std::path::PathBuf::from("tests/reports/graph.json"))
+    );
+    assert!(parse_args(&args(&["aether-launcher", "--render-graph-output"])).is_err());
+    assert!(parse_args(&args(&[
+        "aether-launcher",
+        "--render-graph-output",
+        "one.json",
+        "--render-graph-output",
+        "two.json",
+    ]))
+    .is_err());
 }
 
 #[test]
@@ -106,6 +140,7 @@ fn app_honors_ssr_cli_flag() {
     let cli = CliArgs {
         scene: None,
         screenshot: None,
+        render_graph_output: None,
         exit_after_frames: None,
         no_gui_overlay: false,
         debug_mode: None,
@@ -116,6 +151,7 @@ fn app_honors_ssr_cli_flag() {
         ssr_enabled: true,
         transparent_enabled: false,
         particles_enabled: false,
+        material_extraction_enabled: true,
         animation_enabled: false,
         debug_helpers_enabled: true,
         physics_debug_enabled: false,

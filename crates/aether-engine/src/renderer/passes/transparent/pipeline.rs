@@ -320,6 +320,7 @@ impl TransparentPass {
             particle_texture_bind_groups: std::collections::HashMap::new(),
             particle_texture_ids: Vec::new(),
             particle_additive: Vec::new(),
+            transparent_meshes_enabled: true,
             transparent_color_handle: None,
             depth_handle: None,
             draws: Vec::new(),

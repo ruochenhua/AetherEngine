@@ -10,5 +10,29 @@
     "width": 2560,
     "height": 1440,
     "format": "png-rgba8"
+  },
+  "t3_pbr_material_grid": {
+    "path": "tests/reference/t3_pbr_material_grid.png",
+    "sha256": "98175b41eb2d2853e497ca4a004101a2ab5053765db61e28ad747792e769f4e5",
+    "source_commit": "e7fdd0aca2b77772a3101a0c413bcc78baccc46c",
+    "os": "windows",
+    "driver": "NVIDIA 616.64",
+    "adapter": "NVIDIA GeForce RTX 3070 Ti Laptop GPU",
+    "runner_version": "visual-case-runner/2",
+    "width": 1280,
+    "height": 720,
+    "format": "png-rgba8"
+  },
+  "t5_particle_fire_particles_only_seek_0p50": {
+    "path": "tests/reference/t5_particle_fire_particles_only_seek_0p50.png",
+    "sha256": "82cb8de89accf6c59f3212b86beb7422512bb44e06c6410bbbcea223593947e4",
+    "source_commit": "e7fdd0aca2b77772a3101a0c413bcc78baccc46c",
+    "os": "windows",
+    "driver": "NVIDIA 616.64",
+    "adapter": "NVIDIA GeForce RTX 3070 Ti Laptop GPU",
+    "runner_version": "visual-case-runner/2",
+    "width": 1280,
+    "height": 720,
+    "format": "png-rgba8"
   }
 }

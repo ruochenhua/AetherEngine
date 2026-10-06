@@ -8,12 +8,34 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_ROOT"
 
 usage() {
-    echo "Usage: $0 --slice T0.1|T0.2|T0.3|T1.1|T1.2|T1.3|T2.1|T2.2|T7.1|T8.1|T8.2|T8.3|T8.4|T9.1|T9.2|T9.3|T9.4" >&2
+    echo "Usage: $0 --slice T0.1|T0.2|T0.3|T1.1|T1.2|T1.3|T2.1|T2.2|T3.2|T4.1|T7.1|T8.1|T8.2|T8.3|T8.4|T9.1|T9.2|T9.3|T9.4" >&2
 }
 
-    if [[ $# -ne 2 || "$1" != "--slice" || ( "$2" != "T0.1" && "$2" != "T0.2" && "$2" != "T0.3" && "$2" != "T1.1" && "$2" != "T1.2" && "$2" != "T1.3" && "$2" != "T2.1" && "$2" != "T2.2" && "$2" != "T7.1" && "$2" != "T8.1" && "$2" != "T8.2" && "$2" != "T8.3" && "$2" != "T8.4" && "$2" != "T9.1" && "$2" != "T9.2" && "$2" != "T9.3" && "$2" != "T9.4" ) ]]; then
+if [[ $# -ne 2 || "$1" != "--slice" || ( "$2" != "T0.1" && "$2" != "T0.2" && "$2" != "T0.3" && "$2" != "T1.1" && "$2" != "T1.2" && "$2" != "T1.3" && "$2" != "T2.1" && "$2" != "T2.2" && "$2" != "T3.2" && "$2" != "T4.1" && "$2" != "T7.1" && "$2" != "T8.1" && "$2" != "T8.2" && "$2" != "T8.3" && "$2" != "T8.4" && "$2" != "T9.1" && "$2" != "T9.2" && "$2" != "T9.3" && "$2" != "T9.4" ) ]]; then
     usage
     exit 2
+fi
+
+if [[ "$2" == "T4.1" ]]; then
+    if [[ -n "${AETHER_SLICE_PYTHON_BIN:-}" ]]; then
+        exec "$AETHER_SLICE_PYTHON_BIN" -X utf8 "$SCRIPT_DIR/run_t4_graph_slice.py"
+    elif python3 -c 'import sys' >/dev/null 2>&1; then
+        exec python3 -X utf8 "$SCRIPT_DIR/run_t4_graph_slice.py"
+    elif python -c 'import sys' >/dev/null 2>&1; then
+        exec python -X utf8 "$SCRIPT_DIR/run_t4_graph_slice.py"
+    fi
+    echo "Python 3 is required to run the T4.1 bounded capture" >&2
+    exit 2
+fi
+
+if [[ "$2" == "T3.2" ]]; then
+    if [[ -n "${AETHER_SLICE_PYTHON_BIN:-}" ]]; then
+        exec "$AETHER_SLICE_PYTHON_BIN" -X utf8 "$SCRIPT_DIR/run_t3_material_slice.py"
+    elif python3 -c 'import sys' >/dev/null 2>&1; then
+        exec python3 -X utf8 "$SCRIPT_DIR/run_t3_material_slice.py"
+    else
+        exec python -X utf8 "$SCRIPT_DIR/run_t3_material_slice.py"
+    fi
 fi
 
 if [[ "$2" == "T0.1" || "$2" == "T0.2" || "$2" == "T0.3" ]]; then

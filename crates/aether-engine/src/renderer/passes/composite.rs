@@ -16,6 +16,14 @@ mod shaders;
 #[cfg(test)]
 mod tests;
 
+/// Logical shader overlay order included in render-graph diagnostic artifacts.
+pub const COMPOSITE_OVERLAY_ORDER: [&str; 4] = [
+    "TransparentColor",
+    "CloudColor",
+    "GodRayColor",
+    "WaterColor",
+];
+
 /// Composite pass uniforms (std140 layout).
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]

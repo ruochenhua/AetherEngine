@@ -92,6 +92,7 @@ pub struct TransparentPass {
     particle_texture_ids: Vec<u64>,
     particle_depths: Vec<f32>,
     particle_additive: Vec<bool>,
+    transparent_meshes_enabled: bool,
     transparent_color_handle: Option<ResHandle<TransparentColor>>,
     depth_handle: Option<ResHandle<GDepth>>,
     draws: Vec<TransparentDrawItem>,
@@ -99,6 +100,14 @@ pub struct TransparentPass {
 }
 
 impl TransparentPass {
+    /// Configure whether transparent meshes should be drawn by this pass.
+    ///
+    /// The pass can also be registered solely to composite particle billboards.
+    pub fn with_transparent_meshes_enabled(mut self, enabled: bool) -> Self {
+        self.transparent_meshes_enabled = enabled;
+        self
+    }
+
     fn sort_draws(draws: &mut [TransparentDrawItem]) {
         draws.sort_by(|left, right| {
             right
@@ -229,7 +238,7 @@ impl Pass for TransparentPass {
         for batch in frame
             .batches
             .iter()
-            .filter(|batch| batch.transparent_material.is_some())
+            .filter(|batch| self.transparent_meshes_enabled && batch.transparent_material.is_some())
         {
             let Some(material) = batch.transparent_material.clone() else {
                 continue;

@@ -6,12 +6,14 @@ use aether_engine::{
     ecs::World,
     particles::ParticleFrame,
     renderer::extract::{
-        extract_optional_pass_data, extract_render_batches_with_instancing, OptionalPassData,
+        extract_optional_pass_data, extract_render_batches_with_material_mode, OptionalPassData,
         RenderBatch,
     },
     renderer::{
         camera::FlyCamera,
-        visibility::{extract_visibility, LodHistory, VisibilityFrame, VisibilityPolicy},
+        visibility::{
+            extract_visibility_with_material_mode, LodHistory, VisibilityFrame, VisibilityPolicy,
+        },
     },
 };
 use std::collections::HashSet;
@@ -94,20 +96,26 @@ pub(super) fn extract(
             .then_some(VisibilityPolicy::default())
     });
     let (batches, visibility) = if let Some(policy) = policy {
-        let frame = extract_visibility(
+        let frame = extract_visibility_with_material_mode(
             world,
             camera,
             viewport_width,
             viewport_height,
             policy,
             lod_history,
+            cli.material_extraction_enabled,
         );
         let visible_ids: HashSet<u32> = frame
             .items
             .iter()
             .map(|item| item.entity_bits as u32)
             .collect();
-        let mut batches = extract_render_batches_with_instancing(world, None, instancing_enabled);
+        let mut batches = extract_render_batches_with_material_mode(
+            world,
+            None,
+            instancing_enabled,
+            cli.material_extraction_enabled,
+        );
         for batch in &mut batches {
             batch
                 .instances
@@ -118,7 +126,12 @@ pub(super) fn extract(
     } else {
         lod_history.clear();
         (
-            extract_render_batches_with_instancing(world, None, instancing_enabled),
+            extract_render_batches_with_material_mode(
+                world,
+                None,
+                instancing_enabled,
+                cli.material_extraction_enabled,
+            ),
             None,
         )
     };

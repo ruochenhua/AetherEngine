@@ -105,6 +105,8 @@ fn shader_preserves_unlit_marker_flag_in_albedo_alpha() {
     assert!(shaders::GBUFFER_SHADER_SRC.contains("normal_texture"));
     assert!(shaders::GBUFFER_SHADER_SRC.contains("orm_texture"));
     assert!(shaders::GBUFFER_SHADER_SRC.contains("obj.occlusion_strength"));
+    assert!(shaders::GBUFFER_SHADER_SRC.contains("orm_channel(orm, roughness_channel)"));
+    assert!(shaders::GBUFFER_SHADER_SRC.contains("obj.orm_swizzle"));
 }
 
 #[test]

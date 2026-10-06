@@ -20,6 +20,7 @@ use aether_engine::ecs::components::{
 };
 use aether_engine::ecs::{Entity, World};
 use aether_engine::particles::ParticleEmitterConfig;
+use aether_engine::renderer::extracted_material::ExtractedMaterial;
 use aether_engine::renderer::renderable::MaterialUniform;
 use aether_engine::scene::MaterialConfig;
 
@@ -37,6 +38,7 @@ pub(crate) enum EditorCommand {
         entity: Entity,
         old_config: Option<MaterialConfig>,
         old_material: MaterialUniform,
+        old_extracted: ExtractedMaterial,
         old_asset_ref: Option<String>,
     },
     /// Restore a Light and its Transform to previous values.
@@ -161,11 +163,11 @@ pub(crate) fn extract(world: &World) -> Option<InspectorTarget> {
         }
     }
 
-    // Mesh object: Transform + MeshHandle + MaterialUniform.
+    // Mesh objects expose the resolver-backed material to inspector consumers.
     let mut q = world.query_one::<(
         &Transform,
         &aether_engine::ecs::components::MeshHandle,
-        &MaterialUniform,
+        &ExtractedMaterial,
     )>(entity);
     if let Ok((transform, _mesh, material)) = q.get() {
         let (ex, ey, ez) = transform.rotation.to_euler(glam::EulerRot::XYZ);
@@ -174,7 +176,7 @@ pub(crate) fn extract(world: &World) -> Option<InspectorTarget> {
             .get()
             .ok()
             .cloned()
-            .unwrap_or_else(|| config_from_uniform(material));
+            .unwrap_or_else(|| config_from_uniform(material.uniform_adapter()));
         let material_asset = world
             .query_one::<&aether_engine::ecs::components::MaterialAssetRef>(entity)
             .get()

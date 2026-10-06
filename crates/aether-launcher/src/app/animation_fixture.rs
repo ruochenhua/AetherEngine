@@ -279,16 +279,12 @@ pub(super) fn create(
             };
             Ok(RenderBatch {
                 mesh: Arc::clone(&placeholder),
-                material: MaterialUniform {
+                extracted_material: aether_engine::renderer::extracted_material::ExtractedMaterial::from_legacy_uniform(MaterialUniform {
                     albedo: pose_color,
                     roughness: 0.34,
                     metallic: 0.08,
                     ..MaterialUniform::default()
-                },
-                albedo_texture: None,
-                normal_texture: None,
-                orm_texture: None,
-                emissive_texture: None,
+                }),
                 transparent_material: None,
                 skinned: Some(skinned),
                 instances: vec![aether_engine::asset::mesh::InstanceData {

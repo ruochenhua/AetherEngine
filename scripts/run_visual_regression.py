@@ -27,12 +27,25 @@ def launcher_binary(root):
     target=json.loads(subprocess.check_output(['cargo','metadata','--no-deps','--format-version','1'],cwd=root))['target_directory']
     return str(Path(target)/'release'/('aether-launcher.exe' if os.name=='nt' else 'aether-launcher'))
 
-def evaluate(case,directory,run_record,root,capture_reference=False):
+def evaluate(case,directory,run_record,root,capture_reference=False,graph_output=False):
     visual=case['visual_case'];directory=Path(directory)
     record={'id':case['id'],'status':'error','case':visual,'launcher':run_record,'criteria_status':'needs-review','metrics':None}
-    # Full render graph inspection is not substituted by a pass-name list.
-    (directory/'graph.txt').write_text('GPU resource graph unavailable; no graph predicate is declared for this matrix case.\n',encoding='utf-8')
-    if run_record['diagnostic'] is not None or not run_record['group_empty']:
+    if graph_output:
+        graph_path=directory/'render-graph.json'
+        try:
+            graph=json.loads(graph_path.read_text(encoding='utf-8'))
+            if graph.get('schema_version')!=1 or not isinstance(graph.get('passes'),list) or not isinstance(graph.get('resource_edges'),list):
+                raise ValueError('invalid render graph artifact schema')
+            record['graph_artifact']={'path':graph_path.name,'pass_count':len(graph['passes']),'resource_edge_count':len(graph['resource_edges'])}
+            (directory/'graph.txt').write_text('render graph artifact: '+graph_path.name+'\n'+json.dumps(graph,indent=2)+'\n',encoding='utf-8')
+        except (OSError,ValueError,json.JSONDecodeError) as exc:
+            record['error']='InvalidRenderGraphArtifact: '+str(exc)
+    else:
+        # Full render graph inspection is not substituted by a pass-name list.
+        (directory/'graph.txt').write_text('GPU resource graph unavailable; no graph predicate is declared for this matrix case.\n',encoding='utf-8')
+    if 'error' in record:
+        pass
+    elif run_record['diagnostic'] is not None or not run_record['group_empty']:
         record['error']=run_record['diagnostic'] or 'orphan_process'
     elif not (directory/'output.png').is_file():record['error']='MissingImage'
     elif capture_reference:
@@ -64,12 +77,15 @@ def evaluate(case,directory,run_record,root,capture_reference=False):
     write_report(directory,record)
     return record
 
-def run(matrix,ids,run_dir,launcher,root=ROOT,capture_reference=False,settle=0):
+def run(matrix,ids,run_dir,launcher,root=ROOT,capture_reference=False,settle=0,graph_output=False):
     run_dir=Path(run_dir)
     cases=execution_cases(matrix,run_dir,root)
     known={c['id'] for c in cases}
     if ids and not set(ids)<=known:raise ValueError('unknown case ID')
     cases=[c for c in cases if not ids or c['id'] in ids]
+    if graph_output:
+        for case in cases:
+            case['launcher_args'] += ['--render-graph-output',str(run_dir/case['id']/'render-graph.json')]
     # All schema/path/platform checks happen before creating a report directory.
     supervisor=Supervisor(float(os.environ.get('AETHER_TERMINATION_GRACE','5')))
     runner=Runner(supervisor,float(os.environ.get('AETHER_HANDSHAKE_TIMEOUT','2')),float(os.environ.get('AETHER_CASE_TIMEOUT','120')))
@@ -81,7 +97,7 @@ def run(matrix,ids,run_dir,launcher,root=ROOT,capture_reference=False,settle=0):
         for case in cases:
             if runner.cancelled:break
             rec=runner.run_case(launcher,case,run_dir)
-            records.append(evaluate(case,run_dir/case['id'],rec,root,capture_reference))
+            records.append(evaluate(case,run_dir/case['id'],rec,root,capture_reference,graph_output))
             if rec['diagnostic']=='ProcessIsolationLost':break
             until=time.monotonic()+settle
             while not runner.cancelled and time.monotonic()<until:time.sleep(min(.05,max(0,until-time.monotonic())))

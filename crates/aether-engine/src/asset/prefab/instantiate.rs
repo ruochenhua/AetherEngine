@@ -7,6 +7,7 @@ use crate::ecs::components::{
 };
 use crate::ecs::{Entity, World};
 use crate::editor::ComponentRecord;
+use crate::renderer::extracted_material::ExtractedMaterial;
 use crate::renderer::renderable::MaterialUniform;
 use crate::renderer::transparent::TransparentMaterial;
 use crate::scene::{MaterialConfig, MeshRef};
@@ -17,6 +18,8 @@ use std::collections::BTreeMap;
 pub struct ResolvedPrefabMaterial {
     /// GPU-ready material parameters.
     pub uniform: MaterialUniform,
+    /// Canonical resolver result carried into active renderer extraction.
+    pub extracted: ExtractedMaterial,
     /// Optional transparent pass configuration.
     pub transparent: Option<TransparentMaterial>,
 }
@@ -145,7 +148,7 @@ struct PreparedNode {
 enum RuntimeComponent {
     Transform(Transform),
     Mesh(MeshHandle),
-    Material(Box<MaterialConfig>, ResolvedPrefabMaterial),
+    Material(Box<MaterialConfig>, Box<ResolvedPrefabMaterial>),
     Visibility(Visibility),
     Name(Name),
     Light(Light),
@@ -191,7 +194,7 @@ fn prepare_node(
                 has_material = true;
                 components.push(RuntimeComponent::Material(
                     Box::new(config.clone()),
-                    context.assets.resolve_material(config)?,
+                    Box::new(context.assets.resolve_material(config)?),
                 ));
             }
             ComponentRecord::Visibility { visible } => {
@@ -234,7 +237,7 @@ fn prepare_node(
         let config = MaterialConfig::default();
         components.push(RuntimeComponent::Material(
             Box::new(config.clone()),
-            context.assets.resolve_material(&config)?,
+            Box::new(context.assets.resolve_material(&config)?),
         ));
     }
     if has_mesh
@@ -269,7 +272,12 @@ fn insert_component(
         RuntimeComponent::Transform(value) => insert_one(world, entity, (value,)),
         RuntimeComponent::Mesh(value) => insert_one(world, entity, (value,)),
         RuntimeComponent::Material(config, resolved) => {
-            insert_one(world, entity, (*config, resolved.uniform))?;
+            let resolved = *resolved;
+            insert_one(
+                world,
+                entity,
+                (*config, resolved.uniform, resolved.extracted),
+            )?;
             if let Some(transparent) = resolved.transparent {
                 insert_one(world, entity, (transparent,))?;
             }

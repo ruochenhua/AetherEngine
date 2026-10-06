@@ -350,6 +350,17 @@ fn extract_prefers_mesh_over_light() {
             albedo_texture_id: 0,
             ..MaterialUniform::default()
         },
+        aether_engine::renderer::extracted_material::ExtractedMaterial::from_legacy_uniform(
+            MaterialUniform {
+                albedo: [0.8, 0.3, 0.2, 1.0],
+                roughness: 0.5,
+                metallic: 0.0,
+                unlit: 0,
+                _pad: 0,
+                albedo_texture_id: 0,
+                ..MaterialUniform::default()
+            },
+        ),
         Selected,
     ));
     let target = extract(&world).expect("should extract mesh target");
@@ -375,6 +386,9 @@ fn apply_material_undo_restores_source_config_and_adapter() {
         ),
         initial.clone(),
         MaterialUniform::default(),
+        aether_engine::renderer::extracted_material::ExtractedMaterial::from_legacy_uniform(
+            MaterialUniform::default(),
+        ),
         Selected,
     ));
     let mut target = extract(&world).expect("mesh target should exist");
@@ -435,6 +449,9 @@ fn detaching_a_linked_material_is_undoable_and_redoable() {
         ),
         config.clone(),
         MaterialUniform::default(),
+        aether_engine::renderer::extracted_material::ExtractedMaterial::from_legacy_uniform(
+            MaterialUniform::default(),
+        ),
         aether_engine::ecs::components::MaterialAssetRef("materials/paint.ron".into()),
         aether_engine::ecs::components::MaterialAssetStatus::default(),
         Selected,

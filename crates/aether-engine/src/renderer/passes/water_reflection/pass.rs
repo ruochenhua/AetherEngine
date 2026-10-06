@@ -113,7 +113,7 @@ impl Pass for WaterReflectionPass {
         }
         let mut obj_data: Vec<u8> = Vec::with_capacity(batch_count * obj_size as usize);
         for batch in self.batches.iter() {
-            let obj = ObjectUniform::from_material(&batch.material);
+            let obj = ObjectUniform::from_extracted_material(&batch.extracted_material);
             obj_data.extend_from_slice(bytemuck::cast_slice(&[obj]));
         }
         if !obj_data.is_empty() {
@@ -144,9 +144,11 @@ impl Pass for WaterReflectionPass {
 
         self.texture_bind_groups.clear();
         for batch in self.batches.iter() {
-            let gpu_tex = frame
-                .texture_cache
-                .get_or_upload_optional(batch.albedo_texture, frame.asset_manager);
+            let gpu_tex = frame.texture_cache.get_or_upload_optional_with_srgb(
+                batch.extracted_material.albedo_texture(),
+                frame.asset_manager,
+                batch.extracted_material.albedo_is_srgb(),
+            );
             let bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("WaterReflection Texture BG"),
                 layout: &self.texture_bind_group_layout,

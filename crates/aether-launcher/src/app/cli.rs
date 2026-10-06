@@ -13,6 +13,7 @@ pub(crate) use parse::parse_args;
 pub(crate) struct CliArgs {
     pub(crate) scene: Option<String>,
     pub(crate) screenshot: Option<PathBuf>,
+    pub(crate) render_graph_output: Option<PathBuf>,
     pub(crate) exit_after_frames: Option<u32>,
     pub(crate) no_gui_overlay: bool,
     pub(crate) debug_mode: Option<i32>,
@@ -24,6 +25,8 @@ pub(crate) struct CliArgs {
     pub(crate) ssr_enabled: bool,
     pub(crate) transparent_enabled: bool,
     pub(crate) particles_enabled: bool,
+    /// Resolver-backed material extraction; off retains the legacy uniform query path.
+    pub(crate) material_extraction_enabled: bool,
     pub(crate) animation_enabled: bool,
     pub(crate) debug_helpers_enabled: bool,
     pub(crate) physics_debug_enabled: bool,

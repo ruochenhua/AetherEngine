@@ -6,9 +6,13 @@ use crate::ecs::components::{Atmosphere, Clouds, GodRay, Terrain, Water};
 use crate::ecs::components::{Name, Visibility};
 use crate::ecs::World;
 use crate::math::{Frustum, Vec3};
+use crate::renderer::extracted_material::ExtractedMaterial;
 use crate::renderer::renderable::MaterialUniform;
+use crate::scene::config::material::{OrmSwizzle, TextureChannel};
+use crate::scene::material::MaterialResolver;
 use crate::scene::{
-    AtmosphereConfig, CloudConfig, GodRayConfig, TerrainGeometry, TerrainSource, WaterConfig,
+    AtmosphereConfig, CloudConfig, GodRayConfig, MaterialConfig, TerrainGeometry, TerrainSource,
+    WaterConfig,
 };
 
 fn default_terrain() -> Terrain {
@@ -206,6 +210,109 @@ fn opaque_instancing_toggle_preserves_entities_and_stable_order() {
         .collect::<Vec<_>>();
     instanced_ids.sort_unstable();
     assert_eq!(instanced_ids, individual_ids);
+}
+
+#[test]
+fn material_extraction_switch_uses_resolved_component_and_legacy_adapter() {
+    let device = headless_device();
+    let registry = BuiltinMeshRegistry::new();
+    let cube_cpu = registry.get("cube").unwrap();
+    let cube_gpu = Arc::new(GpuMesh::from_cpu(&device, &cube_cpu));
+    let legacy = MaterialUniform {
+        albedo: [0.9, 0.1, 0.1, 1.0],
+        ..MaterialUniform::default()
+    };
+    let config = MaterialConfig {
+        albedo: [0.1, 0.7, 0.3, 1.0],
+        orm_swizzle: OrmSwizzle {
+            ao: TextureChannel::A,
+            roughness: TextureChannel::Zero,
+            metallic: TextureChannel::One,
+        },
+        ..MaterialConfig::default()
+    };
+    let resolution = MaterialResolver::new(".")
+        .resolve(&config, &mut crate::asset::AssetManager::new())
+        .unwrap();
+    let mut world = World::new();
+    world.spawn((
+        Transform::default(),
+        MeshHandle::new(
+            cube_gpu,
+            crate::ecs::components::MeshSource::Builtin("cube".into()),
+            "cube",
+        ),
+        legacy,
+        ExtractedMaterial::from_resolution(&resolution),
+        Visibility::default(),
+        Name("resolved material wins".into()),
+    ));
+
+    let active = extract_render_batches_with_material_mode(&world, None, true, true);
+    assert_eq!(active.len(), 1);
+    assert_eq!(
+        active[0].extracted_material.uniform_adapter().albedo,
+        config.albedo
+    );
+    assert_eq!(active[0].extracted_material.orm_swizzle_bits(), [3, 4, 5]);
+    let object = crate::renderer::renderable::ObjectUniform::from_extracted_material(
+        &active[0].extracted_material,
+    );
+    assert_eq!(object.orm_swizzle, 3 | (4 << 3) | (5 << 6));
+
+    let compatibility = extract_render_batches_with_material_mode(&world, None, true, false);
+    assert_eq!(compatibility.len(), 1);
+    assert_eq!(
+        compatibility[0].extracted_material.uniform_adapter().albedo,
+        legacy.albedo
+    );
+    assert_eq!(
+        compatibility[0].extracted_material.orm_swizzle_bits(),
+        [0, 1, 2]
+    );
+}
+
+#[test]
+fn material_batch_identity_includes_orm_channel_mapping() {
+    let device = headless_device();
+    let registry = BuiltinMeshRegistry::new();
+    let cube_cpu = registry.get("cube").unwrap();
+    let cube_gpu = Arc::new(GpuMesh::from_cpu(&device, &cube_cpu));
+    let mut world = World::new();
+    for (index, swizzle) in [
+        OrmSwizzle::default(),
+        OrmSwizzle {
+            ao: TextureChannel::A,
+            roughness: TextureChannel::G,
+            metallic: TextureChannel::B,
+        },
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let resolution = MaterialResolver::new(".")
+            .resolve(
+                &MaterialConfig {
+                    orm_swizzle: swizzle,
+                    ..MaterialConfig::default()
+                },
+                &mut crate::asset::AssetManager::new(),
+            )
+            .unwrap();
+        world.spawn((
+            Transform::default(),
+            MeshHandle::new(
+                cube_gpu.clone(),
+                crate::ecs::components::MeshSource::Builtin("cube".into()),
+                "cube",
+            ),
+            ExtractedMaterial::from_resolution(&resolution),
+            Visibility::default(),
+            Name(format!("orm-{index}")),
+        ));
+    }
+    let batches = extract_render_batches_with_material_mode(&world, None, true, true);
+    assert_eq!(batches.len(), 2);
 }
 
 #[test]

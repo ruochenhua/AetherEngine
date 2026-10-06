@@ -12,6 +12,7 @@ use crate::{
         MaterialAssetRef, MaterialAssetStatus, MeshHandle, MeshSource, Name, Transform, Visibility,
     },
     ecs::World,
+    renderer::extracted_material::ExtractedMaterial,
     renderer::renderable::MaterialUniform,
     renderer::transparent::TransparentMaterial,
     scene::{
@@ -138,6 +139,7 @@ pub(super) fn build_objects(
                             (config, resolution)
                         };
                     let material = MaterialUniform::from_resolution(&resolution);
+                    let extracted_material = ExtractedMaterial::from_resolution(&resolution);
 
                     let components = (
                         transform.clone(),
@@ -148,6 +150,7 @@ pub(super) fn build_objects(
                         ),
                         material_config,
                         material,
+                        extracted_material,
                         Visibility(obj.visible),
                         Name(format!("{}::{}", obj.name, submesh.name)),
                     );
@@ -187,6 +190,7 @@ pub(super) fn build_objects(
             material_resolver.resolve(&material_config, assets)?
         };
         let material = MaterialUniform::from_resolution(&resolution);
+        let extracted_material = ExtractedMaterial::from_resolution(&resolution);
         let mesh_handle = MeshHandle::new(base_gpu_mesh, mesh_source, mesh_name);
 
         if let Some(config) = &material_config.transparent {
@@ -204,6 +208,7 @@ pub(super) fn build_objects(
                 mesh_handle,
                 material_config.clone(),
                 material,
+                extracted_material,
                 transparent_material,
                 Visibility(obj.visible),
                 Name(obj.name.clone()),
@@ -224,6 +229,7 @@ pub(super) fn build_objects(
                 mesh_handle,
                 material_config.clone(),
                 material,
+                extracted_material,
                 Visibility(obj.visible),
                 Name(obj.name.clone()),
             ));

@@ -4,6 +4,8 @@
 //! list and the transient resource table. It dispatches frame data and executes
 //! passes each frame.
 
+mod graph;
+
 use crate::renderer::frame::RenderFrame;
 use crate::renderer::gpu_timer::GpuTimer;
 use crate::renderer::pass::Pass;
@@ -73,6 +75,11 @@ impl Scheduler {
     /// Return the names of all scheduled passes in execution order.
     pub fn pass_names(&self) -> Vec<String> {
         self.passes.iter().map(|p| p.name().to_string()).collect()
+    }
+
+    /// Serialize the schedule and its declared resource dependencies for diagnostics.
+    pub fn graph_artifact_json(&self) -> String {
+        graph::serialize(&self.passes)
     }
 
     /// Rebuild resolution-dependent resources after a resize.
@@ -246,6 +253,64 @@ mod tests {
         assert_eq!(boxed[order[0]].name(), "A");
         assert_eq!(boxed[order[1]].name(), "B");
         assert_eq!(boxed[order[2]].name(), "C");
+    }
+
+    #[test]
+    fn graph_artifact_contains_schedule_and_typed_resource_edges() {
+        let log = std::sync::Arc::new(Mutex::new(Vec::new()));
+        let producer = MockPass::new("Producer", log.clone())
+            .with_write::<GPosition>(wgpu::TextureFormat::Rgba16Float);
+        let consumer = MockPass::new("Consumer", log).with_read::<GPosition>();
+        let scheduler = build_mock_scheduler(vec![producer, consumer]);
+        let artifact: serde_json::Value =
+            serde_json::from_str(&scheduler.graph_artifact_json()).unwrap();
+
+        assert_eq!(artifact["schema_version"], 1);
+        assert_eq!(artifact["execution_order"][0], "Producer");
+        assert_eq!(artifact["execution_order"][1], "Consumer");
+        assert_eq!(artifact["resource_edges"][0]["from"], "Producer");
+        assert_eq!(artifact["resource_edges"][0]["to"], "Consumer");
+        assert_eq!(
+            artifact["resource_edges"][0]["resource"],
+            "gbuffer_position"
+        );
+    }
+
+    #[test]
+    fn graph_artifact_tracks_transparent_binding_and_composite_overlay_order() {
+        let log = std::sync::Arc::new(Mutex::new(Vec::new()));
+        let transparent = MockPass::new("Transparent", log.clone())
+            .with_write::<TransparentColor>(wgpu::TextureFormat::Rgba16Float);
+        let composite = MockPass::new("Composite", log.clone()).with_read::<TransparentColor>();
+        let enabled = build_mock_scheduler(vec![transparent, composite]);
+        let enabled: serde_json::Value =
+            serde_json::from_str(&enabled.graph_artifact_json()).unwrap();
+        assert_eq!(
+            enabled["composite_overlay_order"],
+            serde_json::json!([
+                "TransparentColor",
+                "CloudColor",
+                "GodRayColor",
+                "WaterColor"
+            ])
+        );
+        assert!(enabled["resource_edges"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|edge| {
+                edge["from"] == "Transparent"
+                    && edge["to"] == "Composite"
+                    && edge["resource"] == "transparent_color"
+            }));
+
+        let disabled = build_mock_scheduler(vec![MockPass::new("Composite", log)]);
+        let disabled: serde_json::Value =
+            serde_json::from_str(&disabled.graph_artifact_json()).unwrap();
+        assert_eq!(
+            disabled["composite_overlay_order"],
+            serde_json::json!(["CloudColor", "GodRayColor", "WaterColor"])
+        );
     }
 
     #[test]

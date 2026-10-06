@@ -67,6 +67,7 @@ pub(crate) fn apply(
                         entity: *entity,
                         old_config: previous.config,
                         old_material: previous.uniform,
+                        old_extracted: previous.extracted,
                         old_asset_ref: previous.asset_ref,
                     });
                     redo_stack.clear();
@@ -224,6 +225,7 @@ pub(crate) fn apply_undo(world: &mut World, cmd: &EditorCommand) -> EditorComman
             entity,
             old_config,
             old_material,
+            old_extracted,
             old_asset_ref,
         } => {
             let current = swap_material_state(
@@ -231,12 +233,14 @@ pub(crate) fn apply_undo(world: &mut World, cmd: &EditorCommand) -> EditorComman
                 entity,
                 old_config.as_ref(),
                 old_material,
+                old_extracted,
                 old_asset_ref.as_deref(),
             );
             EditorCommand::Material {
                 entity,
                 old_config: current.config,
                 old_material: current.uniform,
+                old_extracted: current.extracted,
                 old_asset_ref: current.asset_ref,
             }
         }

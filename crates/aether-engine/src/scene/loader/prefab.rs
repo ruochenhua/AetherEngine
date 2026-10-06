@@ -7,6 +7,7 @@ use crate::asset::{
 use crate::ecs::components::{MeshHandle, MeshSource};
 use crate::ecs::components::{PrefabInstanceRoot, PrefabNodeInstance};
 use crate::ecs::World;
+use crate::renderer::extracted_material::ExtractedMaterial;
 use crate::renderer::renderable::MaterialUniform;
 use crate::renderer::transparent::TransparentMaterial;
 use crate::scene::material::MaterialResolver;
@@ -226,6 +227,7 @@ impl PrefabAssets for ScenePrefabAssets<'_> {
             .transpose()?;
         Ok(prefab::ResolvedPrefabMaterial {
             uniform: MaterialUniform::from_resolution(&resolution),
+            extracted: ExtractedMaterial::from_resolution(&resolution),
             transparent,
         })
     }

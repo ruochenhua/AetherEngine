@@ -83,6 +83,7 @@ impl ApplicationHandler for App {
             ctx.config.height,
             has_terrain,
             self.transparent_enabled,
+            self.cli.particles_enabled,
             self.cli.local_lights_enabled,
         )
         .expect("Failed to build render pipeline");
@@ -109,6 +110,7 @@ impl ApplicationHandler for App {
         self.egui_winit_state = Some(egui_winit_state);
         self.egui_renderer = Some(egui_renderer);
         self.scheduler = Some(scheduler);
+        self.write_render_graph_snapshot();
     }
 
     fn window_event(

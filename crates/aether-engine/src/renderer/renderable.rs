@@ -35,8 +35,8 @@ pub struct ObjectUniform {
     pub orm_present: u32,
     /// Whether an emissive texture is bound.
     pub emissive_present: u32,
-    /// Padding for WGSL uniform alignment.
-    pub _material_pad: u32,
+    /// Packed ORM channel selectors (3 bits each: AO, roughness, metallic).
+    pub orm_swizzle: u32,
 }
 
 // Safety: ObjectUniform is #[repr(C, align(256))] with no invalid bit patterns
@@ -58,9 +58,33 @@ impl ObjectUniform {
             normal_present: u32::from(material.normal_texture_id != 0),
             orm_present: u32::from(material.orm_texture_id != 0),
             emissive_present: u32::from(material.emissive_texture_id != 0),
-            _material_pad: 0,
+            orm_swizzle: pack_orm_swizzle(crate::scene::config::material::OrmSwizzle::default()),
         }
     }
+
+    /// Build GPU data from the canonical extracted material, including ORM selectors.
+    pub fn from_extracted_material(
+        material: &crate::renderer::extracted_material::ExtractedMaterial,
+    ) -> Self {
+        let mut uniform = Self::from_material(material.uniform_adapter());
+        let [ao, roughness, metallic] = material.orm_swizzle_bits();
+        uniform.orm_swizzle =
+            u32::from(ao) | (u32::from(roughness) << 3) | (u32::from(metallic) << 6);
+        uniform
+    }
+}
+
+fn pack_orm_swizzle(swizzle: crate::scene::config::material::OrmSwizzle) -> u32 {
+    use crate::scene::config::material::TextureChannel;
+    let code = |channel| match channel {
+        TextureChannel::R => 0,
+        TextureChannel::G => 1,
+        TextureChannel::B => 2,
+        TextureChannel::A => 3,
+        TextureChannel::Zero => 4,
+        TextureChannel::One => 5,
+    };
+    code(swizzle.ao) | (code(swizzle.roughness) << 3) | (code(swizzle.metallic) << 6)
 }
 
 /// View-projection uniform (shared across draw calls).

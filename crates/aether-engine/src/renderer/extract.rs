@@ -12,11 +12,10 @@ mod optional;
 pub use optional::{extract_optional_pass_data, OptionalPassData};
 
 use crate::asset::mesh::{GpuMesh, InstanceData};
-use crate::asset::texture::CpuTexture;
-use crate::asset::Handle;
 use crate::ecs::components::{MeshHandle, Transform, Visibility};
 use crate::ecs::World;
 use crate::math::{CullingVisibility, Frustum, Mat4};
+use crate::renderer::extracted_material::ExtractedMaterial;
 use crate::renderer::renderable::MaterialUniform;
 use crate::renderer::skinned::SkinnedRenderData;
 use crate::renderer::transparent::{TransparentBlendMode, TransparentMaterial};
@@ -64,10 +63,12 @@ struct MaterialBits {
     normal_texture_id: u64,
     orm_texture_id: u64,
     emissive_texture_id: u64,
+    orm_swizzle: [u8; 3],
 }
 
-impl From<MaterialUniform> for MaterialBits {
-    fn from(m: MaterialUniform) -> Self {
+impl From<&ExtractedMaterial> for MaterialBits {
+    fn from(material: &ExtractedMaterial) -> Self {
+        let m = material.uniform_adapter();
         Self {
             albedo: [
                 m.albedo[0].to_bits(),
@@ -86,6 +87,7 @@ impl From<MaterialUniform> for MaterialBits {
             normal_texture_id: m.normal_texture_id,
             orm_texture_id: m.orm_texture_id,
             emissive_texture_id: m.emissive_texture_id,
+            orm_swizzle: material.orm_swizzle_bits(),
         }
     }
 }
@@ -95,16 +97,8 @@ impl From<MaterialUniform> for MaterialBits {
 pub struct RenderBatch {
     /// GPU mesh shared by all instances in this batch.
     pub mesh: Arc<GpuMesh>,
-    /// Material parameters shared by all instances.
-    pub material: MaterialUniform,
-    /// Optional albedo texture handle shared by all instances.
-    pub albedo_texture: Option<Handle<CpuTexture>>,
-    /// Optional normal texture handle shared by all instances.
-    pub normal_texture: Option<Handle<CpuTexture>>,
-    /// Optional ORM texture handle shared by all instances.
-    pub orm_texture: Option<Handle<CpuTexture>>,
-    /// Optional emissive texture handle shared by all instances.
-    pub emissive_texture: Option<Handle<CpuTexture>>,
+    /// Resolver-backed canonical source for GPU parameters and texture slots.
+    pub extracted_material: ExtractedMaterial,
     /// Optional general transparent material contract.
     pub transparent_material: Option<TransparentMaterial>,
     /// Optional skinned geometry and palette for GBuffer/Shadow/WaterReflection.
@@ -151,9 +145,7 @@ pub fn extract_render_batches_with_instancing(
     frustum: Option<&Frustum>,
     instancing_enabled: bool,
 ) -> Vec<RenderBatch> {
-    let mut batches: HashMap<BatchKey, RenderBatch> = HashMap::with_capacity(world.len() as usize);
-    let mut individual_batches = Vec::new();
-
+    let mut output = BatchOutput::new(world.len() as usize);
     for (entity, transform, mesh_handle, material, visibility, transparent) in world
         .query::<(
             hecs::Entity,
@@ -165,89 +157,152 @@ pub fn extract_render_batches_with_instancing(
         )>()
         .iter()
     {
-        if !visibility.0 {
-            continue;
-        }
+        output.push(
+            entity,
+            transform,
+            mesh_handle,
+            ExtractedMaterial::from_legacy_uniform(*material),
+            visibility,
+            transparent,
+            frustum,
+            instancing_enabled,
+        );
+    }
+    output.finish()
+}
 
+/// Extract batches through the resolver-backed component when enabled.
+///
+/// The disabled branch deliberately queries the legacy `MaterialUniform` component
+/// and wraps it in an adapter, preserving the pre-T3 extraction route.
+pub fn extract_render_batches_with_material_mode(
+    world: &World,
+    frustum: Option<&Frustum>,
+    instancing_enabled: bool,
+    extracted_material_enabled: bool,
+) -> Vec<RenderBatch> {
+    if !extracted_material_enabled {
+        return extract_render_batches_with_instancing(world, frustum, instancing_enabled);
+    }
+
+    let mut output = BatchOutput::new(world.len() as usize);
+    for (entity, transform, mesh_handle, material, visibility, transparent) in world
+        .query::<(
+            hecs::Entity,
+            &Transform,
+            &MeshHandle,
+            &ExtractedMaterial,
+            &Visibility,
+            Option<&TransparentMaterial>,
+        )>()
+        .iter()
+    {
+        output.push(
+            entity,
+            transform,
+            mesh_handle,
+            material.clone(),
+            visibility,
+            transparent,
+            frustum,
+            instancing_enabled,
+        );
+    }
+    output.finish()
+}
+
+struct BatchOutput {
+    instanced: HashMap<BatchKey, RenderBatch>,
+    individual: Vec<RenderBatch>,
+}
+
+impl BatchOutput {
+    fn new(capacity: usize) -> Self {
+        Self {
+            instanced: HashMap::with_capacity(capacity),
+            individual: Vec::new(),
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn push(
+        &mut self,
+        entity: hecs::Entity,
+        transform: &Transform,
+        mesh_handle: &MeshHandle,
+        extracted_material: ExtractedMaterial,
+        visibility: &Visibility,
+        transparent: Option<&TransparentMaterial>,
+        frustum: Option<&Frustum>,
+        instancing_enabled: bool,
+    ) {
+        if !visibility.0 {
+            return;
+        }
         let model = Mat4::from_scale_rotation_translation(
             transform.scale,
             transform.rotation,
             transform.translation,
         );
-
-        if let Some(frustum) = frustum {
-            let world_aabb = mesh_handle.mesh.aabb.transform(model);
-            if world_aabb.intersects_frustum(frustum) == CullingVisibility::Invisible {
-                continue;
-            }
+        if frustum.is_some_and(|frustum| {
+            mesh_handle
+                .mesh
+                .aabb
+                .transform(model)
+                .intersects_frustum(frustum)
+                == CullingVisibility::Invisible
+        }) {
+            return;
         }
-
         let instance = InstanceData {
             model_matrix: model.to_cols_array_2d(),
             entity_id: entity.to_bits().get() as u32,
             _pad: [0; 3],
         };
-
         let key = BatchKey {
             mesh: Arc::as_ptr(&mesh_handle.mesh),
-            material: MaterialBits::from(*material),
+            material: MaterialBits::from(&extracted_material),
             transparent: transparent.map(TransparentBits::from),
         };
-        let albedo_texture = texture_handle(material.albedo_texture_id);
-        let normal_texture = texture_handle(material.normal_texture_id);
-        let orm_texture = texture_handle(material.orm_texture_id);
-        let emissive_texture = texture_handle(material.emissive_texture_id);
+        let make_batch = || RenderBatch {
+            mesh: mesh_handle.mesh.clone(),
+            extracted_material: extracted_material.clone(),
+            transparent_material: transparent.cloned(),
+            skinned: None,
+            instances: Vec::new(),
+        };
         if instancing_enabled && transparent.is_none() {
-            batches
+            self.instanced
                 .entry(key)
-                .or_insert_with(|| RenderBatch {
-                    mesh: mesh_handle.mesh.clone(),
-                    material: *material,
-                    albedo_texture,
-                    normal_texture,
-                    orm_texture,
-                    emissive_texture,
-                    transparent_material: None,
-                    skinned: None,
-                    instances: Vec::new(),
-                })
+                .or_insert_with(make_batch)
                 .instances
                 .push(instance);
         } else {
-            individual_batches.push(RenderBatch {
-                mesh: mesh_handle.mesh.clone(),
-                material: *material,
-                albedo_texture,
-                normal_texture,
-                orm_texture,
-                emissive_texture,
-                transparent_material: transparent.cloned(),
-                skinned: None,
-                instances: vec![instance],
-            });
+            let mut batch = make_batch();
+            batch.instances.push(instance);
+            self.individual.push(batch);
         }
     }
 
-    let mut batches = batches
-        .into_values()
-        .chain(individual_batches)
-        .collect::<Vec<_>>();
-    for batch in &mut batches {
-        batch
-            .instances
-            .sort_unstable_by_key(|instance| instance.entity_id);
+    fn finish(self) -> Vec<RenderBatch> {
+        let mut batches = self
+            .instanced
+            .into_values()
+            .chain(self.individual)
+            .collect::<Vec<_>>();
+        for batch in &mut batches {
+            batch
+                .instances
+                .sort_unstable_by_key(|instance| instance.entity_id);
+        }
+        batches.sort_unstable_by_key(|batch| {
+            batch
+                .instances
+                .first()
+                .map_or(u32::MAX, |instance| instance.entity_id)
+        });
+        batches
     }
-    batches.sort_unstable_by_key(|batch| {
-        batch
-            .instances
-            .first()
-            .map_or(u32::MAX, |instance| instance.entity_id)
-    });
-    batches
-}
-
-fn texture_handle(id: u64) -> Option<Handle<CpuTexture>> {
-    (id != 0).then(|| Handle::<CpuTexture>::new(id))
 }
 
 #[cfg(test)]

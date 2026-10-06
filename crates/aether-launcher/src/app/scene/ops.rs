@@ -38,6 +38,17 @@ pub(crate) fn process_post_ui_ops(app: &mut App) {
                         albedo_texture_id: 0,
                         ..Default::default()
                     },
+                    aether_engine::renderer::extracted_material::ExtractedMaterial::from_legacy_uniform(
+                        aether_engine::renderer::renderable::MaterialUniform {
+                            albedo: [0.8, 0.3, 0.2, 1.0],
+                            roughness: 0.5,
+                            metallic: 0.0,
+                            unlit: 0,
+                            _pad: 0,
+                            albedo_texture_id: 0,
+                            ..Default::default()
+                        },
+                    ),
                     Visibility::default(),
                     Name("DefaultCube".into()),
                     Selected,
@@ -196,6 +207,17 @@ pub(crate) fn process_post_ui_ops(app: &mut App) {
                         albedo_texture_id: 0,
                         ..Default::default()
                     },
+                    aether_engine::renderer::extracted_material::ExtractedMaterial::from_legacy_uniform(
+                        aether_engine::renderer::renderable::MaterialUniform {
+                            albedo: [0.8, 0.3, 0.2, 1.0],
+                            roughness: 0.5,
+                            metallic: 0.0,
+                            unlit: 0,
+                            _pad: 0,
+                            albedo_texture_id: 0,
+                            ..Default::default()
+                        },
+                    ),
                     Visibility::default(),
                     Name("Cube".into()),
                 ));
@@ -223,6 +245,17 @@ pub(crate) fn process_post_ui_ops(app: &mut App) {
                         albedo_texture_id: 0,
                         ..Default::default()
                     },
+                    aether_engine::renderer::extracted_material::ExtractedMaterial::from_legacy_uniform(
+                        aether_engine::renderer::renderable::MaterialUniform {
+                            albedo: [0.2, 0.5, 0.8, 1.0],
+                            roughness: 0.05,
+                            metallic: 0.0,
+                            unlit: 0,
+                            _pad: 0,
+                            albedo_texture_id: 0,
+                            ..Default::default()
+                        },
+                    ),
                     Visibility::default(),
                     Name("Sphere".into()),
                 ));

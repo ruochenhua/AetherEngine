@@ -14,6 +14,8 @@ pub mod clouds;
 pub mod context;
 /// Extract phase (ECS → render batches).
 pub mod extract;
+/// Resolver-backed opaque material data passed through active extraction.
+pub mod extracted_material;
 /// Per-frame data context (RenderFrame).
 pub mod frame;
 /// Transform gizmo rendering and interaction.

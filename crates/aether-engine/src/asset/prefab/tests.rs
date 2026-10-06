@@ -66,6 +66,9 @@ impl PrefabAssets for TestAssets {
     ) -> Result<ResolvedPrefabMaterial, PrefabError> {
         Ok(ResolvedPrefabMaterial {
             uniform: MaterialUniform::default(),
+            extracted: crate::renderer::extracted_material::ExtractedMaterial::from_legacy_uniform(
+                MaterialUniform::default(),
+            ),
             transparent: None,
         })
     }

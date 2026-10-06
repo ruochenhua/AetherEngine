@@ -3,6 +3,7 @@
 use aether_engine::asset::AssetManager;
 use aether_engine::ecs::components::{MaterialAssetRef, MaterialAssetStatus};
 use aether_engine::ecs::{Entity, World};
+use aether_engine::renderer::extracted_material::ExtractedMaterial;
 use aether_engine::renderer::renderable::MaterialUniform;
 use aether_engine::scene::{material::MaterialResolver, MaterialConfig};
 
@@ -10,6 +11,7 @@ use aether_engine::scene::{material::MaterialResolver, MaterialConfig};
 pub(crate) struct MaterialState {
     pub(crate) config: Option<MaterialConfig>,
     pub(crate) uniform: MaterialUniform,
+    pub(crate) extracted: ExtractedMaterial,
     pub(crate) asset_ref: Option<String>,
 }
 
@@ -42,10 +44,17 @@ pub(crate) fn apply_material_config(
         .resolve(&resolved_config, assets)
         .map_err(|error| error.to_string())?;
     let next_uniform = MaterialUniform::from_resolution(&resolution);
+    let next_extracted = ExtractedMaterial::from_resolution(&resolution);
     let old_uniform = *world
         .query_one::<&MaterialUniform>(entity)
         .get()
         .map_err(|error| format!("material uniform is unavailable: {error}"))?;
+    let old_extracted = world
+        .query_one::<&ExtractedMaterial>(entity)
+        .get()
+        .ok()
+        .cloned()
+        .unwrap_or_else(|| ExtractedMaterial::from_legacy_uniform(old_uniform));
     let old_config = world
         .query_one::<&MaterialConfig>(entity)
         .get()
@@ -67,6 +76,13 @@ pub(crate) fn apply_material_config(
     *world
         .query_one_mut::<&mut MaterialUniform>(entity)
         .map_err(|error| format!("material uniform is unavailable: {error}"))? = next_uniform;
+    if let Ok(current) = world.query_one_mut::<&mut ExtractedMaterial>(entity) {
+        *current = next_extracted;
+    } else {
+        world
+            .insert(entity, (next_extracted,))
+            .map_err(|error| format!("failed to store extracted material: {error}"))?;
+    }
 
     if detach_asset {
         let _ = world.remove::<(MaterialAssetRef,)>(entity);
@@ -76,6 +92,7 @@ pub(crate) fn apply_material_config(
     Ok(MaterialState {
         config: old_config,
         uniform: old_uniform,
+        extracted: old_extracted,
         asset_ref: old_asset_ref,
     })
 }
@@ -85,6 +102,7 @@ pub(crate) fn swap_material_state(
     entity: Entity,
     desired_config: Option<&MaterialConfig>,
     desired_uniform: MaterialUniform,
+    desired_extracted: ExtractedMaterial,
     desired_asset_ref: Option<&str>,
 ) -> MaterialState {
     let current = MaterialState {
@@ -97,6 +115,16 @@ pub(crate) fn swap_material_state(
             .query_one::<&MaterialUniform>(entity)
             .get()
             .expect("material undo requires a material uniform"),
+        extracted: world
+            .query_one::<&ExtractedMaterial>(entity)
+            .get()
+            .ok()
+            .cloned()
+            .unwrap_or_else(|| {
+                ExtractedMaterial::from_legacy_uniform(
+                    *world.query_one::<&MaterialUniform>(entity).get().unwrap(),
+                )
+            }),
         asset_ref: world
             .query_one::<&MaterialAssetRef>(entity)
             .get()
@@ -121,6 +149,13 @@ pub(crate) fn swap_material_state(
     *world
         .query_one_mut::<&mut MaterialUniform>(entity)
         .expect("material undo requires a material uniform") = desired_uniform;
+    if let Ok(current) = world.query_one_mut::<&mut ExtractedMaterial>(entity) {
+        *current = desired_extracted;
+    } else {
+        world
+            .insert(entity, (desired_extracted,))
+            .expect("material undo entity must exist");
+    }
     match desired_asset_ref {
         Some(path) => {
             world
@@ -222,6 +257,14 @@ mod tests {
         assert_eq!(
             *world.query_one::<&MaterialUniform>(entity).get().unwrap(),
             expected
+        );
+        assert_eq!(
+            world
+                .query_one::<&ExtractedMaterial>(entity)
+                .get()
+                .unwrap()
+                .orm_swizzle(),
+            desired.orm_swizzle
         );
     }
 }

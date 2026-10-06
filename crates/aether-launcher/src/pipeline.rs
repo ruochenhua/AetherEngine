@@ -32,6 +32,7 @@ pub fn build_pipeline(
     height: u32,
     has_terrain: bool,
     transparent_enabled: bool,
+    particles_enabled: bool,
     local_lights_enabled: bool,
 ) -> Result<(Scheduler, IblResources), PipelineBuildError> {
     let ibl_resources = IblResources::generate(
@@ -75,10 +76,13 @@ pub fn build_pipeline(
         .add_pass(SSRPass::init(&ctx))
         .add_pass(GodRayPass::init(&ctx))
         .add_pass(WaterReflectionPass::init(&ctx));
-    if transparent_enabled {
-        builder = builder.add_pass(TransparentPass::init(&ctx));
+    let transparent_features = transparent_pass_features(transparent_enabled, particles_enabled);
+    if transparent_features.register_pass {
+        let transparent_pass = TransparentPass::init(&ctx)
+            .with_transparent_meshes_enabled(transparent_features.draw_meshes);
+        builder = builder.add_pass(transparent_pass);
     }
-    let composite = if transparent_enabled {
+    let composite = if transparent_features.register_pass {
         CompositePass::new_with_transparency(device, surface_format)
     } else {
         CompositePass::init(&ctx)
@@ -95,6 +99,22 @@ pub fn build_pipeline(
     Ok((scheduler, ibl_resources))
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct TransparentPassFeatures {
+    register_pass: bool,
+    draw_meshes: bool,
+}
+
+fn transparent_pass_features(
+    transparent_enabled: bool,
+    particles_enabled: bool,
+) -> TransparentPassFeatures {
+    TransparentPassFeatures {
+        register_pass: transparent_enabled || particles_enabled,
+        draw_meshes: transparent_enabled,
+    }
+}
+
 /// Spawn a default cube into the world for pickable content.
 pub fn spawn_default_cube(
     device: &wgpu::Device,
@@ -104,23 +124,26 @@ pub fn spawn_default_cube(
     use aether_engine::ecs::components::{
         MeshHandle, MeshSource, Name, Selected, Transform, Visibility,
     };
+    use aether_engine::renderer::extracted_material::ExtractedMaterial;
     use aether_engine::renderer::renderable::MaterialUniform;
     if let Some(cpu_mesh) = mesh_registry.get("cube") {
         let gpu_mesh = Arc::new(aether_engine::asset::mesh::GpuMesh::from_cpu(
             device, &cpu_mesh,
         ));
+        let material = MaterialUniform {
+            albedo: [0.8, 0.3, 0.2, 1.0],
+            roughness: 0.5,
+            metallic: 0.0,
+            unlit: 0,
+            _pad: 0,
+            albedo_texture_id: 0,
+            ..MaterialUniform::default()
+        };
         world.spawn((
             Transform::default(),
             MeshHandle::new(gpu_mesh, MeshSource::Builtin("cube".into()), "cube"),
-            MaterialUniform {
-                albedo: [0.8, 0.3, 0.2, 1.0],
-                roughness: 0.5,
-                metallic: 0.0,
-                unlit: 0,
-                _pad: 0,
-                albedo_texture_id: 0,
-                ..MaterialUniform::default()
-            },
+            material,
+            ExtractedMaterial::from_legacy_uniform(material),
             Visibility::default(),
             Name("DefaultCube".into()),
             Selected,
@@ -132,4 +155,41 @@ pub fn spawn_default_cube(
 pub fn screenshot_buffer_size(width: u32, height: u32) -> (u64, u32) {
     let bytes_per_row = (width * 4).div_ceil(256) * 256;
     (bytes_per_row as u64 * height as u64, bytes_per_row)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{transparent_pass_features, TransparentPassFeatures};
+
+    #[test]
+    fn transparent_pass_registration_tracks_mesh_and_particle_flags_independently() {
+        assert_eq!(
+            transparent_pass_features(false, false),
+            TransparentPassFeatures {
+                register_pass: false,
+                draw_meshes: false,
+            }
+        );
+        assert_eq!(
+            transparent_pass_features(true, false),
+            TransparentPassFeatures {
+                register_pass: true,
+                draw_meshes: true,
+            }
+        );
+        assert_eq!(
+            transparent_pass_features(false, true),
+            TransparentPassFeatures {
+                register_pass: true,
+                draw_meshes: false,
+            }
+        );
+        assert_eq!(
+            transparent_pass_features(true, true),
+            TransparentPassFeatures {
+                register_pass: true,
+                draw_meshes: true,
+            }
+        );
+    }
 }

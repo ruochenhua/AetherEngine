@@ -20,6 +20,7 @@ pub(crate) fn parse_args(args: &[String]) -> Result<CliArgs, CliError> {
     let mut cli = CliArgs {
         scene: None,
         screenshot: None,
+        render_graph_output: None,
         exit_after_frames: None,
         no_gui_overlay: false,
         debug_mode: None,
@@ -30,6 +31,7 @@ pub(crate) fn parse_args(args: &[String]) -> Result<CliArgs, CliError> {
         ssr_enabled: false,
         transparent_enabled: false,
         particles_enabled: false,
+        material_extraction_enabled: true,
         animation_enabled: false,
         debug_helpers_enabled: true,
         physics_debug_enabled: false,
@@ -70,6 +72,15 @@ pub(crate) fn parse_args(args: &[String]) -> Result<CliArgs, CliError> {
                 i += 1;
                 if i < args.len() {
                     cli.screenshot = Some(PathBuf::from(&args[i]));
+                }
+            }
+            "--render-graph-output" => {
+                reject_duplicate(&cli.render_graph_output, "--render-graph-output")?;
+                i += 1;
+                if i < args.len() {
+                    cli.render_graph_output = Some(PathBuf::from(&args[i]));
+                } else {
+                    return Err(error("--render-graph-output requires a path"));
                 }
             }
             "--exit-after-frames" => {
@@ -151,6 +162,18 @@ pub(crate) fn parse_args(args: &[String]) -> Result<CliArgs, CliError> {
                     "on" => true,
                     "off" => false,
                     _ => return Err(error(format!("unsupported --particles value {value}"))),
+                };
+            }
+            "--material-extraction" => {
+                let value = next_value(args, &mut i, "--material-extraction")?;
+                cli.material_extraction_enabled = match value {
+                    "on" => true,
+                    "off" => false,
+                    _ => {
+                        return Err(error(format!(
+                            "unsupported --material-extraction value {value}"
+                        )))
+                    }
                 };
             }
             "--width" => {

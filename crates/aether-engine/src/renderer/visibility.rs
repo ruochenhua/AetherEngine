@@ -1,13 +1,9 @@
 //! Deterministic CPU visibility extraction and screen-height LOD selection.
 
-use crate::ecs::{
-    components::{MeshHandle, MeshSource, Transform, Visibility},
-    World,
-};
+mod extract;
+pub use extract::{extract_visibility, extract_visibility_with_material_mode};
+
 use crate::math::{Aabb, Frustum, Mat4};
-use crate::renderer::transparent::{TransparentBlendMode, TransparentMaterial};
-use crate::renderer::{camera::FlyCamera, renderable::MaterialUniform};
-use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 /// Pixel-height boundary between high and medium detail.
@@ -195,58 +191,6 @@ pub fn evaluate_visibility(
     frame
 }
 
-/// Extract visibility candidates from renderable ECS entities and apply policy.
-pub fn extract_visibility(
-    world: &World,
-    camera: &FlyCamera,
-    viewport_width: u32,
-    viewport_height: u32,
-    policy: VisibilityPolicy,
-    history: &mut LodHistory,
-) -> VisibilityFrame {
-    let aspect = if viewport_height == 0 {
-        1.0
-    } else {
-        viewport_width.max(1) as f32 / viewport_height as f32
-    };
-    let view_projection = camera.projection_matrix(aspect) * camera.view_matrix();
-    let frustum = Frustum::from_view_projection(view_projection);
-    let candidates = world
-        .query::<(
-            hecs::Entity,
-            &Transform,
-            &MeshHandle,
-            &MaterialUniform,
-            &Visibility,
-            Option<&TransparentMaterial>,
-        )>()
-        .iter()
-        .map(
-            |(entity, transform, mesh, material, visibility, transparent)| {
-                let model = Mat4::from_scale_rotation_translation(
-                    transform.scale,
-                    transform.rotation,
-                    transform.translation,
-                );
-                VisibilityCandidate {
-                    entity_bits: entity.to_bits().get(),
-                    batch_key: make_batch_key(mesh, material, transparent),
-                    bounds: mesh.mesh.aabb.transform(model),
-                    enabled: visibility.0,
-                }
-            },
-        )
-        .collect::<Vec<_>>();
-    evaluate_visibility(
-        candidates,
-        view_projection,
-        &frustum,
-        viewport_height,
-        policy,
-        history,
-    )
-}
-
 /// Project a world-space AABB to screen height in physical pixels.
 pub fn projected_height_pixels(bounds: &Aabb, view_projection: Mat4, viewport_height: u32) -> f32 {
     if viewport_height == 0 {
@@ -311,30 +255,6 @@ pub fn select_lod(current: Option<LodLevel>, screen_height: f32) -> LodLevel {
             return level;
         }
         level = next;
-    }
-}
-
-fn make_batch_key(
-    mesh: &MeshHandle,
-    material: &MaterialUniform,
-    transparent: Option<&TransparentMaterial>,
-) -> BatchKey {
-    let mesh_source = match &mesh.source {
-        MeshSource::Builtin(name) => format!("builtin:{name}"),
-        MeshSource::File(path) => format!("file:{}", path.replace('\\', "/")),
-    };
-    let (transparent_blend, alpha_cutoff_bits) = transparent.map_or((None, None), |value| {
-        let blend = match value.blend {
-            TransparentBlendMode::Alpha => 1,
-            TransparentBlendMode::Additive => 2,
-        };
-        (Some(blend), value.alpha_cutoff.map(f32::to_bits))
-    });
-    BatchKey {
-        mesh_source,
-        material_sha256: Sha256::digest(bytemuck::bytes_of(material)).into(),
-        transparent_blend,
-        alpha_cutoff_bits,
     }
 }
 

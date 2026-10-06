@@ -5,6 +5,7 @@ use aether_engine::asset::{
 };
 use aether_engine::ecs::components::{MaterialAssetRef, MaterialAssetStatus};
 use aether_engine::ecs::{Entity, World};
+use aether_engine::renderer::extracted_material::ExtractedMaterial;
 use aether_engine::renderer::renderable::MaterialUniform;
 use aether_engine::renderer::transparent::TransparentMaterial;
 use std::collections::{HashMap, HashSet};
@@ -121,6 +122,7 @@ fn apply_material_generation(
         .resolution()
         .ok_or_else(|| format!("material dependencies are unresolved: {path}"))?;
     let uniform = MaterialUniform::from_resolution(resolution);
+    let extracted = ExtractedMaterial::from_resolution(resolution);
     let transparent = config
         .transparent
         .as_ref()
@@ -139,7 +141,7 @@ fn apply_material_generation(
     };
     for entity in entities {
         world
-            .insert(entity, (config.clone(), uniform))
+            .insert(entity, (config.clone(), uniform, extracted.clone()))
             .map_err(|error| error.to_string())?;
         if let Some(material) = &transparent {
             world
@@ -216,12 +218,14 @@ mod tests {
         let mut material = assets.get(handle).unwrap().as_ref().clone();
         material.resolve(&asset_id, &root, &mut assets).unwrap();
         let uniform = MaterialUniform::from_resolution(material.resolution().unwrap());
+        let extracted = ExtractedMaterial::from_resolution(material.resolution().unwrap());
         let mut world = World::new();
         let entity = world.spawn((
             MaterialAssetRef("materials/test.ron".into()),
             MaterialAssetStatus::default(),
             original,
             uniform,
+            extracted,
         ));
         let mut watcher = MaterialAssetWatcher::default();
         watcher.update(&mut world, &mut assets);

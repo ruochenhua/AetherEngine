@@ -11,14 +11,14 @@ use std::sync::{Arc, RwLock};
 pub struct GpuTextureCache {
     device: wgpu::Device,
     queue: wgpu::Queue,
-    map: RwLock<HashMap<u64, Arc<GpuTexture>>>,
+    map: RwLock<HashMap<(u64, bool), Arc<GpuTexture>>>,
     versioned: RwLock<VersionedCache>,
     fallback_white: Arc<GpuTexture>,
 }
 
 #[derive(Debug, Default)]
 struct VersionedCache {
-    assets: HashMap<GpuAssetKey, Arc<GpuTexture>>,
+    assets: HashMap<(GpuAssetKey, bool), Arc<GpuTexture>>,
     current: HashMap<AssetId, u32>,
     last_frame: Option<u64>,
 }
@@ -47,29 +47,40 @@ impl GpuTextureCache {
         handle: Handle<CpuTexture>,
         assets: &AssetManager,
     ) -> Arc<GpuTexture> {
+        self.get_or_upload_with_srgb(handle, assets, false)
+    }
+
+    /// Get or upload the GPU texture using an explicit color interpretation.
+    pub fn get_or_upload_with_srgb(
+        &self,
+        handle: Handle<CpuTexture>,
+        assets: &AssetManager,
+        srgb: bool,
+    ) -> Arc<GpuTexture> {
         let id = handle.id();
         let versioned_key = assets.asset_id(handle).ok().map(|asset| GpuAssetKey {
             asset,
             generation: handle.generation(),
         });
         if let Some(key) = &versioned_key {
-            if let Some(gpu) = self.get_versioned(key) {
+            if let Some(gpu) = self.get_versioned_with_srgb(key, srgb) {
                 return gpu;
             }
         }
         {
             let map = self.map.read().expect("texture cache lock poisoned");
-            if let Some(gpu) = map.get(&id) {
+            if let Some(gpu) = map.get(&(id, srgb)) {
                 return gpu.clone();
             }
         }
 
         let gpu = match assets.get(handle) {
-            Some(cpu) => Arc::new(GpuTexture::from_cpu(
+            Some(cpu) => Arc::new(GpuTexture::from_cpu_with_srgb(
                 &self.device,
                 &self.queue,
                 &cpu,
                 Some("texture_cache"),
+                srgb,
             )),
             None => {
                 tracing::warn!("CpuTexture handle {} not found in AssetManager", id);
@@ -78,11 +89,11 @@ impl GpuTextureCache {
         };
 
         let mut map = self.map.write().expect("texture cache lock poisoned");
-        map.insert(id, gpu.clone());
+        map.insert((id, srgb), gpu.clone());
         if let Some(key) = versioned_key {
             if let Ok(mut cache) = self.versioned.write() {
                 cache.current.insert(key.asset.clone(), key.generation);
-                cache.assets.insert(key, gpu.clone());
+                cache.assets.insert((key, srgb), gpu.clone());
                 collect_unreferenced(&mut cache);
             }
         }
@@ -95,8 +106,18 @@ impl GpuTextureCache {
         handle: Option<Handle<CpuTexture>>,
         assets: &AssetManager,
     ) -> Arc<GpuTexture> {
+        self.get_or_upload_optional_with_srgb(handle, assets, false)
+    }
+
+    /// Get or upload an optional texture with an explicit color interpretation.
+    pub fn get_or_upload_optional_with_srgb(
+        &self,
+        handle: Option<Handle<CpuTexture>>,
+        assets: &AssetManager,
+        srgb: bool,
+    ) -> Arc<GpuTexture> {
         match handle {
-            Some(handle) => self.get_or_upload(handle, assets),
+            Some(handle) => self.get_or_upload_with_srgb(handle, assets, srgb),
             None => self.fallback_white.clone(),
         }
     }
@@ -108,7 +129,21 @@ impl GpuTextureCache {
 
     /// Return a GPU texture by persistent identity and generation.
     pub fn get_versioned(&self, key: &GpuAssetKey) -> Option<Arc<GpuTexture>> {
-        self.versioned.read().ok()?.assets.get(key).cloned()
+        self.get_versioned_with_srgb(key, false)
+    }
+
+    /// Return a cached texture by asset generation and color interpretation.
+    pub fn get_versioned_with_srgb(
+        &self,
+        key: &GpuAssetKey,
+        srgb: bool,
+    ) -> Option<Arc<GpuTexture>> {
+        self.versioned
+            .read()
+            .ok()?
+            .assets
+            .get(&(key.clone(), srgb))
+            .cloned()
     }
 }
 
@@ -143,7 +178,7 @@ impl GpuCommitCache for GpuTextureCache {
         {
             return Err(AssetError::StaleReloadTicket);
         }
-        if cache.assets.contains_key(&key) {
+        if cache.assets.contains_key(&(key.clone(), false)) {
             cache.last_frame = Some(boundary.frame_id);
             return Ok(());
         }
@@ -154,7 +189,7 @@ impl GpuCommitCache for GpuTextureCache {
             Some("asset_store_texture"),
         ));
         cache.current.insert(key.asset.clone(), key.generation);
-        cache.assets.insert(key, gpu);
+        cache.assets.insert((key, false), gpu);
         cache.last_frame = Some(boundary.frame_id);
         collect_unreferenced(&mut cache);
         Ok(())
@@ -169,7 +204,7 @@ impl GpuCommitCache for GpuTextureCache {
 
 fn collect_unreferenced(cache: &mut VersionedCache) {
     let current = &cache.current;
-    cache.assets.retain(|key, texture| {
+    cache.assets.retain(|(key, _srgb), texture| {
         current.get(&key.asset) == Some(&key.generation) || Arc::strong_count(texture) > 1
     });
 }

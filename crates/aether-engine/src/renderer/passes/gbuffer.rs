@@ -126,7 +126,7 @@ impl Pass for GBufferPass {
         }
         let mut obj_data: Vec<u8> = Vec::with_capacity(batch_count * obj_size as usize);
         for batch in self.batches.iter() {
-            let obj = ObjectUniform::from_material(&batch.material);
+            let obj = ObjectUniform::from_extracted_material(&batch.extracted_material);
             obj_data.extend_from_slice(bytemuck::cast_slice(&[obj]));
         }
         if !obj_data.is_empty() {
@@ -159,28 +159,36 @@ impl Pass for GBufferPass {
         // Build per-batch albedo texture bind groups.
         self.texture_bind_groups.clear();
         for batch in self.batches.iter() {
-            let albedo_tex = match &batch.albedo_texture {
-                Some(handle) => frame
-                    .texture_cache
-                    .get_or_upload(*handle, frame.asset_manager),
+            let albedo_handle = batch.extracted_material.albedo_texture();
+            let normal_handle = batch.extracted_material.normal_texture();
+            let orm_handle = batch.extracted_material.orm_texture();
+            let emissive_handle = batch.extracted_material.emissive_texture();
+            let albedo_tex = match &albedo_handle {
+                Some(handle) => frame.texture_cache.get_or_upload_with_srgb(
+                    *handle,
+                    frame.asset_manager,
+                    batch.extracted_material.albedo_is_srgb(),
+                ),
                 None => self.fallback_white.clone(),
             };
-            let normal_tex = match &batch.normal_texture {
+            let normal_tex = match &normal_handle {
                 Some(handle) => frame
                     .texture_cache
                     .get_or_upload(*handle, frame.asset_manager),
                 None => self.fallback_normal.clone(),
             };
-            let orm_tex = match &batch.orm_texture {
+            let orm_tex = match &orm_handle {
                 Some(handle) => frame
                     .texture_cache
                     .get_or_upload(*handle, frame.asset_manager),
                 None => self.fallback_white.clone(),
             };
-            let emissive_tex = match &batch.emissive_texture {
-                Some(handle) => frame
-                    .texture_cache
-                    .get_or_upload(*handle, frame.asset_manager),
+            let emissive_tex = match &emissive_handle {
+                Some(handle) => frame.texture_cache.get_or_upload_with_srgb(
+                    *handle,
+                    frame.asset_manager,
+                    batch.extracted_material.emissive_is_srgb(),
+                ),
                 None => self.fallback_white.clone(),
             };
             let bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {

@@ -39,7 +39,7 @@ struct ObjectData {
     normal_present: u32,
     orm_present: u32,
     emissive_present: u32,
-    _material_pad: u32,
+    orm_swizzle: u32,
 };
 @group(1) @binding(0) var<uniform> obj: ObjectData;
 @group(2) @binding(0) var albedo_texture: texture_2d<f32>;
@@ -56,6 +56,17 @@ struct JointPalette {
     padding: array<u32, 3>,
 };
 @group(3) @binding(0) var<storage, read> joint_palette: JointPalette;
+
+fn orm_channel(orm: vec4<f32>, selector: u32) -> f32 {
+    switch selector {
+        case 0u: { return orm.r; }
+        case 1u: { return orm.g; }
+        case 2u: { return orm.b; }
+        case 3u: { return orm.a; }
+        case 4u: { return 0.0; }
+        default: { return 1.0; }
+    }
+}
 
 @vertex
 fn vs_main(in: VertexInput, instance: InstanceInput) -> VertexOutput {
@@ -133,10 +144,13 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
     var metallic = obj.metallic;
     var ao = 1.0;
     if (obj.orm_present != 0u) {
-        let orm = textureSample(orm_texture, orm_sampler, in.uv).rgb;
-        roughness = roughness * orm.g;
-        metallic = metallic * orm.b;
-        ao = mix(1.0, orm.r, obj.occlusion_strength);
+        let orm = textureSample(orm_texture, orm_sampler, in.uv);
+        let ao_channel = obj.orm_swizzle & 7u;
+        let roughness_channel = (obj.orm_swizzle >> 3u) & 7u;
+        let metallic_channel = (obj.orm_swizzle >> 6u) & 7u;
+        roughness = roughness * orm_channel(orm, roughness_channel);
+        metallic = metallic * orm_channel(orm, metallic_channel);
+        ao = mix(1.0, orm_channel(orm, ao_channel), obj.occlusion_strength);
     }
     out.normal = vec4<f32>(N * 0.5 + 0.5, ao);
     out.material = vec2<f32>(clamp(roughness, 0.045, 1.0), clamp(metallic, 0.0, 1.0));
