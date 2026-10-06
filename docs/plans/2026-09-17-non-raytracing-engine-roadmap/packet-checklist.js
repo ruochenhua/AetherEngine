@@ -1,1 +1,1 @@
-document.querySelectorAll('input[data-check]').forEach((box)=>{const key='aether-packet:'+box.dataset.check;box.checked=localStorage.getItem(key)==='1';box.addEventListener('change',()=>localStorage.setItem(key,box.checked?'1':'0'))});
+document.querySelectorAll('input[data-check]').forEach((box)=>{const key='aether-packet:'+box.dataset.check;const saved=localStorage.getItem(key);box.checked=saved===null?box.defaultChecked:saved==='1';box.addEventListener('change',()=>localStorage.setItem(key,box.checked?'1':'0'))});
