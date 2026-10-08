@@ -39,6 +39,7 @@ struct Entry {
     state: LoadStateView,
     last_good: Option<Arc<dyn Any + Send + Sync>>,
     pending: Option<PendingAsset>,
+    committed_ticket: Option<u128>,
     type_id: TypeId,
 }
 
@@ -141,6 +142,7 @@ impl AssetStore {
                 state: LoadStateView::Ready { generation: 1 },
                 last_good: Some(Arc::new(value)),
                 pending: None,
+                committed_ticket: None,
                 type_id: TypeId::of::<T>(),
             },
         );
@@ -175,6 +177,7 @@ impl AssetStore {
                     state: LoadStateView::Loading { generation: 1 },
                     last_good: None,
                     pending: None,
+                    committed_ticket: None,
                     type_id: TypeId::of::<T>(),
                 },
             );

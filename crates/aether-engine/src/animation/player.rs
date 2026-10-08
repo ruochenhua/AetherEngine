@@ -298,12 +298,30 @@ fn sample_vec3(
     a.lerp(Vec3::from_array(values[right]), alpha).to_array()
 }
 
-/// Hash the frozen T7.3 pose-state payload (UTF-8, no trailing newline).
-pub fn pose_state_hash(variant: &str, normalized_time: &str) -> Result<String, AnimationError> {
+/// Hash the frozen T7.3 payload after verifying it matches the sampled pose.
+pub fn pose_state_hash(
+    variant: &str,
+    normalized_time: &str,
+    pose: &PoseSample,
+) -> Result<String, AnimationError> {
     let time = normalized_time
         .parse::<f32>()
         .map_err(|_| AnimationError::InvalidTime)?;
-    if !time.is_finite() || time < 0.0 {
+    if !time.is_finite() || time < 0.0 || pose.bind_pose_fallback || pose.locals.len() != 128 {
+        return Err(AnimationError::InvalidTime);
+    }
+    let first = pose.locals[0];
+    if first.translation.x != time
+        || first.translation.y != 0.0
+        || first.translation.z != 0.0
+        || first.rotation != Quat::IDENTITY
+        || first.scale != Vec3::ONE
+        || pose.locals[1..].iter().any(|local| {
+            local.translation != Vec3::ZERO
+                || local.rotation != Quat::IDENTITY
+                || local.scale != Vec3::ONE
+        })
+    {
         return Err(AnimationError::InvalidTime);
     }
     let payload = format!(

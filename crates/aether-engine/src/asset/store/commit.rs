@@ -96,6 +96,13 @@ impl AssetStore {
             .entries
             .get(&ticket.slot)
             .ok_or(AssetError::StaleHandle)?;
+        if entry.committed_ticket == Some(ticket.capability)
+            && entry.generation == ticket.to_generation
+            && entry.sequence == ticket.sequence
+            && entry.id == ticket.asset
+        {
+            return Ok(());
+        }
         let pending = entry
             .pending
             .as_ref()
@@ -124,6 +131,7 @@ impl AssetStore {
         let pending = entry.pending.take().ok_or(AssetError::StaleReloadTicket)?;
         entry.last_good = Some(pending.payload);
         entry.generation = ticket.to_generation;
+        entry.committed_ticket = Some(ticket.capability);
         entry.state = LoadStateView::Ready {
             generation: entry.generation,
         };

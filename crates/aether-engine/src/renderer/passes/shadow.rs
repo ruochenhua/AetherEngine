@@ -60,6 +60,7 @@ pub struct ShadowPass {
     shadow_depth_handle: Option<ResHandle<ShadowDepth>>,
     cascade_views: Vec<wgpu::TextureView>,
     batches: Arc<[RenderBatch]>,
+    animation_items: Arc<[crate::animation::AnimationRenderItem]>,
     animation_bounds: Arc<[Aabb]>,
     cascades: [Cascade; CASCADE_COUNT],
     terrain_geometry: Option<Arc<RwLock<TerrainGeometry>>>,
@@ -103,6 +104,9 @@ impl Pass for ShadowPass {
 
     fn apply_frame(&mut self, frame: &RenderFrame) {
         self.batches = opaque_batches(&frame.batches);
+        self.animation_items = frame
+            .animation
+            .map_or_else(|| Arc::from([]), |animation| animation.items.clone());
         self.animation_bounds = frame.animation.map_or_else(
             || Arc::<[Aabb]>::from([]),
             crate::animation::AnimationFrame::conservative_bounds,

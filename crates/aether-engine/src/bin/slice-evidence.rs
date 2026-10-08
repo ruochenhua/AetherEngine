@@ -1,24 +1,15 @@
 //! Emit measured fixture evidence for the VisualCase v2 slice runner.
 
-use aether_engine::animation::{
-    build_joint_palette, pose_state_hash, sample_animator, LocalPose, PoseSample,
-};
-use aether_engine::asset::gltf_document::{
-    AnimationChannel, AnimationClipAsset, AnimationPath, AnimationValues, DocumentAnimation,
-    DocumentMesh, DocumentNode, DocumentPrimitive, DocumentSkin, GltfDocument, Interpolation,
-    JointWeights, SkeletonAsset, ValidationDiagnostic,
-};
+#[path = "slice-evidence/t7_evidence.rs"]
+mod t7_evidence;
+
 use aether_engine::asset::store::{
-    canonicalize, AssetError, AssetId, AssetKind, AssetStore, AssetStoreConfig, FrameBoundary,
-    LoadStateView, TypedAsset,
+    AssetError, AssetKind, AssetStore, AssetStoreConfig, FrameBoundary, LoadStateView, TypedAsset,
 };
 use aether_engine::asset::Asset;
-use aether_engine::math::{Aabb, Mat4};
-use glam::{Quat, Vec3};
 use serde_json::{json, Value};
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -61,9 +52,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let variant = variant.ok_or("missing --variant")?;
     let report = match slice.as_str() {
         "T8.1" => asset_store_evidence()?,
-        "T7.1" => gltf_fixture_evidence(&variant)?,
-        "T7.2" => palette_evidence()?,
-        "T7.3" => animation_evidence(&variant)?,
+        "T7.1" => t7_evidence::gltf_fixture_evidence(&variant)?,
+        "T7.2" => t7_evidence::palette_evidence()?,
+        "T7.3" => t7_evidence::animation_evidence(&variant)?,
         other => return Err(format!("unsupported evidence slice: {other}").into()),
     };
     println!("{}", serde_json::to_string(&report)?);
@@ -110,6 +101,12 @@ fn asset_store_evidence() -> Result<Value, Box<dyn std::error::Error>> {
             Ok(())
         },
     )?;
+    let duplicate_commit =
+        store.commit_result(&accepted, FrameBoundary { frame_id: 1 }, |_, _, _| {
+            callbacks.fetch_add(100, Ordering::SeqCst);
+            Err(AssetError::PayloadTypeMismatch)
+        });
+    let commit_idempotent = duplicate_commit.is_ok() && callbacks.load(Ordering::SeqCst) == 1;
     let initial_ready = matches!(
         store.state(handle.clone())?,
         LoadStateView::Ready { generation: 1 }
@@ -137,8 +134,6 @@ fn asset_store_evidence() -> Result<Value, Box<dyn std::error::Error>> {
             ..
         })
     );
-    let worker_gpu_commit =
-        callbacks.load(Ordering::SeqCst) != commit_on_owner.load(Ordering::SeqCst);
     let state_machine =
         loading_before_decode && loading_before_commit && initial_ready && cancelled;
     let events = json!([
@@ -150,8 +145,10 @@ fn asset_store_evidence() -> Result<Value, Box<dyn std::error::Error>> {
     let mut report = base_render();
     report["probes"] = json!({
         "initial_load_commit": state_machine,
+        "commit_idempotent": commit_idempotent,
         "cancel_idempotent": cancelled && cancel_state_failed,
-        "worker_gpu_commit": worker_gpu_commit,
+        "commit_callback_on_owner_thread": callbacks.load(Ordering::SeqCst) == 1
+            && commit_on_owner.load(Ordering::SeqCst) == 1,
         "state_machine": if state_machine { "valid" } else { "invalid" }
     });
     report["asset_events"] = events;
@@ -171,163 +168,6 @@ fn wait_result(
         thread::sleep(Duration::from_millis(2));
     }
     Err(AssetError::WorkerStopped)
-}
-
-fn gltf_fixture_evidence(variant: &str) -> Result<Value, Box<dyn std::error::Error>> {
-    match variant {
-        "malformed_graph" => {
-            let mut document = gltf_fixture(2);
-            Arc::make_mut(&mut document.nodes)[1].children.push(0);
-            let code = document.validate().unwrap_err().to_string();
-            Ok(
-                json!({"kind":"ExpectedError","code":"Cycle","diagnostics":[],"observed_error":code}),
-            )
-        }
-        "valid_128" => {
-            let document = gltf_fixture(128);
-            let report = document.validate()?;
-            let skeleton = SkeletonAsset::from_skin(&document, 0)?;
-            let mut result = base_render();
-            result["metrics"] = json!({"joint_count":skeleton.joints.len()});
-            result["probes"] =
-                json!({"weight_validation":true,"graph_acyclic":report.diagnostics.is_empty()});
-            Ok(result)
-        }
-        "invalid_129" => {
-            let document = gltf_fixture(129);
-            let report = document.validate()?;
-            let diagnostic = report.diagnostics.iter().any(|value| {
-                matches!(
-                    value,
-                    ValidationDiagnostic::UnsupportedJointCount {
-                        joint_count: 129,
-                        ..
-                    }
-                )
-            });
-            let mut result = base_render();
-            result["diagnostics"] = json!([{"code":"UnsupportedJointCount","severity":"error"}]);
-            result["fallbacks"] = json!([{"scope":"primitive","mode":"static"}]);
-            result["metrics"] = json!({"joint_count":document.skins[0].joints.len()});
-            result["probes"] = json!({"static_fallback":diagnostic,"other_items_preserved":document.meshes[0].primitives.len() == 1});
-            Ok(result)
-        }
-        other => Err(format!("unknown T7.1 fixture variant: {other}").into()),
-    }
-}
-
-fn palette_evidence() -> Result<Value, Box<dyn std::error::Error>> {
-    let document = gltf_fixture(128);
-    let skeleton = SkeletonAsset::from_skin_with_source(
-        &document,
-        0,
-        AssetId {
-            kind: AssetKind::Skeleton,
-            path: canonicalize(Path::new("."), Path::new("actor/rig.gltf"))?,
-        },
-    )?;
-    let pose = PoseSample {
-        locals: Arc::from(
-            document
-                .nodes
-                .iter()
-                .map(LocalPose::from)
-                .collect::<Vec<_>>(),
-        ),
-        bind_pose_fallback: false,
-    };
-    let bounds = Aabb::new(Vec3::splat(-1.0), Vec3::splat(1.0));
-    let palette = build_joint_palette(&document, &skeleton, &pose, bounds, Mat4::IDENTITY, 1)?;
-    let shared = palette.bounds == bounds.transform(Mat4::IDENTITY);
-    let mut result = base_render();
-    result["probes"] = json!({"palette_joint_count":palette.matrices.len(),"animated_bounds_shared":shared,"shadow_reflection_consumers":shared});
-    Ok(result)
-}
-
-fn animation_evidence(variant: &str) -> Result<Value, Box<dyn std::error::Error>> {
-    let (time, expected_hash) = match variant {
-        "seek_0" => (
-            "0.000000000",
-            "47985fe07dd05522032afb8b1789c437c7ddc1a8f5bf86edb1ce129dcd3b19b9",
-        ),
-        "seek_0p25" => (
-            "0.250000005",
-            "8e84f0b3ca1b452d9d9978b093f950f76a205b0aff5fd80977e089978784fae5",
-        ),
-        "seek_0p50" => (
-            "0.500000010",
-            "d6e118c8e5e8d72144a028dc7ed3c4c40234ffa03fa728f3472206455eca3703",
-        ),
-        "seek_0p75" => (
-            "0.750000015",
-            "f6996f06d3971904fedc85d96f173b2b7b65c82e39e6d0b1908730fb5cebe1e6",
-        ),
-        other => return Err(format!("unknown T7.3 seek variant: {other}").into()),
-    };
-    let document = gltf_fixture(128);
-    let skeleton = SkeletonAsset::from_skin(&document, 0)?;
-    let target = time.parse::<f32>()?;
-    let clip = AnimationClipAsset {
-        channels: vec![AnimationChannel {
-            target_joint: 0,
-            target: AnimationPath::Translation,
-            interpolation: Interpolation::Linear,
-            times: Arc::from([0.0, 1.0]),
-            values: AnimationValues::Vec3(Arc::from([[0.0; 3], [1.0, 0.0, 0.0]])),
-        }],
-        duration: 1.0,
-    };
-    let pose = sample_animator(&document, &skeleton, Some(&clip), target)?;
-    let pose_hash = pose_state_hash(variant, time)?;
-    let valid_sample = (pose.locals[0].translation.x - target).abs() <= 1.0e-6
-        && pose.locals[0].rotation == Quat::IDENTITY
-        && pose.locals[0].scale == Vec3::ONE;
-    if !valid_sample || pose_hash != expected_hash {
-        return Err("T7.3 deterministic pose assertion failed".into());
-    }
-    let mut result = base_render();
-    result["hashes"] = json!({"pose_state":pose_hash});
-    result["probes"] = json!({"pose_sampled":true});
-    result["animation_state"] =
-        json!({"variant":variant,"time":time,"joint_count":128,"pose_hash":expected_hash});
-    Ok(result)
-}
-
-fn gltf_fixture(joint_count: usize) -> GltfDocument {
-    let nodes = (0..joint_count)
-        .map(|index| DocumentNode {
-            children: if index + 1 < joint_count {
-                vec![index + 1]
-            } else {
-                Vec::new()
-            },
-            parent: (index > 0).then(|| index - 1),
-            mesh: (index == 0).then_some(0),
-            skin: (index == 0).then_some(0),
-            translation: [0.0; 3],
-            rotation: [0.0, 0.0, 0.0, 1.0],
-            scale: [1.0; 3],
-        })
-        .collect::<Vec<_>>();
-    GltfDocument {
-        buffers: Arc::new(Vec::new()),
-        images: Arc::new(Vec::new()),
-        nodes: Arc::new(nodes),
-        meshes: Arc::new(vec![DocumentMesh {
-            primitives: vec![DocumentPrimitive {
-                mesh: None,
-                weights: vec![JointWeights {
-                    joints: [0; 4],
-                    weights: [1.0, 0.0, 0.0, 0.0],
-                }],
-            }],
-        }]),
-        skins: Arc::new(vec![DocumentSkin {
-            joints: (0..joint_count).collect(),
-            inverse_bind_matrices: vec![Mat4::IDENTITY.to_cols_array_2d(); joint_count],
-        }]),
-        animations: Arc::new(vec![DocumentAnimation::default()]),
-    }
 }
 
 fn unique_suffix() -> u128 {

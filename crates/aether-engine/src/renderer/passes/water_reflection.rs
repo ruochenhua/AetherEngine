@@ -49,6 +49,7 @@ pub struct WaterReflectionPass {
     depth_handle: Option<ResHandle<WaterReflectionDepth>>,
 
     batches: Arc<[RenderBatch]>,
+    animation_items: Arc<[crate::animation::AnimationRenderItem]>,
     animation_bounds: Arc<[Aabb]>,
     view: Mat4,
     proj: Mat4,
@@ -146,6 +147,12 @@ mod tests {
         let mut pass = WaterReflectionPass::new(&device, &queue);
         pass.apply_frame(&frame);
         assert_eq!(pass.animation_bounds.as_ref(), &[bounds]);
+        assert_eq!(pass.animation_items.len(), 1);
+        assert!(matches!(
+            &pass.animation_items[0],
+            crate::animation::AnimationRenderItem::Skinned(item)
+                if item.palette.matrices.len() == 1 && item.bounds == pass.animation_bounds[0]
+        ));
         assert!(pass.should_run(&frame));
         assert!(pass.terrain_geometry.is_some());
     }

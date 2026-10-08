@@ -33,6 +33,9 @@ impl Pass for WaterReflectionPass {
     }
 
     fn apply_frame(&mut self, frame: &RenderFrame) {
+        self.animation_items = frame
+            .animation
+            .map_or_else(|| Arc::from([]), |animation| animation.items.clone());
         self.animation_bounds = frame.animation.map_or_else(
             || Arc::<[Aabb]>::from([]),
             crate::animation::AnimationFrame::conservative_bounds,

@@ -109,6 +109,10 @@ fn apply_and_commit(
     let boundary = FrameBoundary { frame_id };
     let ticket = store.apply_result(result, boundary)?;
     store.commit_result(&ticket, boundary, |_, _, _| Ok(()))?;
+    // A successful commit is idempotent and must not invoke renderer work twice.
+    store.commit_result(&ticket, boundary, |_, _, _| {
+        Err(AssetError::PayloadTypeMismatch)
+    })?;
     Ok(ticket)
 }
 
@@ -419,7 +423,15 @@ fn cancellation_token_stops_a_cooperative_decode_already_in_progress() {
         thread::sleep(Duration::from_millis(1));
     }
     assert_eq!(CANCELLABLE_LOAD_CANCELLED.load(Ordering::SeqCst), 1);
-    let result = store.poll_results(1).unwrap().pop().unwrap();
+    let mut result = None;
+    for _ in 0..200 {
+        result = store.poll_results(1).unwrap().pop();
+        if result.is_some() {
+            break;
+        }
+        thread::sleep(Duration::from_millis(1));
+    }
+    let result = result.expect("cancelled worker should publish its completion result");
     assert!(matches!(
         store.apply_result(result, FrameBoundary { frame_id: 1 }),
         Err(AssetError::Cancelled)

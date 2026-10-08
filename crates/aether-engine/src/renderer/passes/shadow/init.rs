@@ -110,6 +110,7 @@ impl ShadowPass {
             shadow_depth_handle: None,
             cascade_views: Vec::new(),
             batches: Arc::from([]),
+            animation_items: Arc::from([]),
             animation_bounds: Arc::from([]),
             cascades: [Cascade {
                 view_proj: Mat4::IDENTITY,

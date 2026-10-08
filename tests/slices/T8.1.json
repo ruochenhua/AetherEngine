@@ -69,6 +69,13 @@
               }
             },
             {
+              "name": "commit_idempotent",
+              "value": {
+                "kind": "Bool",
+                "value": true
+              }
+            },
+            {
               "name": "cancel_idempotent",
               "value": {
                 "kind": "Bool",
@@ -76,10 +83,10 @@
               }
             },
             {
-              "name": "worker_gpu_commit",
+              "name": "commit_callback_on_owner_thread",
               "value": {
                 "kind": "Bool",
-                "value": false
+                "value": true
               }
             },
             {

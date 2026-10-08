@@ -115,8 +115,48 @@ fn frozen_pose_hashes_match_all_seek_variants() {
             "f6996f06d3971904fedc85d96f173b2b7b65c82e39e6d0b1908730fb5cebe1e6",
         ),
     ];
+    let nodes = (0..128)
+        .map(|index| DocumentNode {
+            children: if index + 1 < 128 {
+                vec![index + 1]
+            } else {
+                Vec::new()
+            },
+            parent: (index > 0).then(|| index - 1),
+            mesh: None,
+            skin: None,
+            translation: [0.0; 3],
+            rotation: [0.0, 0.0, 0.0, 1.0],
+            scale: [1.0; 3],
+        })
+        .collect::<Vec<_>>();
+    let document = GltfDocument {
+        nodes: Arc::new(nodes),
+        skins: Arc::new(vec![DocumentSkin {
+            joints: (0..128).collect(),
+            inverse_bind_matrices: vec![Mat4::IDENTITY.to_cols_array_2d(); 128],
+        }]),
+        ..GltfDocument::default()
+    };
+    let skeleton = SkeletonAsset::from_skin(&document, 0).unwrap();
+    let clip = AnimationClipAsset {
+        channels: vec![AnimationChannel {
+            target_joint: 0,
+            target: AnimationPath::Translation,
+            interpolation: Interpolation::Linear,
+            times: Arc::from([0.0, 1.0]),
+            values: AnimationValues::Vec3(Arc::from([[0.0; 3], [1.0, 0.0, 0.0]])),
+        }],
+        duration: 1.0,
+    };
     for (variant, time, hash) in expected {
-        assert_eq!(pose_state_hash(variant, time).unwrap(), hash);
+        let pose =
+            sample_animator(&document, &skeleton, Some(&clip), time.parse().unwrap()).unwrap();
+        assert_eq!(
+            pose_state_hash(variant, time, &pose).unwrap(),
+            hash,
+            "variant {variant}"
+        );
     }
 }
 

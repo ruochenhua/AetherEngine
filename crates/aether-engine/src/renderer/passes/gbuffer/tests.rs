@@ -124,6 +124,10 @@ fn gbuffer_consumes_animation_frame_bounds() {
     let config = crate::renderer::frame::FrameConfig::default();
     let bounds = crate::math::Aabb::new(glam::Vec3::splat(-2.0), glam::Vec3::splat(2.0));
     let animation = crate::animation::animation_frame_with_bounds(bounds);
+    assert!(matches!(
+        animation.items.first(),
+        Some(crate::animation::AnimationRenderItem::Skinned(_))
+    ));
     let frame = crate::renderer::frame::RenderFrame {
         animation: Some(&animation),
         batches: Arc::from([]),
@@ -141,4 +145,10 @@ fn gbuffer_consumes_animation_frame_bounds() {
     let mut pass = GBufferPass::new(&device, &queue, &cache);
     pass.apply_frame(&frame);
     assert_eq!(pass.animation_bounds.as_ref(), &[bounds]);
+    assert_eq!(pass.animation_items.len(), 1);
+    assert!(matches!(
+        &pass.animation_items[0],
+        crate::animation::AnimationRenderItem::Skinned(item)
+            if item.palette.matrices.len() == 1 && item.bounds == pass.animation_bounds[0]
+    ));
 }

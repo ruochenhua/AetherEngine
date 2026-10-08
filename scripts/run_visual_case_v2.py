@@ -113,15 +113,16 @@ def write_case_report(directory, expected, actual, errors):
     elif actual.get("diagnostics") is not None:
         (directory / "gltf-diagnostics.json").write_text(
             json.dumps(actual["diagnostics"], indent=2, sort_keys=True) + "\n")
-    required_artifacts = ["report.html", "stdout", "stderr", "launcher.log", "graph.txt",
-                          "output.png", "reference.png", "diff.png", "metrics.json", "asset-events.json"]
+    required_artifacts = ["report.html", "stdout", "stderr", "launcher.log",
+                          "launcher-capture.json", "graph.txt", "output.png", "reference.png",
+                          "diff.png", "metrics.json", "asset-events.json"]
     passed = not errors
     body = [f"<h1>{'PASS' if passed else 'FAIL'}: {html.escape(directory.name)}</h1>",
             f"<h2>Expected</h2><pre>{html.escape(json.dumps(expected, indent=2))}</pre>",
             f"<h2>Observed</h2><pre>{html.escape(json.dumps(actual, indent=2))}</pre>"]
     if errors:
         body.append("<h2>Failures</h2><ul>" + "".join(f"<li>{html.escape(error)}</li>" for error in errors) + "</ul>")
-    body.append("<p>Artifacts: stdout, stderr, launcher.log, outcome.json, asset-events.json; screenshot is produced by the launcher.</p>")
+    body.append("<p>launcher-capture.json records the scene process and screenshot. outcome.json records the separately sourced API fixture evidence; its provenance states whether it describes the captured scene.</p>")
     (directory / "report.html").write_text("<!doctype html><meta charset='utf-8'><title>VisualCase v2</title>" + "".join(body))
     (directory / "artifacts.json").write_text(json.dumps({
         name: {"present": (directory / name).is_file(), "required_by_slice_contract": name != "report.html"}
@@ -223,20 +224,29 @@ def main():
                 source = process_dir / name
                 if source.exists():
                     (directory / name).write_bytes(source.read_bytes())
-            actual = load_evidence(directory)
-            if process_log.get("diagnostic"):
-                actual["process_diagnostic"] = process_log["diagnostic"]
-            errors = compare(expected, actual) if expected is not None else []
+            launcher_errors = []
             image_result = compare_reference(case, directory)
             if image_result is not None and not image_result["passed"]:
-                errors.append(f"reference comparison failed: {image_result}")
+                launcher_errors.append(f"reference comparison failed: {image_result}")
             if expected and expected["kind"] == "Render" and not (directory / "output.png").is_file():
-                errors.append("rendered output.png is missing")
+                launcher_errors.append("rendered output.png is missing")
             if process_log.get("diagnostic"):
-                errors.append(f"launcher process: {process_log['diagnostic']}")
-            passed = write_case_report(directory, expected, actual, errors)
-            results.append({"id": case_id, "passed": passed, "errors": errors,
-                            "expected": expected, "observed": actual, "image": image_result,
+                launcher_errors.append(f"launcher process: {process_log['diagnostic']}")
+            launcher_capture = {
+                "scene": case["scene"],
+                "output": "output.png" if (directory / "output.png").is_file() else None,
+                "process": process_log,
+                "image": image_result,
+                "passed": not launcher_errors,
+                "errors": launcher_errors,
+            }
+            (directory / "launcher-capture.json").write_text(
+                json.dumps(launcher_capture, indent=2, sort_keys=True) + "\n")
+            results.append({"id": case_id, "passed": False,
+                            "launcher_pass": launcher_capture["passed"],
+                            "launcher_errors": launcher_errors,
+                            "evidence_pass": False, "evidence_errors": ["evidence pending"],
+                            "expected": expected, "launcher_capture": launcher_capture,
                             "process": process_log})
     evidence_map = json.loads((ROOT / "tests/slice-evidence-commands.json").read_text())
     evidence_command = (json.loads(args.evidence_command_json)
@@ -255,27 +265,31 @@ def main():
                 if not isinstance(actual, dict):
                     raise ValueError("evidence must be a JSON object")
                 actual["evidence_status"] = "measured"
+                actual["provenance"] = {
+                    "kind": "independent_api_fixture",
+                    "slice": args.slice,
+                    "variant": variant_id,
+                    "command": argv,
+                    "relation_to_launcher_capture": "separate contract evidence; it does not describe output.png",
+                }
                 if args.slice == "T7.1" and "gltf_diagnostics" not in actual:
                     actual["gltf_diagnostics"] = actual.get("diagnostics", [])
-                if expected is not None:
-                    errors = compare(expected, actual)
-                    image_result = compare_reference(case, directory)
-                    if image_result is not None and not image_result["passed"]:
-                        errors.append(f"reference comparison failed: {image_result}")
-                    process = next(item for item in results if item["id"] == case_id)
-                    if process.get("process", {}).get("diagnostic"):
-                        errors.append(f"launcher process: {process['process']['diagnostic']}")
-                    process.update({"passed": not errors, "errors": errors, "expected": expected,
-                                   "observed": actual, "image": image_result})
-                    write_case_report(directory, expected, actual, errors)
+                errors = compare(expected, actual) if expected is not None else []
+                process = next(item for item in results if item["id"] == case_id)
+                process.update({"evidence_pass": not errors, "evidence_errors": errors,
+                                "observed": actual})
+                write_case_report(directory, expected, actual, errors)
             except (ValueError, json.JSONDecodeError) as error:
                 evidence_commands[-1]["parse_error"] = str(error)
-                next(item for item in results if item["id"] == case_id)["errors"].append(
-                    f"evidence output invalid: {error}")
+                item = next(item for item in results if item["id"] == case_id)
+                item["evidence_errors"] = [f"evidence output invalid: {error}"]
         else:
             evidence_commands[-1]["stderr"] = evidence.stderr[-4000:]
-            next(item for item in results if item["id"] == case_id)["errors"].append(
-                f"evidence command failed with exit {evidence.returncode}")
+            item = next(item for item in results if item["id"] == case_id)
+            item["evidence_errors"] = [f"evidence command failed with exit {evidence.returncode}"]
+    for item in results:
+        item["passed"] = item["launcher_pass"] and item["evidence_pass"]
+        item["errors"] = item["launcher_errors"] + item["evidence_errors"]
     required_slice_artifacts = {
         "T7.1": "gltf-diagnostics.json", "T7.3": "animation-state.json",
         "T8.1": "asset-events.json",
@@ -287,7 +301,7 @@ def main():
             if not (case_dir / required_artifact).is_file():
                 item["errors"].append(f"required artifact {required_artifact} is missing")
                 item["passed"] = False
-    artifacts = ["report.html", "stdout", "stderr", "launcher.log", "graph.txt", "output.png",
+    artifacts = ["report.html", "stdout", "stderr", "launcher.log", "launcher-capture.json", "outcome.json", "graph.txt", "output.png",
                  "reference.png", "diff.png", "metrics.json", "asset-events.json"]
     if args.slice == "T7.1": artifacts.append("gltf-diagnostics.json")
     if args.slice == "T7.3": artifacts.append("animation-state.json")
