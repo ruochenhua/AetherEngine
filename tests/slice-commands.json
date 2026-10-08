@@ -1,0 +1,34 @@
+{
+  "T7.1": [
+    "cargo",
+    "test",
+    "-p",
+    "aether-engine",
+    "--lib",
+    "gltf_document"
+  ],
+  "T7.2": [
+    "cargo",
+    "test",
+    "-p",
+    "aether-engine",
+    "--lib",
+    "animation::"
+  ],
+  "T7.3": [
+    "cargo",
+    "test",
+    "-p",
+    "aether-engine",
+    "--lib",
+    "animation::"
+  ],
+  "T8.1": [
+    "cargo",
+    "test",
+    "-p",
+    "aether-engine",
+    "--lib",
+    "asset::"
+  ]
+}

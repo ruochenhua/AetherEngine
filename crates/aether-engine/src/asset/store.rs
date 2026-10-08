@@ -9,6 +9,7 @@ use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
+mod commit;
 mod types;
 pub use types::*;
 
@@ -37,7 +38,13 @@ struct Entry {
     ticket: u128,
     state: LoadStateView,
     last_good: Option<Arc<dyn Any + Send + Sync>>,
+    pending: Option<PendingAsset>,
     type_id: TypeId,
+}
+
+struct PendingAsset {
+    ticket: u128,
+    payload: Arc<dyn Any + Send + Sync>,
 }
 
 /// Single-worker typed CPU asset store. GPU uploads remain owned by renderer code.
@@ -55,6 +62,7 @@ pub struct AssetStore {
     worker: Option<JoinHandle<()>>,
     stopped: bool,
     last_frame_id: u64,
+    owner_thread: thread::ThreadId,
 }
 
 impl AssetStore {
@@ -98,7 +106,45 @@ impl AssetStore {
             worker: Some(worker),
             stopped: false,
             last_frame_id: 0,
+            owner_thread: thread::current().id(),
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn insert_ready<T: types::TypedAsset>(
+        &mut self,
+        path: &Path,
+        value: T,
+    ) -> Result<Handle<T>, AssetError> {
+        let id = AssetId {
+            kind: T::KIND,
+            path: types::canonicalize(&self.config.project_root, path)?,
+        };
+        if let Some(slot) = self.ids.get(&id).copied() {
+            let entry = self.entries.get(&slot).ok_or(AssetError::StaleHandle)?;
+            if entry.type_id != TypeId::of::<T>() {
+                return Err(AssetError::PayloadTypeMismatch);
+            }
+            return Ok(Handle::with_generation(slot, entry.generation));
+        }
+
+        let slot = self.next_slot;
+        self.next_slot += 1;
+        self.ids.insert(id.clone(), slot);
+        self.entries.insert(
+            slot,
+            Entry {
+                id,
+                generation: 1,
+                sequence: 0,
+                ticket: 0,
+                state: LoadStateView::Ready { generation: 1 },
+                last_good: Some(Arc::new(value)),
+                pending: None,
+                type_id: TypeId::of::<T>(),
+            },
+        );
+        Ok(Handle::with_generation(slot, 1))
     }
 
     /// Request a typed asset; repeated kind/path requests share one slot and in-flight decode.
@@ -128,6 +174,7 @@ impl AssetStore {
                     ticket: 0,
                     state: LoadStateView::Loading { generation: 1 },
                     last_good: None,
+                    pending: None,
                     type_id: TypeId::of::<T>(),
                 },
             );
@@ -168,6 +215,11 @@ impl AssetStore {
         Ok(entry.state.clone())
     }
 
+    /// Return the persistent identity captured by a live handle.
+    pub fn asset_id<T>(&self, handle: Handle<T>) -> Result<AssetId, AssetError> {
+        Ok(self.entry(handle)?.id.clone())
+    }
+
     /// Get the last successfully applied payload, including during failed reload.
     pub fn get<T: types::TypedAsset>(&self, handle: Handle<T>) -> Result<Arc<T>, AssetError> {
         let entry = self.entry(handle)?;
@@ -184,23 +236,35 @@ impl AssetStore {
         handle: Handle<T>,
     ) -> Result<ReloadTicket, AssetError> {
         let slot = handle.id();
-        let (id, from) = {
+        let (id, request_generation, from_generation) = {
             let entry = self.entry(handle)?;
-            (entry.id.clone(), entry.generation)
+            (
+                entry.id.clone(),
+                entry.generation,
+                if entry.last_good.is_some() {
+                    entry.generation
+                } else {
+                    0
+                },
+            )
         };
         let sequence = self.next_sequence;
         let ticket = self.new_ticket(slot, sequence);
         if let Some(entry) = self.entries.get_mut(&slot) {
             entry.sequence = sequence;
             entry.ticket = ticket.0;
-            entry.state = LoadStateView::Loading { generation: from };
+            entry.state = LoadStateView::Loading {
+                generation: request_generation,
+            };
         }
-        self.enqueue::<T>(slot, from, ticket.0, id.clone())?;
+        self.enqueue::<T>(slot, request_generation, ticket.0, id.clone())?;
         Ok(ReloadTicket {
             asset: id,
-            from_generation: from,
-            to_generation: from + 1,
+            from_generation,
+            to_generation: from_generation + 1,
             sequence,
+            slot,
+            capability: ticket.0,
         })
     }
 
@@ -215,79 +279,6 @@ impl AssetStore {
             }
         }
         Ok(out)
-    }
-
-    /// Apply a decoded result at a monotonically increasing main-thread frame boundary.
-    pub fn apply_result(
-        &mut self,
-        result: AssetResult,
-        boundary: FrameBoundary,
-    ) -> Result<ReloadTicket, AssetError> {
-        if boundary.frame_id == 0 || boundary.frame_id < self.last_frame_id {
-            return Err(AssetError::InvalidFrameBoundary);
-        }
-        self.last_frame_id = boundary.frame_id;
-        let ticket = self
-            .tickets
-            .get(&result.ticket)
-            .ok_or(AssetError::StaleReloadTicket)?;
-        if ticket.slot != result.slot || ticket.sequence != result.sequence {
-            return Err(AssetError::StaleReloadTicket);
-        }
-        if self.cancelled.contains(&result.ticket) {
-            if let Some(entry) = self.entries.get_mut(&result.slot) {
-                entry.state = LoadStateView::Failed {
-                    generation: entry.generation,
-                    error: AssetError::Cancelled,
-                    has_last_good: entry.last_good.is_some(),
-                };
-            }
-            return Err(AssetError::Cancelled);
-        }
-        let entry = self
-            .entries
-            .get_mut(&result.slot)
-            .ok_or(AssetError::StaleHandle)?;
-        if entry.generation != result.generation || entry.sequence != result.sequence {
-            return Err(AssetError::StaleReloadTicket);
-        }
-        if entry.id.kind != result.kind {
-            return Err(AssetError::PayloadKindMismatch);
-        }
-        let from = entry.generation;
-        let outcome = match result.result {
-            Ok(payload) => {
-                if payload.kind() != entry.id.kind {
-                    return Err(AssetError::PayloadKindMismatch);
-                }
-                let value = payload.into_any();
-                if value.as_ref().type_id() != entry.type_id {
-                    return Err(AssetError::PayloadTypeMismatch);
-                }
-                let had_last_good = entry.last_good.is_some();
-                entry.last_good = Some(value);
-                entry.generation = result.generation + u32::from(had_last_good);
-                entry.state = LoadStateView::Ready {
-                    generation: entry.generation,
-                };
-                Ok(())
-            }
-            Err(error) => {
-                entry.state = LoadStateView::Failed {
-                    generation: entry.generation,
-                    error: error.clone(),
-                    has_last_good: entry.last_good.is_some(),
-                };
-                Err(error)
-            }
-        };
-        outcome?;
-        Ok(ReloadTicket {
-            asset: entry.id.clone(),
-            from_generation: from,
-            to_generation: entry.generation,
-            sequence: result.sequence,
-        })
     }
 
     /// Cancel a request capability. Repeated cancellation is safe.

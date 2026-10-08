@@ -277,6 +277,7 @@ impl WaterReflectionPass {
             color_handle: None,
             depth_handle: None,
             batches: Arc::from([]),
+            animation_bounds: Arc::from([]),
             view: Mat4::IDENTITY,
             proj: Mat4::IDENTITY,
             light_dir: Vec3::Y,

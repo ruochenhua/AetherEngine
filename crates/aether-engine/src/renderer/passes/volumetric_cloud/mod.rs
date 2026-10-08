@@ -340,6 +340,7 @@ mod tests {
         let assets = crate::asset::AssetManager::new();
         let texture_cache = crate::asset::texture_cache::GpuTextureCache::new(&device, &queue);
         let frame = RenderFrame {
+            animation: None,
             batches: Arc::from([]),
             camera: &camera,
             lighting: &lighting,

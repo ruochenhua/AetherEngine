@@ -1,10 +1,13 @@
 //! Compatibility asset manager and handle types retained for existing consumers.
 
-use std::any::Any;
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use tracing::{debug, trace};
+use std::thread;
+use std::time::Duration;
+use tracing::debug;
+
+use super::store::{
+    AssetError, AssetId, AssetStore, AssetStoreConfig, FrameBoundary, LoadStateView, TypedAsset,
+};
 
 /// Unique handle to an asset.
 #[derive(Debug)]
@@ -61,14 +64,13 @@ impl<T> Handle<T> {
     }
 }
 
-/// Asset manager.
+/// Synchronous compatibility adapter over the typed asset store.
 ///
-/// Central registry for all loaded assets. Provides deduplication
-/// and reference counting.
+/// `load` preserves the old blocking interface while decoding and caching through
+/// the store's canonical identity and worker lifecycle.
 pub struct AssetManager {
-    pub(super) next_id: u64,
-    pub(super) assets: HashMap<u64, Arc<dyn Any + Send + Sync>>,
-    pub(super) path_to_id: HashMap<PathBuf, u64>,
+    pub(super) store: AssetStore,
+    project_root: PathBuf,
 }
 
 impl Default for AssetManager {
@@ -78,12 +80,24 @@ impl Default for AssetManager {
 }
 
 impl AssetManager {
-    /// Create a new asset manager.
+    /// Create a manager rooted at the current project directory.
     pub fn new() -> Self {
+        Self::with_root(".")
+    }
+
+    /// Create a compatibility manager rooted at a project asset directory.
+    pub fn with_root(project_root: impl AsRef<Path>) -> Self {
+        let project_root = project_root.as_ref();
+        let project_root = if project_root.is_absolute() {
+            project_root.to_path_buf()
+        } else {
+            std::env::current_dir()
+                .unwrap_or_else(|_| PathBuf::from("."))
+                .join(project_root)
+        };
         Self {
-            next_id: 1,
-            assets: HashMap::new(),
-            path_to_id: HashMap::new(),
+            store: AssetStore::new(AssetStoreConfig::new(super::async_loader::filesystem_root())),
+            project_root,
         }
     }
 
@@ -92,36 +106,58 @@ impl AssetManager {
     /// If the asset has already been loaded, returns the existing handle.
     pub fn load<T>(&mut self, path: impl AsRef<Path>) -> anyhow::Result<Handle<T>>
     where
-        T: Asset + 'static + Send + Sync,
+        T: TypedAsset + 'static + Send + Sync,
     {
-        let path = path.as_ref().to_path_buf();
-
-        if let Some(&id) = self.path_to_id.get(&path) {
-            trace!("Asset cache hit: {} (id: {})", path.display(), id);
-            return Ok(Handle::new(id));
-        }
-
+        let path = path.as_ref();
         debug!("Loading asset: {}", path.display());
-        let asset = T::load(&path)?;
-        let id = self.next_id;
-        self.next_id += 1;
+        let absolute_path = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            self.project_root.join(path)
+        };
+        let path = absolute_path
+            .strip_prefix(super::async_loader::filesystem_root())
+            .map_err(|_| super::store::AssetError::PathEscape)?;
+        let (handle, _) = self.store.request::<T>(path)?;
+        loop {
+            match self.store.state(handle.clone())? {
+                LoadStateView::Ready { .. } => return Ok(handle),
+                LoadStateView::Failed { error, .. } => return Err(error.into()),
+                LoadStateView::Loading { .. } => {}
+            }
 
-        self.assets.insert(id, Arc::new(asset));
-        self.path_to_id.insert(path, id);
-
-        Ok(Handle::new(id))
+            let results = self.store.poll_results(16)?;
+            if results.is_empty() {
+                thread::sleep(Duration::from_millis(1));
+            }
+            for result in results {
+                if let Ok(ticket) = self
+                    .store
+                    .apply_result(result, FrameBoundary { frame_id: 1 })
+                {
+                    let _ = self.store.commit_result(
+                        &ticket,
+                        FrameBoundary { frame_id: 1 },
+                        |_, _, _| Ok(()),
+                    );
+                }
+            }
+        }
     }
 
     /// Get an asset by handle.
-    pub fn get<T: 'static + Send + Sync>(&self, handle: Handle<T>) -> Option<Arc<T>> {
-        self.assets
-            .get(&handle.id())
-            .and_then(|a| a.clone().downcast::<T>().ok())
+    pub fn get<T: TypedAsset>(&self, handle: Handle<T>) -> Option<std::sync::Arc<T>> {
+        self.store.get(handle).ok()
+    }
+
+    /// Return the persistent identity for a loaded handle.
+    pub fn asset_id<T>(&self, handle: Handle<T>) -> Result<AssetId, AssetError> {
+        self.store.asset_id(handle)
     }
 
     /// Check if an asset is loaded.
-    pub fn is_loaded(&self, handle: Handle<impl Any>) -> bool {
-        self.assets.contains_key(&handle.id())
+    pub fn is_loaded<T: TypedAsset>(&self, handle: Handle<T>) -> bool {
+        matches!(self.store.state(handle), Ok(LoadStateView::Ready { .. }))
     }
 }
 
@@ -129,4 +165,64 @@ impl AssetManager {
 pub trait Asset: Sized + Send + Sync {
     /// Load the asset from a file path.
     fn load(path: &Path) -> anyhow::Result<Self>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::asset::store::{AssetKind, TypedAsset};
+    use std::fs;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Mutex;
+
+    static LOADS: AtomicUsize = AtomicUsize::new(0);
+    static LOAD_LOCK: Mutex<()> = Mutex::new(());
+
+    #[derive(Debug)]
+    struct TestAsset(String);
+
+    impl Asset for TestAsset {
+        fn load(path: &Path) -> anyhow::Result<Self> {
+            LOADS.fetch_add(1, Ordering::SeqCst);
+            Ok(Self(fs::read_to_string(path)?))
+        }
+    }
+
+    impl TypedAsset for TestAsset {
+        const KIND: AssetKind = AssetKind::CpuMesh;
+    }
+
+    #[test]
+    fn synchronous_manager_adapter_deduplicates_canonical_project_paths() {
+        let _guard = LOAD_LOCK.lock().unwrap();
+        LOADS.store(0, Ordering::SeqCst);
+        let root = std::env::temp_dir().join(format!("aether_legacy_store_{}", std::process::id()));
+        fs::create_dir_all(root.join("alias")).unwrap();
+        fs::write(root.join("asset.txt"), "asset payload").unwrap();
+        let mut manager = AssetManager::with_root(root.clone());
+
+        let first = manager.load::<TestAsset>("alias/../asset.txt").unwrap();
+        let second = manager.load::<TestAsset>("asset.txt").unwrap();
+
+        assert_eq!(first, second);
+        assert_eq!(manager.get(first).unwrap().0, "asset payload");
+        assert_eq!(LOADS.load(Ordering::SeqCst), 1);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn synchronous_manager_adapter_accepts_absolute_paths_outside_project_root() {
+        let _guard = LOAD_LOCK.lock().unwrap();
+        let root =
+            std::env::temp_dir().join(format!("aether_legacy_absolute_{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("asset.txt");
+        fs::write(&path, "external asset").unwrap();
+        let mut manager = AssetManager::new();
+
+        let handle = manager.load::<TestAsset>(&path).unwrap();
+
+        assert_eq!(manager.get(handle).unwrap().0, "external asset");
+        fs::remove_dir_all(root).unwrap();
+    }
 }

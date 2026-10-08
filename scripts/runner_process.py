@@ -172,7 +172,7 @@ def main():
     parser.add_argument('--case', action='append', default=[])
     parser.add_argument('--output-dir', default='tests/output')
     parser.add_argument('--report-dir', required=True)
-    for option, variable, default in [('handshake-timeout', 'AETHER_HANDSHAKE_TIMEOUT', '2'),
+    for option, variable, default in [('handshake-timeout', 'AETHER_HANDSHAKE_TIMEOUT', '30'),
                                       ('case-timeout', 'AETHER_CASE_TIMEOUT', '120'),
                                       ('grace-period', 'AETHER_TERMINATION_GRACE', '5')]:
         parser.add_argument('--' + option, type=duration, default=os.environ.get(variable, default))

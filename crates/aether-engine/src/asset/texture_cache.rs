@@ -1,23 +1,25 @@
 //! GPU texture cache.
 //!
-//! Converts CPU `CpuTexture` assets uploaded through `AssetManager` into
-//! GPU `GpuTexture` resources on demand and keeps them resident for the
-//! lifetime of the cache.
+//! Converts typed CPU textures into GPU resources at frame boundaries and keeps
+//! them keyed by persistent asset identity and generation.
 
+use super::store::{AssetError, AssetId, AssetStore, FrameBoundary, ReloadTicket};
 use super::texture::{CpuTexture, GpuTexture};
 use super::{AssetManager, Handle};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
+use std::thread::ThreadId;
 
-/// Cache that maps `Handle<CpuTexture>` to uploaded `GpuTexture` resources.
+/// Cache that maps `(AssetId, generation)` to uploaded `GpuTexture` resources.
 ///
 /// Uses interior mutability so the cache can be shared immutably across passes.
 #[derive(Debug)]
 pub struct GpuTextureCache {
     device: wgpu::Device,
     queue: wgpu::Queue,
-    map: RwLock<HashMap<u64, Arc<GpuTexture>>>,
+    map: RwLock<HashMap<(AssetId, u32), Arc<GpuTexture>>>,
     fallback_white: Arc<GpuTexture>,
+    owner_thread: ThreadId,
 }
 
 impl GpuTextureCache {
@@ -34,6 +36,7 @@ impl GpuTextureCache {
             queue: queue.clone(),
             map: RwLock::new(HashMap::new()),
             fallback_white,
+            owner_thread: std::thread::current().id(),
         }
     }
 
@@ -46,10 +49,21 @@ impl GpuTextureCache {
         handle: Handle<CpuTexture>,
         assets: &AssetManager,
     ) -> Arc<GpuTexture> {
-        let id = handle.id();
+        if std::thread::current().id() != self.owner_thread {
+            tracing::warn!("GPU texture lookup requested outside the cache owner thread");
+            return self.fallback_white.clone();
+        }
+        let Ok(asset_id) = assets.asset_id(handle.clone()) else {
+            tracing::warn!(
+                "CpuTexture handle {} not found in AssetManager",
+                handle.id()
+            );
+            return self.fallback_white.clone();
+        };
+        let key = cache_key(asset_id, &handle);
         {
             let map = self.map.read().expect("texture cache lock poisoned");
-            if let Some(gpu) = map.get(&id) {
+            if let Some(gpu) = map.get(&key) {
                 return gpu.clone();
             }
         }
@@ -62,13 +76,13 @@ impl GpuTextureCache {
                 Some("texture_cache"),
             )),
             None => {
-                tracing::warn!("CpuTexture handle {} not found in AssetManager", id);
+                tracing::warn!("CpuTexture asset {} not found in AssetManager", key.0);
                 return self.fallback_white.clone();
             }
         };
 
         let mut map = self.map.write().expect("texture cache lock poisoned");
-        map.insert(id, gpu.clone());
+        map.insert(key, gpu.clone());
         gpu
     }
 
@@ -90,67 +104,65 @@ impl GpuTextureCache {
     pub fn fallback_white(&self) -> Arc<GpuTexture> {
         self.fallback_white.clone()
     }
+
+    /// Upload and publish a staged CPU texture at the requested frame boundary.
+    /// The store checks its owner thread before invoking this renderer callback.
+    pub fn commit_texture(
+        &self,
+        store: &mut AssetStore,
+        ticket: &ReloadTicket,
+        boundary: FrameBoundary,
+    ) -> Result<(), AssetError> {
+        store.commit_result(ticket, boundary, |asset, generation, payload| {
+            if asset.kind != super::store::AssetKind::CpuTexture {
+                return Err(AssetError::PayloadKindMismatch);
+            }
+            let cpu = payload
+                .downcast_ref::<CpuTexture>()
+                .ok_or(AssetError::PayloadTypeMismatch)?;
+            let gpu = Arc::new(GpuTexture::from_cpu(
+                &self.device,
+                &self.queue,
+                cpu,
+                Some("asset_frame_commit"),
+            ));
+            let mut map = self
+                .map
+                .write()
+                .map_err(|_| AssetError::CommitFailed("texture cache lock poisoned".into()))?;
+            map.retain(|(cached_asset, _), _| cached_asset != asset);
+            map.insert((asset.clone(), generation), gpu);
+            Ok(())
+        })
+    }
+}
+
+impl AssetManager {
+    /// Commit a staged texture using this manager's store at a frame boundary.
+    pub fn commit_staged_texture(
+        &mut self,
+        cache: &GpuTextureCache,
+        ticket: &ReloadTicket,
+        boundary: FrameBoundary,
+    ) -> Result<(), AssetError> {
+        cache.commit_texture(&mut self.store, ticket, boundary)
+    }
+}
+
+fn cache_key(asset_id: AssetId, handle: &Handle<CpuTexture>) -> (AssetId, u32) {
+    (asset_id, handle.generation())
 }
 
 #[cfg(test)]
 impl AssetManager {
     /// Test helper: insert a pre-built asset under a fake path.
     fn load_from(&mut self, path: &str, asset: CpuTexture) -> anyhow::Result<Handle<CpuTexture>> {
-        let path = std::path::PathBuf::from(path);
-        if let Some(&id) = self.path_to_id.get(&path) {
-            return Ok(Handle::new(id));
-        }
-        let id = self.next_id;
-        self.next_id += 1;
-        self.assets.insert(id, Arc::new(asset));
-        self.path_to_id.insert(path, id);
-        Ok(Handle::new(id))
+        self.store
+            .insert_ready(std::path::Path::new(path), asset)
+            .map_err(Into::into)
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn headless_device_queue() -> (wgpu::Device, wgpu::Queue) {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter =
-            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
-                .expect("need adapter");
-        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-            .expect("need device")
-    }
-
-    #[test]
-    fn fallback_white_is_one_by_one() {
-        let (device, queue) = headless_device_queue();
-        let cache = GpuTextureCache::new(&device, &queue);
-        let fallback = cache.fallback_white();
-        assert_eq!(fallback.width, 1);
-        assert_eq!(fallback.height, 1);
-    }
-
-    #[test]
-    fn missing_handle_returns_fallback() {
-        let (device, queue) = headless_device_queue();
-        let cache = GpuTextureCache::new(&device, &queue);
-        let assets = AssetManager::new();
-        let handle = Handle::<CpuTexture>::new(999);
-        let gpu = cache.get_or_upload(handle, &assets);
-        assert_eq!(gpu.width, 1);
-        assert_eq!(gpu.height, 1);
-    }
-
-    #[test]
-    fn cached_textures_are_identical() {
-        let (device, queue) = headless_device_queue();
-        let mut assets = AssetManager::new();
-        let cpu = CpuTexture::from_color(255, 0, 0, 255);
-        // Manually insert the asset to bypass file loading.
-        let handle = assets.load_from("test_red", cpu).unwrap();
-        let cache = GpuTextureCache::new(&device, &queue);
-        let a = cache.get_or_upload(handle.clone(), &assets);
-        let b = cache.get_or_upload(handle, &assets);
-        assert!(Arc::ptr_eq(&a, &b));
-    }
-}
+#[path = "texture_cache_tests.rs"]
+mod tests;

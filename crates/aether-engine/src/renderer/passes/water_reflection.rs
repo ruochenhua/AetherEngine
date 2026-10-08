@@ -8,6 +8,7 @@
 // scene has no water or when `reflection_enabled` is false.
 
 use crate::asset::texture::GpuTexture;
+use crate::math::Aabb;
 use crate::renderer::extract::RenderBatch;
 use crate::renderer::pass::ResHandle;
 use crate::renderer::resource::{WaterReflectionColor, WaterReflectionDepth};
@@ -48,6 +49,7 @@ pub struct WaterReflectionPass {
     depth_handle: Option<ResHandle<WaterReflectionDepth>>,
 
     batches: Arc<[RenderBatch]>,
+    animation_bounds: Arc<[Aabb]>,
     view: Mat4,
     proj: Mat4,
     light_dir: Vec3,
@@ -124,7 +126,10 @@ mod tests {
         let mut terrain_geom = TerrainGeometry::new(&device);
         terrain_geom.update(&device, &queue, &camera, 16.0 / 9.0, &terrain);
 
+        let bounds = crate::math::Aabb::new(glam::Vec3::splat(-4.0), glam::Vec3::splat(4.0));
+        let animation = crate::animation::animation_frame_with_bounds(bounds);
         let frame = RenderFrame {
+            animation: Some(&animation),
             batches: std::sync::Arc::from([]),
             camera: &camera,
             lighting: &lighting,
@@ -140,6 +145,7 @@ mod tests {
 
         let mut pass = WaterReflectionPass::new(&device, &queue);
         pass.apply_frame(&frame);
+        assert_eq!(pass.animation_bounds.as_ref(), &[bounds]);
         assert!(pass.should_run(&frame));
         assert!(pass.terrain_geometry.is_some());
     }

@@ -112,3 +112,33 @@ fn gbuffer_shader_writes_resolved_emissive_data() {
     assert!(shaders::GBUFFER_SHADER_SRC.contains("obj.emissive_present"));
     assert!(shaders::GBUFFER_SHADER_SRC.contains("@location(4) emissive"));
 }
+
+#[test]
+fn gbuffer_consumes_animation_frame_bounds() {
+    let (device, queue) = headless_device();
+    let cache = crate::asset::texture_cache::GpuTextureCache::new(&device, &queue);
+    let assets = crate::asset::AssetManager::new();
+    let camera = crate::renderer::camera::FlyCamera::default();
+    let lighting = crate::renderer::light::LightingUniforms::default();
+    let optional = crate::renderer::extract::OptionalPassData::default();
+    let config = crate::renderer::frame::FrameConfig::default();
+    let bounds = crate::math::Aabb::new(glam::Vec3::splat(-2.0), glam::Vec3::splat(2.0));
+    let animation = crate::animation::animation_frame_with_bounds(bounds);
+    let frame = crate::renderer::frame::RenderFrame {
+        animation: Some(&animation),
+        batches: Arc::from([]),
+        camera: &camera,
+        lighting: &lighting,
+        queue: &queue,
+        aspect: 1.0,
+        delta_time: 0.0,
+        optional: &optional,
+        terrain_geometry: None,
+        config: &config,
+        texture_cache: &cache,
+        asset_manager: &assets,
+    };
+    let mut pass = GBufferPass::new(&device, &queue, &cache);
+    pass.apply_frame(&frame);
+    assert_eq!(pass.animation_bounds.as_ref(), &[bounds]);
+}

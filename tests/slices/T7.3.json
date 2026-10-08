@@ -1,0 +1,168 @@
+[
+  {
+    "manifest_version": 2,
+    "launcher_args": [],
+    "render": {
+      "width": 640,
+      "height": 360,
+      "frames": 1,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0.5,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/pending.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "benchmark": null,
+    "id": "t7_gltf_actor",
+    "scene": "tests/fixtures/t7_gltf_actor.ron",
+    "criteria": [
+      "seek sampling is deterministic and reports exact pose hashes"
+    ],
+    "variants": [
+      {
+        "id": "seek_0",
+        "launcher_args_append": [],
+        "time_override": null,
+        "camera_override": null,
+        "benchmark_override": null,
+        "expected_result": {
+          "kind": "Render",
+          "diagnostics": [],
+          "fallbacks": [],
+          "metrics": [],
+          "hashes": [
+            {
+              "name": "pose_state",
+              "sha256": "47985fe07dd05522032afb8b1789c437c7ddc1a8f5bf86edb1ce129dcd3b19b9"
+            }
+          ],
+          "probes": [
+            {
+              "name": "pose_sampled",
+              "value": {
+                "kind": "Bool",
+                "value": true
+              }
+            }
+          ],
+          "graph": null
+        }
+      },
+      {
+        "id": "seek_0p25",
+        "launcher_args_append": [],
+        "time_override": null,
+        "camera_override": null,
+        "benchmark_override": null,
+        "expected_result": {
+          "kind": "Render",
+          "diagnostics": [],
+          "fallbacks": [],
+          "metrics": [],
+          "hashes": [
+            {
+              "name": "pose_state",
+              "sha256": "8e84f0b3ca1b452d9d9978b093f950f76a205b0aff5fd80977e089978784fae5"
+            }
+          ],
+          "probes": [
+            {
+              "name": "pose_sampled",
+              "value": {
+                "kind": "Bool",
+                "value": true
+              }
+            }
+          ],
+          "graph": null
+        }
+      },
+      {
+        "id": "seek_0p50",
+        "launcher_args_append": [],
+        "time_override": null,
+        "camera_override": null,
+        "benchmark_override": null,
+        "expected_result": {
+          "kind": "Render",
+          "diagnostics": [],
+          "fallbacks": [],
+          "metrics": [],
+          "hashes": [
+            {
+              "name": "pose_state",
+              "sha256": "d6e118c8e5e8d72144a028dc7ed3c4c40234ffa03fa728f3472206455eca3703"
+            }
+          ],
+          "probes": [
+            {
+              "name": "pose_sampled",
+              "value": {
+                "kind": "Bool",
+                "value": true
+              }
+            }
+          ],
+          "graph": null
+        }
+      },
+      {
+        "id": "seek_0p75",
+        "launcher_args_append": [],
+        "time_override": null,
+        "camera_override": null,
+        "benchmark_override": null,
+        "expected_result": {
+          "kind": "Render",
+          "diagnostics": [],
+          "fallbacks": [],
+          "metrics": [],
+          "hashes": [
+            {
+              "name": "pose_state",
+              "sha256": "f6996f06d3971904fedc85d96f173b2b7b65c82e39e6d0b1908730fb5cebe1e6"
+            }
+          ],
+          "probes": [
+            {
+              "name": "pose_sampled",
+              "value": {
+                "kind": "Bool",
+                "value": true
+              }
+            }
+          ],
+          "graph": null
+        }
+      }
+    ]
+  }
+]

@@ -205,6 +205,7 @@ mod tests {
         let lighting = LightingUniforms::default();
         let assets = crate::asset::AssetManager::new();
         let frame = RenderFrame {
+            animation: None,
             batches: std::sync::Arc::from([]),
             camera: &camera,
             lighting: &lighting,
@@ -234,6 +235,7 @@ mod tests {
         let lighting = LightingUniforms::default();
         let assets = crate::asset::AssetManager::new();
         let frame = RenderFrame {
+            animation: None,
             batches: std::sync::Arc::from([]),
             camera: &camera,
             lighting: &lighting,
@@ -272,6 +274,7 @@ mod tests {
         lighting.light.direction = [-0.2, -0.9, -0.3];
         let assets = crate::asset::AssetManager::new();
         let frame = RenderFrame {
+            animation: None,
             batches: std::sync::Arc::from([]),
             camera: &camera,
             lighting: &lighting,
@@ -318,6 +321,7 @@ mod tests {
         let lighting = LightingUniforms::default();
         let assets = crate::asset::AssetManager::new();
         let frame = RenderFrame {
+            animation: None,
             batches: std::sync::Arc::from([]),
             camera: &camera,
             lighting: &lighting,
@@ -366,6 +370,7 @@ mod tests {
         let lighting = LightingUniforms::default();
         let assets = crate::asset::AssetManager::new();
         let frame = RenderFrame {
+            animation: None,
             batches: std::sync::Arc::from([]),
             camera: &camera,
             lighting: &lighting,

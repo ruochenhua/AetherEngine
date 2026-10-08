@@ -15,7 +15,7 @@
     <h1>Aether Engine 非光追路线图</h1>
     <p class="sub">执行总览 · 每个父任务都有独立 HTML 执行包，智能体只需加载当前任务包，不必携带整份大规范。</p>
     <div class="meta">
-      <div><strong>当前进度</strong><span>T0–T6 已完成 · T8.1 进行中</span></div>
+      <div><strong>当前进度</strong><span>T0–T6 已完成 · T8.1 生命周期验收通过 · T7.1–T7.3 slice 通过</span></div>
       <div><strong>范围</strong><span>不包含光追</span></div>
       <div><strong>交付</strong><span>192 人日 + 25% 缓冲</span></div>
       <div><strong>最终门禁</strong><span>Round 13 · 全部 ≥ 9.5</span></div>
@@ -27,7 +27,7 @@
   </div>
 
   <div class="callout amber">
-    <strong>进度同步（2026-10-06）：</strong>T0–T6 已有实现提交与专项验证报告。T8.1 typed AssetStore 已补入运行中解码的协作式取消和 CPU lifecycle HTML 报告入口；旧加载器 facade 接线、GPU commit boundary 与完整切片验收仍在进行。T7 glTF/动画继续等待 T8.1 released。
+    <strong>进度同步（2026-10-08）：</strong>T8.1 增加了 ticket 授权的 frame-boundary commit、generation 隔离 GPU cache 和切片报告；debug 与 release launcher 首帧、T8.1 lifecycle aggregate 均通过。T7.1–T7.3 的 owned glTF 验证、128-joint palette、共享 bounds 消费 seam、确定性 pose hash 均有独立 aggregate，四个 pose hash 全部匹配。workspace 359 项测试与 release 构建通过。terrain 参考图仍报告 MAE 26.61 / Diff 63.11%，与此前基线记录一致；未改参考图。CI 的模块健康步骤仍报告既有 baseline drift，未更新 baseline.
   </div>
 
   <h2>总 checklist</h2>
@@ -63,8 +63,8 @@
     <article class="card"><span class="tag">T4 · W9–W11 · 12d</span><span class="status">released</span><h3>透明与 Composite</h3><p>TransparentColor、排序/blend/depth、Water graph、四格 sentinel。</p><a href="t4-transparent.html">打开 T4 执行包 →</a></article>
     <article class="card"><span class="tag">T5 · W9–W13 · 12d</span><span class="status">released</span><h3>CPU 粒子</h3><p>确定性 simulation、64B GPU item、billboard、Inspector controls。</p><a href="t5-particles.html">打开 T5 执行包 →</a></article>
     <article class="card"><span class="tag">T6 · W14–W22 · 26d</span><span class="status">released</span><h3>物理生命周期</h3><p>Rapier adapter、typed physics API、seek、debug frame、picking。</p><a href="t6-physics.html">打开 T6 执行包 →</a></article>
-    <article class="card"><span class="tag">T7 · W23–W34 · 29d</span><span class="status waiting">等待 T8.1</span><h3>glTF 与动画</h3><p>owned document、128-joint skinning、typed channels、pose hash。</p><a href="t7-animation.html">打开 T7 执行包 →</a></article>
-    <article class="card"><span class="tag">T8 · W14–W40 · 45d</span><span class="status progress">T8.1 进行中</span><h3>资产、Prefab 与热重载</h3><p>typed AssetStore、owned downcast、generation、GPU commit、LKG。</p><a href="t8-assets.html">打开 T8 执行包 →</a></article>
+    <article class="card"><span class="tag">T7 · W23–W34 · 29d</span><span class="status pass">T7.1–T7.3 slice 通过</span><h3>glTF 与动画</h3><p>owned document、128-joint skinning、typed channels、pose hash。</p><a href="t7-animation.html">打开 T7 执行包 →</a></article>
+    <article class="card"><span class="tag">T8 · W14–W40 · 45d</span><span class="status pass">T8.1 lifecycle 通过</span><h3>资产、Prefab 与热重载</h3><p>typed AssetStore、owned downcast、generation、GPU commit、LKG。</p><a href="t8-assets.html">打开 T8 执行包 →</a></article>
     <article class="card"><span class="tag">T9 · W0/W23–W40 · 30d</span><span class="status">ready</span><h3>性能与可见性</h3><p>BenchmarkCase、LOD、paired instancing、MetricGuard、研究 RFC。</p><a href="t9-performance.html">打开 T9 执行包 →</a></article>
   </div>
 

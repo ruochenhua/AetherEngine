@@ -98,6 +98,30 @@ the coordinator never queries a GPU. A prior screenshot is retained as
 
 The launcher writes one byte to an inherited `AETHER_READY_FD` after its first
 successful frame presentation (or submission for a screenshot-only frame).
+
+## VisualCase v2 slice runner
+
+`scripts/run-slice-tests.sh --slice T8.1` validates and expands
+`tests/slices/T8.1.json`, runs its configured command from
+`tests/slice-commands.json`, then executes each materialized variant serially.
+Pass `--manifest FILE` to select another strict v2 manifest or `--launcher PATH`
+to use an existing launcher. Scene paths may resolve under `scenes/` or the
+canonical `tests/fixtures/` tree; symlink escapes and arbitrary project paths
+are rejected. Fixture-root support does not relax reference paths, which remain
+under `tests/reference/`.
+
+For structured assertions, a launcher/fixture may write `outcome.json` beside
+the requested screenshot. It contains observed `kind`, `diagnostics`,
+`fallbacks`, numeric `metrics`, named `hashes`, typed `probes`, optional `graph`,
+and `asset_events`. The runner checks the materialized variant's
+`expected_result`, records the observation and writes `asset-events.json` even
+when the event list is empty. Per-variant `report.html`, `launcher.log`, stdout,
+stderr, and screenshot are kept under `tests/reports/<run-id>/<case-id>/`; the
+run-level report and `aggregate.json` record command and variant outcomes.
+
+The runner executes the configured slice command as an argv array without a
+shell. A one-off command can be provided as JSON, for example
+`--command-json '["cargo","test","-p","aether-engine","--lib"]'`.
 Without that environment variable, launcher behavior is unchanged. Production
 timeouts are 2 seconds for readiness, 120 seconds **from readiness** for a case,
 and 5 seconds between TERM and KILL. Override them with

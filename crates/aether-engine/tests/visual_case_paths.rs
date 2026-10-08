@@ -18,8 +18,10 @@ impl ProjectTree {
         ));
         std::fs::create_dir(&path).unwrap();
         std::fs::create_dir_all(path.join("scenes")).unwrap();
+        std::fs::create_dir_all(path.join("tests/fixtures/gltf")).unwrap();
         std::fs::create_dir_all(path.join("tests/reference")).unwrap();
         std::fs::write(path.join("scenes/01_deferred.ron"), "fixture").unwrap();
+        std::fs::write(path.join("tests/fixtures/gltf/document.json"), "fixture").unwrap();
         Self(path)
     }
 
@@ -28,6 +30,24 @@ impl ProjectTree {
         value: Value,
     ) -> Result<VisualManifest, aether_engine::visual_case::VisualCaseError> {
         VisualManifest::from_json_in(&json!([value]).to_string(), &self.0)
+    }
+}
+
+#[test]
+fn fixture_scenes_are_allowed_only_under_the_canonical_fixture_root() {
+    let tree = ProjectTree::new();
+    let mut fixture = fixtures::case("fixture_scene");
+    fixture["scene"] = json!("tests/fixtures/gltf/document.json");
+    tree.parse(fixture.clone()).unwrap();
+
+    for path in [
+        "tests/fixtures/../reference/01_deferred.png",
+        "tests/fixtures/missing.json",
+        "tests/fixture/document.json",
+        "tests/fixtures\\gltf\\document.json",
+    ] {
+        fixture["scene"] = json!(path);
+        assert!(tree.parse(fixture.clone()).is_err(), "accepted {path}");
     }
 }
 
@@ -98,12 +118,18 @@ fn canonical_paths_reject_symlink_escapes_and_dangling_links() {
         tree.0.join("tests/reference/external.png"),
     )
     .unwrap();
+    symlink(
+        outside.0.join("tests/fixtures/gltf"),
+        tree.0.join("tests/fixtures/external"),
+    )
+    .unwrap();
     for (pointer, path) in [
         ("/scene", "scenes/link/01_deferred.ron"),
         ("/reference/path", "tests/reference/link/future.png"),
         ("/reference/path", "tests/reference/dangling.png"),
         ("/reference/path", "tests/reference/cycle.png"),
         ("/reference/path", "tests/reference/external.png"),
+        ("/scene", "tests/fixtures/external/document.json"),
     ] {
         let mut fixture = fixtures::case("escape");
         *fixture.pointer_mut(pointer).unwrap() = json!(path);

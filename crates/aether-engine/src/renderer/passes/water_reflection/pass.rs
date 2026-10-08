@@ -2,6 +2,7 @@
 
 use super::{ReflectionUniform, WaterReflectionPass};
 use crate::asset::mesh::InstanceData;
+use crate::math::Aabb;
 use crate::renderer::extract::opaque_batches;
 use crate::renderer::frame::RenderFrame;
 use crate::renderer::pass::{InitContext, Pass, PassSignature};
@@ -10,6 +11,7 @@ use crate::renderer::resource::{WaterReflectionColor, WaterReflectionDepth};
 use crate::renderer::resource_table::ResourceTable;
 use crate::terrain::ChunkInstanceData;
 use glam::{Mat4, Vec3};
+use std::sync::Arc;
 
 impl Pass for WaterReflectionPass {
     fn name(&self) -> &str {
@@ -31,6 +33,10 @@ impl Pass for WaterReflectionPass {
     }
 
     fn apply_frame(&mut self, frame: &RenderFrame) {
+        self.animation_bounds = frame.animation.map_or_else(
+            || Arc::<[Aabb]>::from([]),
+            crate::animation::AnimationFrame::conservative_bounds,
+        );
         if let Some(water) = frame.optional.water.clone() {
             self.has_water = true;
             self.reflection_enabled = water.config.reflection_enabled;

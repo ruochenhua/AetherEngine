@@ -10,6 +10,7 @@
 //!   pre-uploaded data per draw batch.
 
 use crate::asset::mesh::InstanceData;
+use crate::math::Aabb;
 use crate::renderer::extract::{opaque_batches, RenderBatch};
 use crate::renderer::frame::RenderFrame;
 use crate::renderer::pass::{InitContext, Pass, PassSignature, ResHandle};
@@ -52,6 +53,7 @@ pub struct GBufferPass {
     depth_handle: Option<ResHandle<GDepth>>,
 
     batches: Arc<[RenderBatch]>,
+    animation_bounds: Arc<[Aabb]>,
     view: Mat4,
     proj: Mat4,
 }
@@ -86,6 +88,10 @@ impl Pass for GBufferPass {
 
     fn apply_frame(&mut self, frame: &RenderFrame) {
         self.batches = opaque_batches(&frame.batches);
+        self.animation_bounds = frame.animation.map_or_else(
+            || Arc::<[Aabb]>::from([]),
+            crate::animation::AnimationFrame::conservative_bounds,
+        );
         self.view = frame.camera.view_matrix();
         self.proj = frame.camera.projection_matrix(frame.aspect);
 

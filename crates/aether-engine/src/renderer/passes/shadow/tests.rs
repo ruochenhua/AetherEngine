@@ -22,6 +22,7 @@ fn build_frame<'a>(
     asset_manager: &'a crate::asset::AssetManager,
 ) -> RenderFrame<'a> {
     RenderFrame {
+        animation: None,
         camera,
         aspect: 16.0 / 9.0,
         batches: std::sync::Arc::from([]),
@@ -146,7 +147,10 @@ fn shadow_pass_stores_terrain_geometry() {
     };
     terrain_geom.update(&device, &queue, &camera, 16.0 / 9.0, &terrain);
 
+    let bounds = crate::math::Aabb::new(glam::Vec3::splat(-3.0), glam::Vec3::splat(3.0));
+    let animation = crate::animation::animation_frame_with_bounds(bounds);
     let frame = RenderFrame {
+        animation: Some(&animation),
         camera: &camera,
         aspect: 16.0 / 9.0,
         batches: std::sync::Arc::from([]),
@@ -162,6 +166,7 @@ fn shadow_pass_stores_terrain_geometry() {
 
     let mut pass = ShadowPass::new(&device);
     pass.apply_frame(&frame);
+    assert_eq!(pass.animation_bounds.as_ref(), &[bounds]);
     assert!(pass.terrain_geometry.is_some());
     assert!(!pass
         .terrain_geometry

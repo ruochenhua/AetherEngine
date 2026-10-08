@@ -91,9 +91,7 @@ fn wait_for_result<T: TypedAsset>(store: &mut AssetStore, handle: &Handle<T>) {
     for _ in 0..200 {
         let results = store.poll_results(8).expect("poll results");
         for result in results {
-            store
-                .apply_result(result, FrameBoundary { frame_id: 1 })
-                .expect("apply result");
+            apply_and_commit(store, result, 1).expect("apply result");
         }
         if matches!(store.state(handle.clone()), Ok(LoadStateView::Ready { .. })) {
             return;
@@ -101,6 +99,17 @@ fn wait_for_result<T: TypedAsset>(store: &mut AssetStore, handle: &Handle<T>) {
         thread::sleep(Duration::from_millis(2));
     }
     panic!("asset did not load in time");
+}
+
+fn apply_and_commit(
+    store: &mut AssetStore,
+    result: super::store::AssetResult,
+    frame_id: u64,
+) -> Result<super::store::ReloadTicket, AssetError> {
+    let boundary = FrameBoundary { frame_id };
+    let ticket = store.apply_result(result, boundary)?;
+    store.commit_result(&ticket, boundary, |_, _, _| Ok(()))?;
+    Ok(ticket)
 }
 
 #[test]
@@ -179,6 +188,30 @@ fn requests_deduplicate_by_kind_and_canonical_path() {
 }
 
 #[test]
+fn initial_load_result_produces_a_zero_to_one_generation_ticket() {
+    let root = root("initial_ticket");
+    fs::write(root.join("mesh.txt"), "mesh").unwrap();
+    let mut store = AssetStore::new(AssetStoreConfig::new(root));
+    let (handle, _) = store.request::<TextAsset>(Path::new("mesh.txt")).unwrap();
+
+    for _ in 0..200 {
+        let results = store.poll_results(1).unwrap();
+        if let Some(result) = results.into_iter().next() {
+            let ticket = apply_and_commit(&mut store, result, 1).unwrap();
+            assert_eq!(ticket.from_generation, 0);
+            assert_eq!(ticket.to_generation, 1);
+            assert_eq!(
+                store.state(handle).unwrap(),
+                LoadStateView::Ready { generation: 1 }
+            );
+            return;
+        }
+        thread::sleep(Duration::from_millis(2));
+    }
+    panic!("initial asset load did not complete in time");
+}
+
+#[test]
 fn cancellation_is_idempotent_and_prevents_late_commit() {
     let root = root("cancel");
     fs::write(root.join("mesh.txt"), "mesh").unwrap();
@@ -242,9 +275,7 @@ fn polling_is_bounded_and_results_share_a_frame_boundary() {
         let results = store.poll_results(1).unwrap();
         assert!(results.len() <= 1);
         for result in results {
-            store
-                .apply_result(result, FrameBoundary { frame_id: 7 })
-                .unwrap();
+            apply_and_commit(&mut store, result, 7).unwrap();
             applied += 1;
         }
         if applied == 2 {
@@ -302,9 +333,7 @@ fn successful_reload_advances_generation_for_subsequent_requests() {
     for _ in 0..200 {
         let mut loaded = false;
         for result in store.poll_results(1).unwrap() {
-            store
-                .apply_result(result, FrameBoundary { frame_id: 2 })
-                .unwrap();
+            apply_and_commit(&mut store, result, 2).unwrap();
             loaded = true;
         }
         if loaded {
@@ -339,7 +368,7 @@ fn cancelling_queued_work_prevents_the_worker_from_decoding_it() {
     let mut outcomes = Vec::new();
     for _ in 0..200 {
         for result in store.poll_results(2).unwrap() {
-            outcomes.push(store.apply_result(result, FrameBoundary { frame_id: 1 }));
+            outcomes.push(apply_and_commit(&mut store, result, 1));
         }
         if outcomes.len() == 2 {
             break;
@@ -363,6 +392,8 @@ fn cancelling_queued_work_prevents_the_worker_from_decoding_it() {
 
 #[test]
 fn cancellation_token_stops_a_cooperative_decode_already_in_progress() {
+    CANCELLABLE_LOAD_STARTED.store(0, Ordering::SeqCst);
+    CANCELLABLE_LOAD_CANCELLED.store(0, Ordering::SeqCst);
     CANCELLABLE_LOAD_STARTED.store(0, Ordering::SeqCst);
     CANCELLABLE_LOAD_CANCELLED.store(0, Ordering::SeqCst);
     let root = root("active_cancel");
@@ -443,7 +474,7 @@ fn out_of_order_reload_results_cannot_replace_the_newer_payload() {
     let mut outcomes = Vec::new();
     for _ in 0..200 {
         for result in store.poll_results(2).unwrap() {
-            outcomes.push(store.apply_result(result, FrameBoundary { frame_id: 2 }));
+            outcomes.push(apply_and_commit(&mut store, result, 2));
         }
         if outcomes.len() == 2 {
             break;

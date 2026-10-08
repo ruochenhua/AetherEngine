@@ -5,6 +5,8 @@
 //! - **RenderGraph**: Declarative render pass scheduling with automatic resource management
 //! - **Modular Systems**: Renderer, Physics, Audio, Animation as independent systems
 #![warn(missing_docs)]
+/// Deterministic animation runtime and immutable render-frame extraction.
+pub mod animation;
 pub mod asset;
 pub mod clouds;
 pub mod ecs;

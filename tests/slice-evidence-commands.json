@@ -1,0 +1,6 @@
+{
+  "T7.1": ["cargo", "run", "--quiet", "-p", "aether-engine", "--bin", "slice-evidence", "--", "--slice", "T7.1", "--variant", "{variant}"],
+  "T7.2": ["cargo", "run", "--quiet", "-p", "aether-engine", "--bin", "slice-evidence", "--", "--slice", "T7.2", "--variant", "{variant}"],
+  "T7.3": ["cargo", "run", "--quiet", "-p", "aether-engine", "--bin", "slice-evidence", "--", "--slice", "T7.3", "--variant", "{variant}"],
+  "T8.1": ["cargo", "run", "--quiet", "-p", "aether-engine", "--bin", "slice-evidence", "--", "--slice", "T8.1", "--variant", "{variant}"]
+}

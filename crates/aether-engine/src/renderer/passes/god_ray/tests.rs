@@ -72,6 +72,7 @@ fn god_ray_pass_uses_light_direction_for_sun() {
     let assets = crate::asset::AssetManager::new();
     let texture_cache = crate::asset::texture_cache::GpuTextureCache::new(&device, &queue);
     let frame = crate::renderer::frame::RenderFrame {
+        animation: None,
         batches: std::sync::Arc::from([]),
         camera: &camera,
         lighting: &lighting,
@@ -352,6 +353,7 @@ fn vs_main(@location(0) pos: vec2<f32>) -> @builtin(position) vec4<f32> {
     let texture_cache = crate::asset::texture_cache::GpuTextureCache::new(&device, &queue);
     let asset_manager = crate::asset::AssetManager::new();
     let frame = RenderFrame {
+        animation: None,
         batches: std::sync::Arc::from([]),
         camera: &camera,
         lighting: &lighting,

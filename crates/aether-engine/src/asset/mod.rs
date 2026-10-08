@@ -2,6 +2,8 @@
 
 /// Asynchronous asset loading.
 pub mod async_loader;
+/// Owned glTF document and skin/animation validation data.
+pub mod gltf_document;
 /// External model file loaders.
 pub mod loaders;
 /// Material definitions.
@@ -26,3 +28,9 @@ pub use legacy::{Asset, AssetManager, Handle};
 
 #[cfg(test)]
 mod store_tests;
+
+#[cfg(test)]
+mod store_commit_tests;
+
+#[cfg(test)]
+mod gltf_document_tests;

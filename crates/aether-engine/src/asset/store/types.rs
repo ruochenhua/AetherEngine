@@ -210,6 +210,12 @@ pub enum AssetError {
     /// Frame boundary is not newer than the last applied boundary.
     #[error("invalid frame boundary")]
     InvalidFrameBoundary,
+    /// A frame commit was attempted from a thread other than the store owner.
+    #[error("asset commit must run on the store owner thread")]
+    WrongCommitThread,
+    /// Renderer-side asset commit failed before the generation was published.
+    #[error("asset commit failed: {0}")]
+    CommitFailed(String),
     /// Worker did not stop before configured timeout.
     #[error("asset worker shutdown timed out")]
     ShutdownTimeout,
@@ -280,6 +286,8 @@ pub struct ReloadTicket {
     pub to_generation: u32,
     /// Monotonic operation sequence.
     pub sequence: u64,
+    pub(super) slot: u64,
+    pub(super) capability: u128,
 }
 
 /// Type-erased but ownership-safe payload.
@@ -320,4 +328,10 @@ pub struct AssetResult {
     pub(super) ticket: u128,
     pub(super) kind: AssetKind,
     pub(super) result: Result<Arc<dyn AssetPayload>, AssetError>,
+}
+
+impl AssetResult {
+    pub(crate) fn slot_id(&self) -> u64 {
+        self.slot
+    }
 }

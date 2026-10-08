@@ -165,7 +165,14 @@ pub struct VisualCase {
 
 impl VisualCase {
     fn validate_paths(&self, root: &Path) -> Result<(), VisualCaseError> {
-        validate_canonical_path(root, &self.scene, "scenes", false)?;
+        let scene_root = if self.scene.starts_with("scenes/") {
+            "scenes"
+        } else {
+            // Fixture inputs are intentionally limited to the checked-in fixture
+            // tree; arbitrary project paths remain invalid.
+            "tests/fixtures"
+        };
+        validate_canonical_path(root, &self.scene, scene_root, false)?;
         validate_canonical_path(
             root,
             &self.reference.path,
@@ -186,7 +193,11 @@ impl VisualCase {
             return Err(invalid("manifest_version must be exactly 2"));
         }
         validate_id(&self.id, "case id")?;
-        validate_path(&self.scene, "scenes", "scene")?;
+        if self.scene.starts_with("scenes/") {
+            validate_path(&self.scene, "scenes", "scene")?;
+        } else {
+            validate_path(&self.scene, "tests/fixtures", "scene")?;
+        }
         if self.launcher_args.iter().any(|arg| arg.contains('\0')) {
             return Err(invalid("launcher_args must not contain NUL"));
         }

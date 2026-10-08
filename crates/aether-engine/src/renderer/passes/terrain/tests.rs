@@ -82,6 +82,7 @@ fn terrain_pass_skipped_when_no_terrain_component() {
     let lighting = crate::renderer::light::LightingUniforms::default();
     let assets = crate::asset::AssetManager::new();
     let frame = RenderFrame {
+        animation: None,
         batches: std::sync::Arc::from([]),
         camera: &camera,
         lighting: &lighting,
@@ -111,6 +112,7 @@ fn terrain_pass_runs_when_terrain_component_present() {
     let assets = crate::asset::AssetManager::new();
     let geom = build_terrain_geometry(&device, &queue, &terrain);
     let frame = RenderFrame {
+        animation: None,
         batches: std::sync::Arc::from([]),
         camera: &camera,
         lighting: &lighting,

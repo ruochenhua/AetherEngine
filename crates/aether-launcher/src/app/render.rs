@@ -227,6 +227,7 @@ pub(crate) fn frame(
             // Build per-frame context — all passes extract
             // what they need via apply_frame.
             let frame = RenderFrame {
+                animation: None,
                 batches: Arc::from(batches),
                 camera: &app.camera,
                 lighting,

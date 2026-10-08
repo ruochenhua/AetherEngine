@@ -1,0 +1,91 @@
+[
+  {
+    "manifest_version": 2,
+    "launcher_args": [],
+    "render": {
+      "width": 640,
+      "height": 360,
+      "frames": 1,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 0.5,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {
+      "source": "scene",
+      "override": null
+    },
+    "reference": {
+      "path": "tests/reference/pending.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "benchmark": null,
+    "id": "t7_skinned_shadow_reflection",
+    "scene": "tests/fixtures/t7_skinned_shadow_reflection.ron",
+    "criteria": [
+      "128 joint palette uses inverse bind times global joint",
+      "GBuffer shadow and reflection share conservative world bounds"
+    ],
+    "variants": [
+      {
+        "id": "default",
+        "launcher_args_append": [],
+        "time_override": null,
+        "camera_override": null,
+        "benchmark_override": null,
+        "expected_result": {
+          "kind": "Render",
+          "diagnostics": [],
+          "fallbacks": [],
+          "metrics": [],
+          "hashes": [],
+          "probes": [
+            {
+              "name": "palette_joint_count",
+              "value": {
+                "kind": "U32",
+                "value": 128
+              }
+            },
+            {
+              "name": "animated_bounds_shared",
+              "value": {
+                "kind": "Bool",
+                "value": true
+              }
+            },
+            {
+              "name": "shadow_reflection_consumers",
+              "value": {
+                "kind": "Bool",
+                "value": true
+              }
+            }
+          ],
+          "graph": null
+        }
+      }
+    ]
+  }
+]

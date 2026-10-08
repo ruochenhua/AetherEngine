@@ -8,6 +8,7 @@
 //! Adding a pass that needs new data means adding a field here, but the number
 //! of distinct data categories in a deferred renderer is bounded (~4-6 fields).
 
+use crate::animation::AnimationFrame;
 use crate::asset::{texture_cache::GpuTextureCache, AssetManager};
 use crate::renderer::{
     camera::FlyCamera,
@@ -110,6 +111,8 @@ impl Default for FrameConfig {
 pub struct RenderFrame<'a> {
     /// Render batches extracted from the ECS World; shared by GBufferPass, ShadowPass.
     pub batches: Arc<[RenderBatch]>,
+    /// Immutable animation extraction shared by geometry, shadow, and reflection passes.
+    pub animation: Option<&'a AnimationFrame>,
     /// Camera state (position, view/proj matrices).
     pub camera: &'a FlyCamera,
     /// Lighting uniforms (directional light, ambient, debug mode).
