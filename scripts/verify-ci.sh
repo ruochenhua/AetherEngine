@@ -57,6 +57,11 @@ if ! ./tests/runner-process-test.sh; then
     fail "runner process contract check failed"
 fi
 
+step "python3 tests/module_health_test.py"
+if ! python3 tests/module_health_test.py; then
+    fail "module health policy test failed"
+fi
+
 step "cargo test --workspace"
 if ! cargo test --workspace; then
     fail "cargo test failed"

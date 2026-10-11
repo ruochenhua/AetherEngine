@@ -3,7 +3,8 @@
 #
 # Enforces:
 #   - New Rust files must not exceed 500 lines.
-#   - Existing files must not grow beyond their recorded baseline.
+#   - Existing files at or below 500 lines may grow up to that limit.
+#   - Existing over-limit files must not grow beyond their recorded baseline.
 #
 # Usage:
 #   ./scripts/verify-module-health.sh            # check

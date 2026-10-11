@@ -3,9 +3,8 @@
 
 Rules:
 1. New .rs files under crates/ must not exceed 500 lines.
-2. Existing files may temporarily exceed 500 lines, but they must never grow
-   beyond their recorded baseline. The only way to add code to an over-limit
-   file is to first split/refactor it.
+2. Existing files at or below 500 lines may grow up to that limit.
+3. Existing files above 500 lines must not grow beyond their recorded baseline.
 
 Usage:
   python3 scripts/verify_module_health.py --check
@@ -76,11 +75,15 @@ def check(path: Path):
                 errors.append(
                     f"{rel}: new file exceeds {MAX_LINES} lines ({lines})"
                 )
-        else:
+        elif baseline[rel] > MAX_LINES:
             if lines > baseline[rel]:
                 errors.append(
                     f"{rel}: grew from {baseline[rel]} to {lines} lines; split/refactor before adding code"
                 )
+        elif lines > MAX_LINES:
+            errors.append(
+                f"{rel}: exceeds {MAX_LINES} lines ({lines}); split/refactor before adding code"
+            )
         if lines > MAX_LINES:
             over_limit.append((lines, rel))
 
