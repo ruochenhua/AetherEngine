@@ -68,7 +68,7 @@ The current renderer covers deferred PBR, IBL, directional and local lights, sha
 
 | Task | Implementation / automation / acceptance | Remaining | Evidence |
 | --- | --- | --- | --- |
-| T0 · Verification foundation | Implemented; automation passed; partially accepted | Review the 25 remaining visual candidates; promote only individually approved references. | [T0 execution package](docs/plans/2026-09-17-non-raytracing-engine-roadmap/t0-foundation.html) |
+| T0 · Verification foundation | Implemented; automation passed; partially accepted | Review the 25 remaining visual candidates; promote only individually approved references. | [T0 execution package](docs/plans/2026-09-17-non-raytracing-engine-roadmap/t0-foundation.html) · [T0 candidate capture report (25 scenes)](docs/plans/2026-09-17-non-raytracing-engine-roadmap/t0-visual-candidate-report-20261011.md) |
 | T1 · Editor transactions and snapshots | Implemented; automation passed; accepted | No known open items | [T1 execution package](docs/plans/2026-09-17-non-raytracing-engine-roadmap/t1-editor.html) |
 | T2 · Multiple lights | Implemented; automation passed; partially accepted | Review the three-local-light candidate; low-limit hardware remains covered by a synthetic capability matrix. | [T2 execution package](docs/plans/2026-09-17-non-raytracing-engine-roadmap/t2-lighting.html) |
 | T3 · Material resolution and PBR consumers | Implemented; automation passed; accepted | No known open items | [T3 execution package](docs/plans/2026-09-17-non-raytracing-engine-roadmap/t3-material.html) |

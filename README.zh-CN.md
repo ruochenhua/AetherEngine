@@ -68,7 +68,7 @@ VisualCase 固定场景、相机、时间和功能开关。报告会保留渲染
 
 | 任务 | 实现 / 自动验证 / 验收 | 剩余项 | 证据 |
 | --- | --- | --- | --- |
-| T0 · 验证基础与确定性时间 | 实现完成；自动验证 通过；部分验收 | 逐项复核剩余 25 张视觉候选；仅将明确通过的画面登记为 reference。 | [T0 执行包](docs/plans/2026-09-17-non-raytracing-engine-roadmap/t0-foundation.html) |
+| T0 · 验证基础与确定性时间 | 实现完成；自动验证 通过；部分验收 | 逐项复核剩余 25 张视觉候选；仅将明确通过的画面登记为 reference。 | [T0 执行包](docs/plans/2026-09-17-non-raytracing-engine-roadmap/t0-foundation.html) · [T0 候选采集报告（25 个场景）](docs/plans/2026-09-17-non-raytracing-engine-roadmap/t0-visual-candidate-report-20261011.md) |
 | T1 · 编辑器事务与快照 | 实现完成；自动验证 通过；已验收 | 无已知遗留 | [T1 执行包](docs/plans/2026-09-17-non-raytracing-engine-roadmap/t1-editor.html) |
 | T2 · 多光源 | 实现完成；自动验证 通过；部分验收 | 人工复核三局部光候选；低限设备目前由合成能力矩阵覆盖。 | [T2 执行包](docs/plans/2026-09-17-non-raytracing-engine-roadmap/t2-lighting.html) |
 | T3 · 材质解析与 PBR 消费链 | 实现完成；自动验证 通过；已验收 | 无已知遗留 | [T3 执行包](docs/plans/2026-09-17-non-raytracing-engine-roadmap/t3-material.html) |

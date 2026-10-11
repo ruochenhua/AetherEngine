@@ -9,7 +9,7 @@
 
 | Task | Implementation / automation / acceptance | Remaining | Evidence |
 | --- | --- | --- | --- |
-| T0 · Verification foundation | Implemented; automation passed; partially accepted | Review the 25 remaining visual candidates; promote only individually approved references. | [T0 execution package](t0-foundation.html) |
+| T0 · Verification foundation | Implemented; automation passed; partially accepted | Review the 25 remaining visual candidates; promote only individually approved references. | [T0 execution package](t0-foundation.html) · [T0 candidate capture report (25 scenes)](t0-visual-candidate-report-20261011.md) |
 | T1 · Editor transactions and snapshots | Implemented; automation passed; accepted | No known open items | [T1 execution package](t1-editor.html) |
 | T2 · Multiple lights | Implemented; automation passed; partially accepted | Review the three-local-light candidate; low-limit hardware remains covered by a synthetic capability matrix. | [T2 execution package](t2-lighting.html) |
 | T3 · Material resolution and PBR consumers | Implemented; automation passed; accepted | No known open items | [T3 execution package](t3-material.html) |
@@ -21,6 +21,10 @@
 | T9 · Performance and visibility | Implemented; automation partial; partially accepted; research only; production NO-GO | Rebuild the clean pinned v0.1 paired baseline for T9.1; T9.4 remains research-only and production NO-GO. | [T9.1 execution record](t9.1-execution.md) · [T9.4 decision record](t9.4-execution.md) |
 <!-- ROADMAP_STATUS:END -->
 
+
+## T0 视觉候选采集
+
+本轮已采集原始矩阵剩余 25 个场景，runner 全部正常退出，候选均保留为 `reference-pending`。逐项哈希及采集 provenance 见[跟踪报告](t0-visual-candidate-report-20261011.md)；本机图片和 HTML 详情位于忽略目录 `tests/reports/t0-candidate-final-20261011-62057/`。尚未执行人工批准或 reference promotion。
 
 ## T6 本轮 Release 证据
 
