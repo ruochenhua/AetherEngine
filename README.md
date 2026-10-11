@@ -1,72 +1,75 @@
 <p align="center">
-  <img src="assets/branding/aether-engine-icon.png" alt="Aether Engine icon" width="112">
-  <br>
-  <strong>AETHER ENGINE</strong>
+  <img src="docs/images/aether-engine-banner.svg" alt="Aether Engine — render, inspect, replay" width="100%">
 </p>
 
 <p align="center">
-  <strong>A real-time 3D engine built to make rendering, editing, and simulation easy to explore.</strong>
-  <br>
   <a href="README.md">English</a> · <a href="README.zh-CN.md">简体中文</a>
+  <br><br>
+  <img alt="Rust 2021" src="https://img.shields.io/badge/Rust-2021-303846?style=flat-square&logo=rust&logoColor=white">
+  <img alt="wgpu" src="https://img.shields.io/badge/GPU-wgpu-80cbc4?style=flat-square">
+  <img alt="License: MIT OR Apache-2.0" src="https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-64748b?style=flat-square">
+  <img alt="Development status" src="https://img.shields.io/badge/status-in%20development-f0b76f?style=flat-square">
 </p>
 
----
+**Aether Engine is a Rust real-time 3D engine built around one idea: make the frame explain itself.** Explore a scene, inspect how its render passes depend on GPU resources, change it in the editor, and replay simulation at a fixed time.
 
-Aether Engine is an actively developed Rust engine project built on **wgpu**. It combines a real-time renderer, an ECS-based scene model, an interactive scene editor, and repeatable physics and particle simulation. It is a learning and development project—not a production-ready engine.
+It is an actively developed engine project, not a production-ready general-purpose engine. The current scope focuses on a non-ray-traced renderer, a usable scene editor, deterministic simulation, and evidence that makes changes easier to review.
 
-## What makes it distinct
+<p align="center">
+  <a href="#see-it-run">Run a scene</a> ·
+  <a href="#what-makes-aether-different">What makes it different</a> ·
+  <a href="docs/engine/README.md">Engine docs</a> ·
+  <a href="docs/plans/2026-09-17-non-raytracing-engine-roadmap/index.html">Live roadmap</a>
+</p>
 
-- **A renderer designed to be inspected:** rendering passes declare the GPU resources they read and write, and a scheduler builds their execution order.
-- **One scene model for editing and rendering:** scene entities live in a `hecs` ECS world; an extract step turns that state into render data.
-- **Repeatable simulation:** physics uses Rapier3D with fixed-step updates; the launcher provides Play, Pause, and Stop controls.
-- **Feature-sized examples:** focused RON scenes make rendering and simulation behavior easier to explore independently.
-- **Agent-friendly iteration:** modular features and focused checks help AI coding agents make targeted changes while keeping results reviewable by people.
-
-## Project structure
-
-| Path | Role |
-| --- | --- |
-| `crates/aether-engine/` | Engine library: renderer, ECS/scene model, assets, terrain, physics, particles, and time |
-| `crates/aether-launcher/` | Windowed launcher, scene browser, editor panels, and runtime controls |
-| `scenes/` | RON scenes used as examples and focused feature fixtures |
-| `tests/` | Automated checks, visual-test support, and generated test artifacts |
-| `docs/engine/` | User-facing engine overview and feature guides |
-
-## Explore the engine
-
-The current renderer includes deferred PBR, image-based lighting, shadows, SSAO, SSR, transparency, tone mapping, bloom, terrain, water, atmosphere, and volumetric clouds. The launcher supports scene selection, hierarchy and inspector panels, transform editing, and simulation controls.
-
-These features are at different levels of maturity. In particular, SSR and SSAO are screen-space effects and cannot represent information outside the visible frame. See the feature guides for behavior, example scenes, and current limitations.
+## The engine, in frames
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/images/showcase-materials.png" alt="PBR material comparison scene" width="100%"></td>
-    <td width="50%"><img src="docs/images/showcase-lighting.png" alt="Colored objects and directional shadows" width="100%"></td>
+    <td width="50%"><img src="docs/images/showcase-materials.png" alt="PBR material grid under image-based lighting" width="100%"><br><sub><b>Materials</b> · compare PBR response under IBL</sub></td>
+    <td width="50%"><img src="docs/images/showcase-lighting.png" alt="Colored objects lit by directional light and shadows" width="100%"><br><sub><b>Lighting</b> · inspect materials, light, and shadow together</sub></td>
   </tr>
   <tr>
-    <td align="center"><sub>PBR materials and image-based lighting</sub></td>
-    <td align="center"><sub>Colored materials and directional shadows</sub></td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="docs/images/showcase-clouds.png" alt="Volumetric clouds over terrain" width="100%"></td>
-    <td width="50%"><img src="docs/images/showcase-physics-ramp.png" alt="Physics ramp test scene" width="100%"></td>
-  </tr>
-  <tr>
-    <td align="center"><sub>Volumetric clouds over terrain</sub></td>
-    <td align="center"><sub>Rigid bodies and ramp test scene</sub></td>
+    <td width="50%"><img src="docs/images/showcase-clouds.png" alt="Volumetric clouds above a terrain horizon" width="100%"><br><sub><b>Atmosphere</b> · volumetric clouds over terrain</sub></td>
+    <td width="50%"><img src="docs/images/showcase-physics-ramp.png" alt="Rigid body physics on a ramp" width="100%"><br><sub><b>Simulation</b> · rigid bodies on a ramp</sub></td>
   </tr>
 </table>
 
-## Documentation
+## What makes Aether different
 
-- [Engine documentation and feature guides (currently Simplified Chinese)](docs/engine/README.md)
-- [Development roadmap](docs/plans/2026-09-17-non-raytracing-engine-roadmap/index.html)
-- [Engineering and verification rules](docs/engineering-governance.md)
-- [Visual test workflow](docs/agents/visual-test-workflow.md)
+### A render pipeline you can inspect
 
-## Run it
+Each pass declares the GPU resources it reads and writes. The pipeline builder uses those declarations to order work and connect typed resource handles. When a dependency is missing or cyclic, the problem is visible in the pipeline contract and graph evidence—not hidden behind a long list of draw calls.
 
-Install a stable Rust toolchain and use a GPU/backend supported by wgpu:
+![Render passes and resource flow](docs/images/rendering-overview.svg)
+
+### One scene from editor to GPU
+
+Scenes load from readable RON files into a `hecs` world. The editor changes that world; an explicit extract step turns it into immutable frame data for rendering. The same scene can be saved, reopened, and used as a focused example or verification case.
+
+### Time is part of the test input
+
+Physics and particles advance on fixed steps. Animation accepts explicit seek times and publishes a frame snapshot, so a pose can be replayed and compared. T7 adds owned glTF data, four-influence GPU skinning, a 128-joint palette, and per-primitive fallback for unsupported or oversized skins.
+
+### Visual results come with evidence
+
+Visual cases pin the scene, camera, time, and feature flags. Their reports preserve the rendered image and diff alongside render-graph, metrics, hashes, and process diagnostics. A screenshot can show what changed; the case contract and report help explain why.
+
+### GPU ownership has a clear boundary
+
+Asset workers decode CPU data. The launcher commits GPU resources at a frame boundary, using asset generations to reject stale work and keep the last known good resource available after a failed reload.
+
+The current renderer covers deferred PBR, IBL, directional and local lights, shadows, transparency, post-processing, terrain, water, atmosphere, and volumetric clouds. SSAO and SSR are screen-space effects, so they only use information visible to the current camera; ray tracing is outside the project scope.
+
+## Current project status
+
+**Updated 2026-10-11.** The roadmap marks T7 as accepted, T8 asset lifecycle/material/prefab/hot-reload work as complete, and T9 as accepted. T9.4 remains research-only with a production NO-GO decision. The roadmap also records the remaining T0–T6 audit items and their verification evidence.
+
+See the [roadmap](docs/plans/2026-09-17-non-raytracing-engine-roadmap/index.html) for slice status, outstanding verification, and evidence links. The project CI entry point is `./scripts/verify-ci.sh`; a successful run is reported by that command rather than implied by roadmap acceptance.
+
+## See it run
+
+You need a stable Rust toolchain (the workspace declares Rust 1.78) and a GPU/backend supported by `wgpu`.
 
 ```bash
 git clone https://github.com/ruochenhua/AetherEngine.git
@@ -74,10 +77,42 @@ cd AetherEngine
 cargo run -p aether-launcher
 ```
 
-The launcher opens the scene browser. To open a scene directly:
+The launcher opens the scene browser. Open a scene directly to jump into a feature:
 
 ```bash
+# PBR material grid
 cargo run -p aether-launcher -- --scene scenes/24_t3_pbr_material_grid.ron
+
+# Volumetric clouds
+cargo run -p aether-launcher -- --scene scenes/13_clouds.ron
+
+# Skeletal animation
+cargo run -p aether-launcher -- --scene scenes/t7_gltf_actor.ron
 ```
 
-The workspace declares `MIT OR Apache-2.0` in [`Cargo.toml`](Cargo.toml).
+## Explore by topic
+
+| Start here | What you will find |
+| --- | --- |
+| [Architecture](docs/engine/architecture.md) | ECS, frame extraction, and resource-declared render scheduling |
+| [Rendering](docs/engine/rendering.md) | PBR, lighting, shadows, SSR/SSAO, water, terrain, and clouds |
+| [Editor](docs/engine/editor.md) | Scene browser, hierarchy, inspector, transforms, and save flow |
+| [Simulation](docs/engine/simulation.md) | Physics, particles, playback controls, and fixed-step behavior |
+| [Scenes and assets](docs/engine/scenes-assets.md) | RON scenes, models, textures, and asset paths |
+| [Roadmap](docs/plans/2026-09-17-non-raytracing-engine-roadmap/index.html) | Current milestones, slices, and acceptance evidence |
+| [Engineering rules](docs/engineering-governance.md) | Code health and required verification |
+| [Visual test workflow](docs/agents/visual-test-workflow.md) | Repeatable captures, reports, and regression checks |
+
+## Run the project checks
+
+```bash
+./scripts/verify-ci.sh
+```
+
+For a render-affecting change, run the relevant scene regression as well; for example:
+
+```bash
+./scripts/verify-regression.sh --scene 13_clouds
+```
+
+The workspace license is [`MIT OR Apache-2.0`](Cargo.toml).

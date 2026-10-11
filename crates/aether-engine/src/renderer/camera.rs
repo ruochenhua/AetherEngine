@@ -185,7 +185,7 @@ mod tests {
     #[test]
     fn camera_frustum_planes_orthographic() {
         let view = look_at(Vec3::new(0.0, 0.0, 5.0), Vec3::ZERO, Vec3::Y);
-        let proj = glam::camera::rh::proj::directx::orthographic(-4.0, 4.0, -3.0, 3.0, 0.1, 100.0);
+        let proj = Mat4::orthographic_rh(-4.0, 4.0, -3.0, 3.0, 0.1, 100.0);
         let frustum = Frustum::from_view_projection(proj * view);
 
         // Orthographic left/right normals are parallel to world X.

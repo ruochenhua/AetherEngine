@@ -132,8 +132,8 @@ fn terrain_pass_runs_when_terrain_component_present() {
 fn terrain_chunk_aabb_inside_frustum_is_visible() {
     // Place a small chunk fully inside a small orthographic frustum.
     let chunk = Chunk::new(0, 0, Vec3::new(0.0, 0.0, 0.0), 1.0, 2);
-    let view = glam::camera::rh::view::look_at_mat4(Vec3::new(0.0, 0.0, 5.0), Vec3::ZERO, Vec3::Y);
-    let proj = glam::camera::rh::proj::directx::orthographic(-2.0, 2.0, -2.0, 2.0, 0.1, 10.0);
+    let view = glam::Mat4::look_at_rh(Vec3::new(0.0, 0.0, 5.0), Vec3::ZERO, Vec3::Y);
+    let proj = glam::Mat4::orthographic_rh(-2.0, 2.0, -2.0, 2.0, 0.1, 10.0);
     let frustum = Frustum::from_view_projection(proj * view);
     let aabb = chunk.aabb(-1.0, 1.0);
     assert_eq!(

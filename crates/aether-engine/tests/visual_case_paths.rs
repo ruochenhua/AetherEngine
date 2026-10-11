@@ -1,5 +1,7 @@
 #[path = "support/visual_case.rs"]
 mod fixtures;
+#[path = "support/visual_variant.rs"]
+mod variant_fixture;
 
 use aether_engine::visual_case::VisualManifest;
 use serde_json::{json, Value};
@@ -125,7 +127,7 @@ fn materialization_revalidates_child_reference_and_current_filesystem() {
     let tree = ProjectTree::new();
     let outside = ProjectTree::new();
     let mut fixture = fixtures::case("base");
-    fixture["variants"] = json!([fixtures::variant("child")]);
+    fixture["variants"] = json!([variant_fixture::variant("child")]);
     let manifest = tree.parse(fixture).unwrap();
     manifest.materialize().unwrap();
     symlink(

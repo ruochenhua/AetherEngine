@@ -21,12 +21,12 @@ pub fn vec4_to_array(v: Vec4) -> [f32; 4] {
 
 /// Create a standard perspective projection matrix.
 pub fn perspective_projection(fov_y_rad: f32, aspect: f32, near: f32, far: f32) -> Mat4 {
-    glam::camera::rh::proj::directx::perspective(fov_y_rad, aspect, near, far)
+    Mat4::perspective_rh(fov_y_rad, aspect, near, far)
 }
 
 /// Create a look-at view matrix.
 pub fn look_at(eye: Vec3, center: Vec3, up: Vec3) -> Mat4 {
-    glam::camera::rh::view::look_at_mat4(eye, center, up)
+    Mat4::look_at_rh(eye, center, up)
 }
 
 // -----------------------------------------------------------------------------

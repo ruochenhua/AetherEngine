@@ -89,7 +89,7 @@ fn compute_cascade(
     } else {
         glam::Vec3::Y
     };
-    let light_view = glam::camera::rh::view::look_at_mat4(glam::Vec3::ZERO, *light_dir, up);
+    let light_view = Mat4::look_at_rh(glam::Vec3::ZERO, *light_dir, up);
     let mut min_ls = glam::Vec3::splat(f32::MAX);
     let mut max_ls = glam::Vec3::splat(f32::MIN);
     for corner in corners {
