@@ -102,6 +102,10 @@ fn classifies_typed_ron_and_rejects_defaultable_or_ambiguous_materials() {
         "assets/materials/paint.ron",
         "(albedo_texture: Some(\"paint.png\"), roughness: 0.4)",
     );
+    fixture.write(
+        "assets/misc/texture-name-in-string.ron",
+        "(description: \"albedo_texture: Some(\", albedo_texture: None)",
+    );
     fixture.write("assets/materials/default.ron", "()");
     fixture.write("assets/misc/ambiguous.ron", "(roughness: 0.4)");
     fixture.write("assets/misc/broken.ron", "(");
@@ -129,7 +133,11 @@ fn classifies_typed_ron_and_rejects_defaultable_or_ambiguous_materials() {
         kinds["assets/materials/paint.ron"],
         (ResourceKind::Material, ResourceValidity::Valid)
     );
-    for path in ["assets/materials/default.ron", "assets/misc/ambiguous.ron"] {
+    for path in [
+        "assets/materials/default.ron",
+        "assets/misc/ambiguous.ron",
+        "assets/misc/texture-name-in-string.ron",
+    ] {
         assert_eq!(kinds[path].0, ResourceKind::Unknown);
     }
     for path in ["assets/misc/broken.ron", "assets/misc/blank.ron"] {

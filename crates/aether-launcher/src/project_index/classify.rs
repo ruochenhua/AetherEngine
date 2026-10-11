@@ -115,13 +115,11 @@ fn ron_map_keys(source: &str) -> Option<Vec<String>> {
 }
 
 fn has_material_evidence(source: &str, fields: &[&str]) -> bool {
-    if !has_shape(source, fields) {
+    let Ok(Value::Map(map)) = ron::from_str::<Value>(source) else {
         return false;
-    }
+    };
     fields.iter().any(|field| {
-        source
-            .find(field)
-            .and_then(|offset| source[offset + field.len()..].split_once(':'))
-            .is_some_and(|(_, value)| value.trim_start().starts_with("Some("))
+        map.get(&Value::String((*field).to_owned()))
+            .is_some_and(|value| matches!(value, Value::Option(Some(_))))
     })
 }
