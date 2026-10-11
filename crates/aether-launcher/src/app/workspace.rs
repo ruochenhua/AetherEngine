@@ -2,6 +2,8 @@
 
 use std::path::PathBuf;
 
+mod project_panel;
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum WorkspaceTab {
     #[default]
@@ -15,7 +17,7 @@ pub(crate) struct Workspace {
     pub(crate) height: f32,
     /// Asset details never replace the scene entity's Selected component.
     pub(crate) selected_resource: Option<PathBuf>,
-    pub(crate) search: String,
+    project: project_panel::ProjectPanel,
 }
 
 impl Default for Workspace {
@@ -25,23 +27,33 @@ impl Default for Workspace {
             visible: true,
             height: 180.0,
             selected_resource: None,
-            search: String::new(),
+            project: project_panel::ProjectPanel::new(
+                std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+            ),
         }
     }
 }
 
 impl Workspace {
+    #[cfg(test)]
+    pub(crate) fn set_project_root(&mut self, root: PathBuf) {
+        self.project = project_panel::ProjectPanel::new(root);
+        self.project.wait_for_refresh();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn project_directory(&self) -> &str {
+        self.project.current_directory()
+    }
+
     pub(crate) fn select_tab(&mut self, tab: WorkspaceTab) {
         self.tab = tab;
         self.visible = true;
     }
 
     pub(crate) fn select_resource(&mut self, path: Option<PathBuf>) {
-        self.selected_resource = path;
-    }
-
-    pub(crate) fn close_resource(&mut self) {
-        self.select_resource(None);
+        self.selected_resource = path.clone();
+        self.project.select_resource(path);
     }
 
     pub(crate) fn render(
@@ -49,7 +61,7 @@ impl Workspace {
         ui: &mut egui::Ui,
         message: Option<&str>,
         logs: &mut crate::logging::LogPanel,
-    ) {
+    ) -> Option<PathBuf> {
         egui::Panel::top("workspace_controls").show_inside(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.toggle_value(&mut self.visible, "Workspace");
@@ -62,9 +74,10 @@ impl Workspace {
             });
         });
         if !self.visible {
-            return;
+            return None;
         }
         let maximum = (ui.available_height() * 0.6).max(100.0);
+        let mut pending_open = None;
         let panel = egui::Panel::bottom("editor_workspace")
             .default_size(self.height)
             .size_range(100.0..=maximum)
@@ -98,23 +111,11 @@ impl Workspace {
                         self.select_tab(WorkspaceTab::Project);
                     }
                 } else {
-                    egui::ScrollArea::vertical().show(ui, |ui| {
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.search)
-                                .hint_text("Search resources"),
-                        );
-                        ui.label("Project resources will appear here.");
-                        if let Some(path) = self.selected_resource.as_ref() {
-                            ui.separator();
-                            ui.label("Resource details");
-                            ui.label(path.display().to_string());
-                            if ui.button("Close resource details").clicked() {
-                                self.close_resource();
-                            }
-                        }
-                    });
+                    pending_open = self.project.render(ui);
+                    self.selected_resource = self.project.selected_resource().map(PathBuf::from);
                 }
             });
         self.height = panel.response.rect.height();
+        pending_open
     }
 }

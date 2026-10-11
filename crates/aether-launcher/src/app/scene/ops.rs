@@ -7,6 +7,7 @@ use super::*;
 
 pub(crate) fn process_post_ui_ops(app: &mut App) {
     playback::process_pending(app);
+    process_project_browser_open(app);
 
     // New scene
     if app.pending_new_scene {
@@ -370,5 +371,47 @@ pub(crate) fn process_post_ui_ops(app: &mut App) {
             let _ = world.despawn(entity);
         }
         app.pending_terrain_pipeline_rebuild = true;
+    }
+}
+
+fn process_project_browser_open(app: &mut App) {
+    let Some(path) = app.pending_project_open.take() else {
+        return;
+    };
+    let Some(ctx) = app.ctx.as_ref() else {
+        tracing::error!(path = %path.display(), "Cannot open project scene before renderer startup");
+        return;
+    };
+    if let LauncherState::Running {
+        ref mut world,
+        ref mut lighting,
+    } = app.state
+    {
+        match SceneLoader::open_scene(
+            &path,
+            &ctx.device,
+            &app.mesh_registry,
+            &mut app.asset_manager,
+            world,
+        ) {
+            Ok(new_lighting) => {
+                *lighting = new_lighting;
+                super::super::particle_runtime::physics_runtime::scene_switched(
+                    &mut app.particle_runtime,
+                );
+                if let Err(error) = super::super::particle_runtime::load_scene(
+                    &mut app.particle_runtime.particles,
+                    world,
+                    &mut app.cli.time,
+                ) {
+                    error!("Particle runtime scene initialization failed: {error}");
+                }
+                update_camera_from_world(&mut app.camera, world);
+                app.pending_terrain_pipeline_rebuild = true;
+                super::super::editor::activate_scene(app, path.clone());
+                info!(path = %path.display(), "Opened scene from project browser");
+            }
+            Err(error) => report_load_error(&path, &error),
+        }
     }
 }

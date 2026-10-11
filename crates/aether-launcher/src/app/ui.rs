@@ -92,6 +92,7 @@ pub(crate) fn draw(app: &mut App, dt: f32, raw_input: egui::RawInput) -> egui::F
     let fullscreen_3d = &mut app.fullscreen_3d;
     let workspace = &mut app.workspace;
     let logs = &mut app.logs;
+    let mut project_open_request = None;
     let debug_mode = app.debug_mode;
     let pending_select_entity = &mut app.pending_select_entity;
     let pending_editor_operation = &mut app.pending_editor_operation;
@@ -148,7 +149,7 @@ pub(crate) fn draw(app: &mut App, dt: f32, raw_input: egui::RawInput) -> egui::F
         *scroll_input += ui.ctx().input(|i| i.smooth_scroll_delta.y * 0.01);
 
         if (matches!(state, LauncherState::Menu) || *show_overlay) && !*fullscreen_3d {
-            workspace.render(ui, editor_operation_message.as_deref(), logs);
+            project_open_request = workspace.render(ui, editor_operation_message.as_deref(), logs);
         }
 
         match state {
@@ -389,6 +390,10 @@ pub(crate) fn draw(app: &mut App, dt: f32, raw_input: egui::RawInput) -> egui::F
             }
         }
     });
+
+    if project_open_request.is_some() {
+        app.pending_project_open = project_open_request;
+    }
 
     // Write back inspector changes
     if let Some(ref target) = inspector_target {

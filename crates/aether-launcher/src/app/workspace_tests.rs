@@ -240,3 +240,198 @@ fn ew0_hidden_workspace_stays_hidden_through_fullscreen_and_reopens_from_menu() 
     assert!(text_rect(&output, "Hide").is_some());
     assert!((app.workspace.height - 208.0).abs() < 1.0);
 }
+
+#[test]
+fn ew2_project_browser_shows_tree_query_controls_and_index_state_in_both_modes() {
+    let mut app = app();
+    app.workspace.set_project_root(project_root());
+    for is_running in [false, true] {
+        if is_running {
+            running(&mut app);
+        }
+        let output = frame(&mut app, vec![]);
+        for label in [
+            "Scenes",
+            "Assets",
+            "Search resources",
+            "All kinds",
+            "Sort by",
+            "Project resources",
+        ] {
+            assert!(
+                text_rect(&output, label).is_some(),
+                "Project browser should show {label:?} in menu/running mode"
+            );
+        }
+    }
+}
+
+#[test]
+fn ew2_selected_resource_details_include_type_size_and_validity_without_changing_entity() {
+    let mut app = app();
+    let root = valid_scene_project();
+    app.workspace.set_project_root(root.clone());
+    let entity = running(&mut app);
+    let path = std::path::PathBuf::from("scenes/test.ron");
+    app.workspace.select_resource(Some(path.clone()));
+    let output = frame(&mut app, vec![]);
+    assert!(text_rect(&output, "Type: Scene").is_some());
+    assert!(text_rect(&output, "Status: Valid").is_some());
+    assert!(text_starts_with(&output, "Size: "));
+    let LauncherState::Running { world, .. } = &app.state else {
+        panic!("running")
+    };
+    assert!(world.query_one::<&Selected>(entity).get().is_ok());
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn ew2_folder_tree_breadcrumb_and_history_navigate_deterministically() {
+    let mut app = app();
+    let root = valid_scene_project();
+    std::fs::create_dir_all(root.join("assets/models")).unwrap();
+    std::fs::write(root.join("assets/models/ship.obj"), "v 0 0 0\n").unwrap();
+    app.workspace.set_project_root(root.clone());
+    let output = frame(&mut app, vec![]);
+    click(&mut app, text_rect(&output, "Scenes").unwrap().center());
+    assert_eq!(app.workspace.project_directory(), "scenes");
+
+    let output = frame(&mut app, vec![]);
+    click(&mut app, text_rect(&output, "← Back").unwrap().center());
+    assert_eq!(app.workspace.project_directory(), "");
+    let output = frame(&mut app, vec![]);
+    click(&mut app, text_rect(&output, "Forward →").unwrap().center());
+    assert_eq!(app.workspace.project_directory(), "scenes");
+
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn ew2_double_click_valid_scene_requests_transactional_open() {
+    let mut app = app();
+    let root = valid_scene_project();
+    app.workspace.set_project_root(root.clone());
+    let output = frame(&mut app, vec![]);
+    let row = text_rect(&output, "test.ron  ·  Scene").expect("scene resource row");
+    let position = row.center();
+    frame(
+        &mut app,
+        vec![
+            Event::PointerMoved(position),
+            Event::PointerButton {
+                pos: position,
+                button: PointerButton::Primary,
+                pressed: true,
+                modifiers: Modifiers::default(),
+            },
+            Event::PointerButton {
+                pos: position,
+                button: PointerButton::Primary,
+                pressed: false,
+                modifiers: Modifiers::default(),
+            },
+            Event::PointerButton {
+                pos: position,
+                button: PointerButton::Primary,
+                pressed: true,
+                modifiers: Modifiers::default(),
+            },
+            Event::PointerButton {
+                pos: position,
+                button: PointerButton::Primary,
+                pressed: false,
+                modifiers: Modifiers::default(),
+            },
+        ],
+    );
+    assert_eq!(
+        app.pending_project_open.as_ref(),
+        Some(&root.join("scenes/test.ron"))
+    );
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn ew2_search_shows_explicit_no_results_state() {
+    let mut app = app();
+    let root = valid_scene_project();
+    app.workspace.set_project_root(root.clone());
+    let output = frame(&mut app, vec![]);
+    click(
+        &mut app,
+        text_rect(&output, "Search resources").unwrap().center(),
+    );
+    let output = frame(&mut app, vec![Event::Text("not-found".into())]);
+    assert!(text_rect(&output, "No results").is_some());
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn ew2_refresh_exposes_scanning_state_before_publishing_snapshot() {
+    let mut app = app();
+    let root = valid_scene_project();
+    app.workspace.set_project_root(root.clone());
+    let output = frame(&mut app, vec![]);
+    let output = click(&mut app, text_rect(&output, "Refresh").unwrap().center());
+    assert!(text_rect(&output, "Scanning project…").is_some());
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    let output = frame(&mut app, vec![]);
+    assert!(text_rect(&output, "Project index ready").is_some());
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn ew2_invalid_scene_parse_preserves_selected_world_and_emits_queryable_error() {
+    use tracing_subscriber::prelude::*;
+
+    let (layer, receiver) = crate::logging::capture(4);
+    let dispatch = tracing::Dispatch::new(tracing_subscriber::registry().with(layer));
+    let root = valid_scene_project();
+    let broken = root.join("scenes/broken.ron");
+    std::fs::write(&broken, "(").unwrap();
+    let mut world = World::new();
+    let entity = world.spawn((Transform::default(), Camera::default(), Selected));
+    let error = aether_engine::scene::loader::SceneLoader::from_file(&broken).unwrap_err();
+    tracing::dispatcher::with_default(&dispatch, || {
+        crate::app::scene::report_load_error(&broken, &error);
+    });
+    let event = receiver.try_recv().expect("scene error should reach EW1");
+    assert_eq!(event.level, "ERROR");
+    assert_eq!(event.message, "Open scene error");
+    assert_eq!(event.fields["path"], broken.display().to_string());
+    assert!(world.query_one::<&Selected>(entity).get().is_ok());
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+fn project_root() -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+
+fn text_starts_with(output: &egui::FullOutput, prefix: &str) -> bool {
+    fn find(shape: &Shape, prefix: &str) -> bool {
+        match shape {
+            Shape::Text(text) => text.galley.text().starts_with(prefix),
+            Shape::Vec(shapes) => shapes.iter().any(|shape| find(shape, prefix)),
+            _ => false,
+        }
+    }
+    output.shapes.iter().any(|shape| find(&shape.shape, prefix))
+}
+
+fn valid_scene_project() -> std::path::PathBuf {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let root = std::env::temp_dir().join(format!(
+        "aether_project_panel_{}_{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ));
+    std::fs::create_dir_all(root.join("scenes")).unwrap();
+    std::fs::create_dir_all(root.join("assets")).unwrap();
+    std::fs::write(
+        root.join("scenes/test.ron"),
+        "(name: \"Test\", camera: (position: (0.0, 0.0, 0.0)))",
+    )
+    .unwrap();
+    root
+}
