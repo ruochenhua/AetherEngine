@@ -11,6 +11,7 @@ use rapier3d::prelude::{
     IntegrationParameters, IslandManager, MultibodyJointSet, NarrowPhase, PhysicsPipeline,
     QueryFilter, QueryPipeline, RigidBodyHandle, RigidBodySet,
 };
+use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap};
 
 #[derive(Clone)]
@@ -169,6 +170,52 @@ impl PhysicsRuntime {
     /// Returns the number of bodies currently owned by the runtime.
     pub fn body_count(&self) -> usize {
         self.entity_to_body.len()
+    }
+
+    /// Returns the number of registered bodies that can move under simulation.
+    pub fn dynamic_body_count(&self) -> usize {
+        self.entity_state
+            .values()
+            .filter(|state| !state.desc.body.is_static)
+            .count()
+    }
+
+    /// Hashes body identity, pose, and velocity in stable entity order.
+    pub fn state_sha256(&self) -> String {
+        let mut digest = Sha256::new();
+        for (entity_bits, handle) in &self.entity_to_body {
+            digest.update(entity_bits.to_le_bytes());
+            let Some(body) = self.bodies.get(*handle) else {
+                digest.update(b"stale-body");
+                continue;
+            };
+            let translation = body.translation();
+            let rotation = body.rotation().quaternion();
+            let linear_velocity = body.linvel();
+            let angular_velocity = body.angvel();
+            for value in [
+                translation.x,
+                translation.y,
+                translation.z,
+                rotation.i,
+                rotation.j,
+                rotation.k,
+                rotation.w,
+                linear_velocity.x,
+                linear_velocity.y,
+                linear_velocity.z,
+                angular_velocity.x,
+                angular_velocity.y,
+                angular_velocity.z,
+            ] {
+                digest.update(value.to_bits().to_le_bytes());
+            }
+        }
+        digest
+            .finalize()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect()
     }
 
     /// Returns cumulative Rapier handle creation counts for this runtime.

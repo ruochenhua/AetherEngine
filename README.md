@@ -63,7 +63,22 @@ The current renderer covers deferred PBR, IBL, directional and local lights, sha
 
 ## Current project status
 
-**Updated 2026-10-11.** The roadmap marks T7 as accepted, T8 asset lifecycle/material/prefab/hot-reload work as complete, and T9 as accepted. T9.4 remains research-only with a production NO-GO decision. The roadmap also records the remaining T0–T6 audit items and their verification evidence.
+<!-- ROADMAP_STATUS:START -->
+**Status synced 2026-10-11.** Automated checks and human acceptance are tracked separately; a capture alone does not approve visual results.
+
+| Task | Implementation / automation / acceptance | Remaining | Evidence |
+| --- | --- | --- | --- |
+| T0 · Verification foundation | Implemented; automation passed; partially accepted | Review the 25 remaining visual candidates; promote only individually approved references. | [T0 execution package](docs/plans/2026-09-17-non-raytracing-engine-roadmap/t0-foundation.html) |
+| T1 · Editor transactions and snapshots | Implemented; automation passed; accepted | No known open items | [T1 execution package](docs/plans/2026-09-17-non-raytracing-engine-roadmap/t1-editor.html) |
+| T2 · Multiple lights | Implemented; automation passed; partially accepted | Review the three-local-light candidate; low-limit hardware remains covered by a synthetic capability matrix. | [T2 execution package](docs/plans/2026-09-17-non-raytracing-engine-roadmap/t2-lighting.html) |
+| T3 · Material resolution and PBR consumers | Implemented; automation passed; accepted | No known open items | [T3 execution package](docs/plans/2026-09-17-non-raytracing-engine-roadmap/t3-material.html) |
+| T4 · Transparency and composite | In progress; automation partial; human review pending | Review T4.1/T4.2 candidates and verify water composition, resize, and scene-switch interaction. | [T4 execution package](docs/plans/2026-09-17-non-raytracing-engine-roadmap/t4-transparent.html) |
+| T5 · CPU particles | In progress; automation partial; partially accepted | Finish typed runtime statistics, 4K performance delta, and flame/smoke/dust readability review. | [T5 execution package](docs/plans/2026-09-17-non-raytracing-engine-roadmap/t5-particles.html) |
+| T6 · Physics lifecycle | Implemented; automation passed; human review pending | Manually confirm the actual UI click feel and review the 100-body capture before promoting it from reference-pending. | [T6 execution package](docs/plans/2026-09-17-non-raytracing-engine-roadmap/t6-physics.html) |
+| T7 · glTF and animation | Implemented; automation passed; accepted | Optional: inspect the Inspector playback controls separately; core T7 is accepted. | [T7 execution record](docs/plans/2026-09-17-non-raytracing-engine-roadmap/t7.2-execution.md) |
+| T8 · Assets, prefabs, and hot reload | Implemented; automation passed; accepted | No known open items | [T8 completion record](docs/plans/2026-09-17-non-raytracing-engine-roadmap/t8-assets-completion.md) |
+| T9 · Performance and visibility | Implemented; automation partial; partially accepted; research only; production NO-GO | Rebuild the clean pinned v0.1 paired baseline for T9.1; T9.4 remains research-only and production NO-GO. | [T9.1 execution record](docs/plans/2026-09-17-non-raytracing-engine-roadmap/t9.1-execution.md) · [T9.4 decision record](docs/plans/2026-09-17-non-raytracing-engine-roadmap/t9.4-execution.md) |
+<!-- ROADMAP_STATUS:END -->
 
 See the [roadmap](docs/plans/2026-09-17-non-raytracing-engine-roadmap/index.html) for slice status, outstanding verification, and evidence links. The project CI entry point is `./scripts/verify-ci.sh`; a successful run is reported by that command rather than implied by roadmap acceptance.
 

@@ -2346,5 +2346,52 @@
     ],
     "benchmark": null,
     "variants": null
+  },
+  {
+    "manifest_version": 2,
+    "id": "t6_physics_stack_100_seek_10s_debug_on",
+    "scene": "scenes/t6_physics_stack_100.ron",
+    "launcher_args": ["--physics-debug", "on", "--no-debug-helpers"],
+    "render": {
+      "width": 1280,
+      "height": 720,
+      "frames": 60,
+      "no_gui_overlay": true,
+      "png": "rgba8"
+    },
+    "time": {
+      "mode": "seek",
+      "simulation_time": 10.0,
+      "fixed_dt": 0.016666667,
+      "max_substeps": 4,
+      "max_seek_steps": 4096
+    },
+    "camera": {"source": "scene", "override": null},
+    "reference": {
+      "path": "tests/reference/t6_physics_stack_100_seek_10s_debug_on.png",
+      "sha256": null,
+      "source_commit": null,
+      "os": null,
+      "driver": null,
+      "adapter": null,
+      "runner_version": null,
+      "width": null,
+      "height": null,
+      "format": null
+    },
+    "compare": {
+      "algorithm": "rgba8_normalized",
+      "exact_hash": false,
+      "allow_degraded_compare": false,
+      "ssim_min": 0.99,
+      "mae_max": 0.01,
+      "diff_percent_max": 0.01
+    },
+    "criteria": [
+      "100 dynamic Box/Sphere bodies complete a deterministic 10 second seek.",
+      "Collider debug wires are visible and runtime state matches the debug-off case."
+    ],
+    "benchmark": null,
+    "variants": null
   }
 ]

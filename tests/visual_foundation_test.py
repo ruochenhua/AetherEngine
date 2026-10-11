@@ -19,7 +19,7 @@ sys.path.insert(0,str(ROOT/'scripts'))
 import migrate_visual_cases as migration
 import visual_compare as comparator
 import visual_manifest as manifest
-from run_visual_regression import evaluate,run
+from run_visual_regression import capture_exit_code,evaluate,run
 from run_primary_case import promote
 from visual_report import write_report
 
@@ -149,9 +149,25 @@ if os.environ.get('FAKE_DEVICE'):shutil.copyfile(os.environ['FAKE_DEVICE'],os.en
         record={'diagnostic':None,'group_empty':True,'metadata':{'device':'not queried'},'exit_code':0}
         r=evaluate(cases[0],directory,record,self.root,True);self.assertEqual(r['status'],'error');self.assertFalse((directory/'candidate.json').exists())
 
+    def test_metal_backend_with_unavailable_driver_version_keeps_truthful_candidate_provenance(self):
+        device=self.root/'device.json'
+        device.write_text(json.dumps({'adapter':'Apple GPU','backend':'Metal','driver':'','driver_info':'','os':'macos','runner_version':'v2-fixture'}))
+        record,d=self.run_case('metal-candidate',capture=True)
+        candidate=json.loads((d/'candidate.json').read_text())
+        self.assertEqual(record['status'],'reference-pending')
+        self.assertEqual(candidate['candidate_reference']['driver'],'Metal backend (driver version unavailable)')
+        self.assertEqual(candidate['candidate_reference']['adapter'],'Apple GPU')
+
     def test_html_machine_status_does_not_hide_degraded(self):
         write_report(self.root,{'id':'control','status':'degraded','evidence_kind':'CPU fixture'})
         self.assertIn('degraded',(self.root/'report.html').read_text());self.assertEqual(json.loads((self.root/'aggregate.json').read_text())['status'],'degraded')
+
+    def test_candidate_batch_exit_code_accepts_capture_and_rejects_runtime_errors(self):
+        self.assertEqual(capture_exit_code([{'status':'reference-pending'}],False,True),0)
+        self.assertEqual(capture_exit_code([{'status':'error'}],False,True),1)
+        self.assertEqual(capture_exit_code([],False,True),1)
+        self.assertEqual(capture_exit_code([],17,True),145)
+        self.assertEqual(capture_exit_code([{'status':'reference-pending'}],False,False),1)
 
     def test_variants_get_distinct_files_and_expectations(self):
         self.case['variants']=[{'id':name,'launcher_args_append':['--particles',state],'time_override':None,'camera_override':None,'benchmark_override':None,'expected_result':{'kind':'Render','diagnostics':[],'fallbacks':[],'metrics':[],'hashes':[],'probes':[],'graph':None}} for name,state in [('on','on'),('off','off')]]

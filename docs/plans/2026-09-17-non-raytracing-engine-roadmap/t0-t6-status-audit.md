@@ -1,5 +1,8 @@
 # T0–T6 状态检查（初检 2026-10-04；更新至 T1 Revision 4 / T2.3，2026-10-05）
 
+<!-- ROADMAP_ARCHIVED: 2026-10-05 -->
+> **历史档案，不代表当前状态。** 本文只记录截至 2026-10-05 的检查结论，后续状态以[当前验证总览](verification-current-20261011.md)为准。请勿将下方旧待办或旧 CI 结果作为当前进度。
+
 > **后续复查补充：** 最新的 T3–T6 定向测试、T4–T6 七个新场景运行及 43 张画面自检，见[续验收摘要](verification-continuation-20261005.md)；本地逐图报告仍位于忽略目录 `tests/reports/roadmap-continuation-20261005/final-review.html`。本轮 T6 增加并解析了 100-body 场景，截图可见 10×10 阵列；live body count/hash/allocation/debug JSON 与 picking 交互仍未形成完整 primary report。
 
 ## 结论

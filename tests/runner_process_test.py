@@ -24,6 +24,8 @@ mode = (Path(sys.argv[2]).stem if len(sys.argv) > 2 and sys.argv[1] == '--scene'
 root = Path(os.environ['FAKE_ROOT'])
 (root / (mode + '.started')).write_text(str(time.monotonic()))
 (root / (mode + '.argv')).write_text(json.dumps(sys.argv))
+if os.environ.get('AETHER_PHYSICS_REPORT_PATH'):
+    (root / (mode + '.physics-report-path')).write_text(os.environ['AETHER_PHYSICS_REPORT_PATH'])
 print('stdout-' + mode, flush=True)
 print('stderr-' + mode, file=sys.stderr, flush=True)
 if mode in ('hang', 'timeout', 'orphan', 'panic'):
@@ -102,6 +104,8 @@ class ProcessTests(unittest.TestCase):
         argv = [str(self.fake), '--scene', 'ok', 'literal ; $(no shell)', '--no-gui-overlay']
         self.assertEqual(record['argv'], argv)
         self.assertEqual(json.loads((self.root / 'ok.argv').read_text()), argv)
+        physics_report_path = Path((self.root / 'ok.physics-report-path').read_text())
+        self.assertEqual(physics_report_path, (self.root / 'reports' / 'ok' / 'physics-runtime.json').resolve())
         for key in ('pid', 'pgid', 'os_start_time', 'nonce', 'started_at', 'ended_at',
                     'exit_code', 'signal', 'metadata', 'ready_at'):
             self.assertIn(key, record)

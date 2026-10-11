@@ -21,6 +21,12 @@ from visual_report import write_report
 
 def stamp():return datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
 
+def device_driver_label(device):
+    driver=' '.join(part for part in (device.get('driver'),device.get('driver_info')) if isinstance(part,str) and part.strip())
+    if driver:return driver
+    backend=device.get('backend')
+    return f'{backend} backend (driver version unavailable)' if isinstance(backend,str) and backend.strip() else None
+
 def launcher_binary(root):
     if os.environ.get('AETHER_LAUNCHER_BIN'):return str(Path(os.environ['AETHER_LAUNCHER_BIN']).resolve())
     subprocess.run(['cargo','build','--locked','-p','aether-launcher','--release'],cwd=root,check=True)
@@ -50,12 +56,13 @@ def evaluate(case,directory,run_record,root,capture_reference=False,graph_output
     elif not (directory/'output.png').is_file():record['error']='MissingImage'
     elif capture_reference:
         device=run_record['metadata']['device']
-        if not isinstance(device,dict) or not all(device.get(k) for k in ['adapter','driver','os','runner_version']):
+        driver_label=device_driver_label(device) if isinstance(device,dict) else None
+        if not isinstance(device,dict) or not all(device.get(k) for k in ['adapter','os','runner_version']) or not driver_label:
             record['error']='IncompleteDeviceProvenance'
         else:
             commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip()
             ref=dict(visual['reference'],sha256=hashlib.sha256((directory/'output.png').read_bytes()).hexdigest(),source_commit=commit,
-                os=device['os'],adapter=device['adapter'],driver=device['driver']+' '+device.get('driver_info',''),runner_version=device['runner_version'],
+                os=device['os'],adapter=device['adapter'],driver=driver_label,runner_version=device['runner_version'],
                 width=visual['render']['width'],height=visual['render']['height'],format='png-rgba8')
             record.update(status='reference-pending',candidate_reference=ref)
             (directory/'candidate.json').write_text(json.dumps(record,indent=2),encoding='utf-8')
@@ -106,19 +113,27 @@ def run(matrix,ids,run_dir,launcher,root=ROOT,capture_reference=False,settle=0,g
         for sig,handler in old.items():signal.signal(sig,handler)
     return records,runner.cancelled
 
+def capture_exit_code(records,cancelled,capture_reference):
+    if cancelled:return 128+cancelled
+    if not records:return 1
+    accepted_status='reference-pending' if capture_reference else 'pass'
+    return int(any(record['status']!=accepted_status for record in records))
+
 def main():
     p=argparse.ArgumentParser();p.add_argument('--scene',action='append',default=[]);p.add_argument('--report');p.add_argument('--matrix',default='tests/visual-matrix.json')
+    p.add_argument('--capture-reference',action='store_true',help='capture provenance-checked candidates without promoting them')
     p.add_argument('--update-references',action='store_true');p.add_argument('--reason','--reference-reason');a=p.parse_args()
     if a.update_references:raise ValueError('Reference updates require separate --capture-reference and --promote --reason commands')
     if a.reason:raise ValueError('--reason is only accepted during explicit promotion')
     name=a.report or 'visual-'+stamp();
     if not name or Path(name).name!=name:raise ValueError('invalid report name')
     run_id=name+'-'+str(os.getpid());run_dir=ROOT/'tests/reports'/run_id
-    records,cancelled=run(a.matrix,a.scene,run_dir,launcher_binary(ROOT),settle=float(os.environ.get('AETHER_REGRESSION_SETTLE_SECONDS','0')))
+    records,cancelled=run(a.matrix,a.scene,run_dir,launcher_binary(ROOT),capture_reference=a.capture_reference,settle=float(os.environ.get('AETHER_REGRESSION_SETTLE_SECONDS','0')))
     rows=''.join('<tr><td>'+html.escape(r['id'])+'</td><td>'+html.escape(r['status'])+'</td><td><a href="'+run_id+'/'+html.escape(r['id'])+'/report.html">report</a></td></tr>' for r in records)
-    report=ROOT/'tests/reports'/(name+'.html');report.write_text('<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>Visual regression v2</title><body><h1>Visual regression v2</h1><table><tr><th>Case</th><th>Status</th><th>Evidence</th></tr>'+rows+'</table></body></html>',encoding='utf-8')
+    notice='<p>Candidate capture only: images remain unapproved until a human reviews and explicitly promotes them.</p>' if a.capture_reference else ''
+    report=ROOT/'tests/reports'/(name+'.html');report.write_text('<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>Visual regression v2</title><body><h1>Visual regression v2</h1>'+notice+'<table><tr><th>Case</th><th>Status</th><th>Evidence</th></tr>'+rows+'</table></body></html>',encoding='utf-8')
     print('report='+str(report));print('run_id='+run_id)
-    return 128+cancelled if cancelled else int(len(records)==0 or any(r['status']!='pass' for r in records))
+    return capture_exit_code(records,cancelled,a.capture_reference)
 
 if __name__=='__main__':
     try:sys.exit(main())

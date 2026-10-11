@@ -6,7 +6,29 @@ use aether_engine::{
     renderer::gizmo::{apply_drag, detect_hover, selected_entity_transform, GizmoCameraCtx},
     renderer::picking::screen_ray,
 };
+use glam::Vec2;
 use winit::event::MouseButton;
+
+fn pick_at_screen_position(
+    world: &mut aether_engine::ecs::World,
+    physics: Option<&aether_engine::physics::PhysicsRuntime>,
+    mouse_position: Vec2,
+    viewport_size: Vec2,
+    camera: &aether_engine::renderer::camera::FlyCamera,
+) {
+    let view = camera.view_matrix();
+    let proj = camera.projection_matrix(viewport_size.x / viewport_size.y);
+    let ray = screen_ray(
+        mouse_position.x,
+        mouse_position.y,
+        viewport_size.x,
+        viewport_size.y,
+        view,
+        proj,
+        camera.position,
+    );
+    physics_picking::pick_scene_entity(world, physics, &ray);
+}
 
 /// Update camera, picking, and gizmo interaction for the current frame.
 pub(crate) fn update_camera_and_picking(app: &mut App, dt: f32, egui_consumed: bool) {
@@ -89,20 +111,21 @@ pub(crate) fn update_camera_and_picking(app: &mut App, dt: f32, egui_consumed: b
                         app.gizmo_drag_axis = Some(hovered);
                         app.gizmo_drag_start_transform = Some(transform.clone());
                     } else {
-                        let ray =
-                            screen_ray(mx, my, width, height, view, proj, app.camera.position);
-                        physics_picking::pick_scene_entity(
+                        pick_at_screen_position(
                             world,
                             app.particle_runtime.physics.as_ref(),
-                            &ray,
+                            Vec2::new(mx, my),
+                            Vec2::new(width, height),
+                            &app.camera,
                         );
                     }
                 } else {
-                    let ray = screen_ray(mx, my, width, height, view, proj, app.camera.position);
-                    physics_picking::pick_scene_entity(
+                    pick_at_screen_position(
                         world,
                         app.particle_runtime.physics.as_ref(),
-                        &ray,
+                        Vec2::new(mx, my),
+                        Vec2::new(width, height),
+                        &app.camera,
                     );
                 }
             }
@@ -110,5 +133,79 @@ pub(crate) fn update_camera_and_picking(app: &mut App, dt: f32, egui_consumed: b
     }
     if legacy_edit_recorded {
         super::super::editor::mark_legacy_edit(app);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use aether_engine::{
+        asset::mesh::{CpuMesh, GpuMesh},
+        ecs::{
+            components::{MeshHandle, MeshSource, Selected, Transform},
+            Entity, World,
+        },
+        physics::{Collider, ColliderShape, PhysicsRuntime, RigidBody},
+        renderer::camera::FlyCamera,
+    };
+    use glam::{Vec2, Vec3};
+    use std::sync::Arc;
+
+    #[test]
+    fn screen_pixel_ray_selects_the_physics_entity_under_the_cursor() {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        let adapter =
+            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+                .expect("screen picking test needs a headless GPU adapter");
+        let device = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
+            .expect("screen picking test needs a headless GPU device")
+            .0;
+        let mesh = Arc::new(GpuMesh::from_cpu(&device, &CpuMesh::cube()));
+        let mut world = World::new();
+        let target = world.spawn((
+            Transform {
+                translation: Vec3::new(0.7, 0.0, 0.0),
+                ..Transform::default()
+            },
+            MeshHandle::new(mesh, MeshSource::Builtin("cube".into()), "cursor target"),
+        ));
+        world.spawn((Selected,));
+        let mut physics = PhysicsRuntime::default();
+        physics
+            .spawn_body(
+                target.to_bits().get(),
+                &Transform {
+                    translation: Vec3::new(0.7, 0.0, 0.0),
+                    ..Transform::default()
+                },
+                &RigidBody::default(),
+                &Collider {
+                    shape: ColliderShape::Sphere(0.4),
+                    ..Collider::default()
+                },
+            )
+            .unwrap();
+        let camera = FlyCamera {
+            position: Vec3::new(0.0, 0.0, 5.0),
+            yaw: -std::f32::consts::FRAC_PI_2,
+            pitch: 0.0,
+            fov: std::f32::consts::FRAC_PI_4,
+            ..FlyCamera::default()
+        };
+
+        pick_at_screen_position(
+            &mut world,
+            Some(&physics),
+            Vec2::new(500.0, 300.0),
+            Vec2::new(800.0, 600.0),
+            &camera,
+        );
+
+        let selected = world
+            .query::<(Entity, &Selected)>()
+            .iter()
+            .map(|(entity, _)| entity)
+            .collect::<Vec<_>>();
+        assert_eq!(selected, vec![target]);
     }
 }

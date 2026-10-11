@@ -47,6 +47,19 @@ if ! ./tests/report-format-test.sh; then
     fail "verification report format check failed"
 fi
 
+step "roadmap status synchronization"
+if ! python3 tests/roadmap_status_test.py; then
+    fail "roadmap status synchronization tests failed"
+fi
+if ! python3 scripts/sync_roadmap_status.py --check; then
+    fail "roadmap status views are stale or invalid"
+fi
+
+step "python3 tests/visual_review_bundle_test.py"
+if ! python3 tests/visual_review_bundle_test.py; then
+    fail "visual review bundle test failed"
+fi
+
 step "./tests/metal-regression-runner-test.sh"
 if ! ./tests/metal-regression-runner-test.sh; then
     fail "Metal regression runner flow check failed"

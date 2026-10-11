@@ -4,7 +4,12 @@ use crate::time::{FrameTime, TimeSample};
 use glam::Vec3;
 use sha2::{Digest, Sha256};
 
-fn replay_hash() -> ([u8; 32], usize, crate::physics::PhysicsAllocationStats) {
+fn replay_hash() -> (
+    [u8; 32],
+    usize,
+    crate::physics::PhysicsAllocationStats,
+    String,
+) {
     let mut runtime = PhysicsRuntime::default();
     let fixed = RigidBody {
         is_static: true,
@@ -81,6 +86,7 @@ fn replay_hash() -> ([u8; 32], usize, crate::physics::PhysicsAllocationStats) {
         digest.finalize().into(),
         runtime.body_count() - 1,
         runtime.allocation_stats(),
+        runtime.state_sha256(),
     )
 }
 
@@ -89,10 +95,35 @@ fn hundred_body_ten_second_replay_has_stable_state_hash() {
     let first = replay_hash();
     let second = replay_hash();
     assert_eq!(first.0, second.0);
+    assert_eq!(first.3, second.3);
     assert_eq!(first.1, 100, "dynamic body count excludes the fixed floor");
     assert_eq!(
         first.2.body_handles_created, 101,
         "runtime should create 100 dynamic bodies and one fixed floor"
     );
     assert_eq!(first.2.collider_handles_created, 101);
+}
+
+#[test]
+fn runtime_state_sha256_is_stable_for_replayed_initial_state() {
+    let mut first = PhysicsRuntime::default();
+    let mut second = PhysicsRuntime::default();
+    let floor = RigidBody {
+        is_static: true,
+        ..RigidBody::default()
+    };
+    for runtime in [&mut first, &mut second] {
+        runtime
+            .spawn_body(
+                1,
+                &Transform::default(),
+                &floor,
+                &Collider {
+                    shape: ColliderShape::Box(Vec3::splat(1.0)),
+                    ..Collider::default()
+                },
+            )
+            .unwrap();
+    }
+    assert_eq!(first.state_sha256(), second.state_sha256());
 }

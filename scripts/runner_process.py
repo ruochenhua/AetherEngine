@@ -77,6 +77,7 @@ class Runner:
             with (directory / 'stdout').open('wb') as stdout, (directory / 'stderr').open('wb') as stderr:
                 env = dict(os.environ, AETHER_READY_FD=str(write_fd))
                 env['AETHER_DEVICE_METADATA_PATH'] = str((directory / 'device.json').resolve())
+                env['AETHER_PHYSICS_REPORT_PATH'] = str((directory / 'physics-runtime.json').resolve())
                 if os.name == 'nt':
                     env.pop('AETHER_READY_FD', None)
                     env['AETHER_READY_PATH'] = record['ready_path']

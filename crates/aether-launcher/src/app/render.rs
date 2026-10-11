@@ -5,6 +5,8 @@ use super::{App, LauncherState};
 mod particle_fixture;
 #[path = "render/physics_debug.rs"]
 mod physics_debug;
+#[path = "render/physics_report.rs"]
+mod physics_report;
 #[path = "render_target.rs"]
 mod render_target;
 #[path = "render/simulation.rs"]
@@ -402,6 +404,21 @@ pub(crate) fn frame(
     }
 
     if app.exit_after_frames.is_some_and(|n| app.frame_count >= n) {
+        if let (Some(path), Some(runtime)) = (
+            std::env::var_os("AETHER_PHYSICS_REPORT_PATH"),
+            app.particle_runtime.physics.as_ref(),
+        ) {
+            let scene = app.cli.scene.as_deref().unwrap_or("unknown");
+            match physics_report::write_report(
+                std::path::Path::new(&path),
+                scene,
+                f64::from(app.cli.time.simulation_time),
+                runtime,
+            ) {
+                Ok(()) => info!("Physics runtime report saved to {:?}", path),
+                Err(failure) => error!(%failure, "Physics runtime report failed"),
+            }
+        }
         if let Some(benchmark) = app.cli.benchmark.take() {
             let adapter = &ctx.adapter_info;
             let driver = format!("{} {}", adapter.driver, adapter.driver_info);

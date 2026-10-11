@@ -63,7 +63,22 @@ VisualCase 固定场景、相机、时间和功能开关。报告会保留渲染
 
 ## 当前项目进度
 
-**更新于 2026-10-11。**路线图将 T7 标为已验收，T8 资产生命周期、材质、Prefab 和热重载工作标为完成，T9 标为已验收。T9.4 仅保留为研究结论，生产路径为 NO-GO。路线图还记录了 T0–T6 尚待完成的审查项及其验证证据。
+<!-- ROADMAP_STATUS_ZH:START -->
+**状态同步日期：2026-10-11。** 人工验收与自动验证分开记录；截图采集本身不会自动通过视觉验收。
+
+| 任务 | 实现 / 自动验证 / 验收 | 剩余项 | 证据 |
+| --- | --- | --- | --- |
+| T0 · 验证基础与确定性时间 | 实现完成；自动验证 通过；部分验收 | 逐项复核剩余 25 张视觉候选；仅将明确通过的画面登记为 reference。 | [T0 执行包](docs/plans/2026-09-17-non-raytracing-engine-roadmap/t0-foundation.html) |
+| T1 · 编辑器事务与快照 | 实现完成；自动验证 通过；已验收 | 无已知遗留 | [T1 执行包](docs/plans/2026-09-17-non-raytracing-engine-roadmap/t1-editor.html) |
+| T2 · 多光源 | 实现完成；自动验证 通过；部分验收 | 人工复核三局部光候选；低限设备目前由合成能力矩阵覆盖。 | [T2 执行包](docs/plans/2026-09-17-non-raytracing-engine-roadmap/t2-lighting.html) |
+| T3 · 材质解析与 PBR 消费链 | 实现完成；自动验证 通过；已验收 | 无已知遗留 | [T3 执行包](docs/plans/2026-09-17-non-raytracing-engine-roadmap/t3-material.html) |
+| T4 · 透明与 Composite 管线 | 进行中；自动验证 部分通过；待人工验收 | 人工复核 T4.1/T4.2 候选，并验收水面构图、窗口缩放和场景切换交互。 | [T4 执行包](docs/plans/2026-09-17-non-raytracing-engine-roadmap/t4-transparent.html) |
+| T5 · CPU 粒子 | 进行中；自动验证 部分通过；部分验收 | 补齐 typed runtime 统计与 4K 性能差值，并复核火焰、烟和尘的辨识度。 | [T5 执行包](docs/plans/2026-09-17-non-raytracing-engine-roadmap/t5-particles.html) |
+| T6 · 物理生命周期 | 实现完成；自动验证 通过；待人工验收 | 仍需人工确认实际 UI 点击体验，并审核 100-body 候选截图后再决定是否登记为 reference。 | [T6 执行包](docs/plans/2026-09-17-non-raytracing-engine-roadmap/t6-physics.html) |
+| T7 · glTF 与动画 | 实现完成；自动验证 通过；已验收 | 可选：单独检查 Inspector 播放控件；T7 核心范围已验收。 | [T7 执行记录](docs/plans/2026-09-17-non-raytracing-engine-roadmap/t7.2-execution.md) |
+| T8 · 资产、Prefab 与热重载 | 实现完成；自动验证 通过；已验收 | 无已知遗留 | [T8 完成记录](docs/plans/2026-09-17-non-raytracing-engine-roadmap/t8-assets-completion.md) |
+| T9 · 性能与可见性 | 实现完成；自动验证 部分通过；部分验收；仅研究；生产 NO-GO | 为 T9.1 重建 clean pinned v0.1 配对基线；T9.4 仅限研究，生产决策为 NO-GO。 | [T9.1 执行记录](docs/plans/2026-09-17-non-raytracing-engine-roadmap/t9.1-execution.md) · [T9.4 决策记录](docs/plans/2026-09-17-non-raytracing-engine-roadmap/t9.4-execution.md) |
+<!-- ROADMAP_STATUS_ZH:END -->
 
 切片状态、待处理验证和证据链接见[路线图](docs/plans/2026-09-17-non-raytracing-engine-roadmap/index.html)。项目 CI 入口为 `./scripts/verify-ci.sh`；只有该命令成功运行后才表示 CI 验证通过，路线图验收状态本身不代表 CI 已通过。
 
