@@ -18,6 +18,8 @@ pub(crate) mod ui;
 pub(crate) mod workspace;
 
 #[cfg(test)]
+mod workspace_project_tests;
+#[cfg(test)]
 mod workspace_tests;
 
 use aether_engine::{

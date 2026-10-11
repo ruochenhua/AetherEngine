@@ -195,6 +195,8 @@ pub(crate) fn process_pending_load(app: &mut App) {
 mod ops;
 mod save;
 pub(crate) use ops::process_post_ui_ops;
+#[cfg(test)]
+pub(crate) use ops::process_project_browser_open_with_device;
 
 pub(crate) fn report_load_error(path: &std::path::Path, error: &anyhow::Error) {
     tracing::error!(path = %path.display(), %error, "Open scene error");

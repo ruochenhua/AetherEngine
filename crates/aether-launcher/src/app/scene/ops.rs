@@ -375,11 +375,22 @@ pub(crate) fn process_post_ui_ops(app: &mut App) {
 }
 
 fn process_project_browser_open(app: &mut App) {
-    let Some(path) = app.pending_project_open.take() else {
+    // Browser requests can be produced while the shared workspace is visible
+    // in Menu. Keep them pending until renderer startup has created a world.
+    if matches!(app.state, LauncherState::Menu) {
+        return;
+    }
+    let Some(device) = app.ctx.as_ref().map(|ctx| ctx.device.clone()) else {
         return;
     };
-    let Some(ctx) = app.ctx.as_ref() else {
-        tracing::error!(path = %path.display(), "Cannot open project scene before renderer startup");
+    process_project_browser_open_with_device(app, &device);
+}
+
+pub(crate) fn process_project_browser_open_with_device(app: &mut App, device: &wgpu::Device) {
+    if matches!(app.state, LauncherState::Menu) {
+        return;
+    }
+    let Some(path) = app.pending_project_open.take() else {
         return;
     };
     if let LauncherState::Running {
@@ -389,7 +400,7 @@ fn process_project_browser_open(app: &mut App) {
     {
         match SceneLoader::open_scene(
             &path,
-            &ctx.device,
+            device,
             &app.mesh_registry,
             &mut app.asset_manager,
             world,

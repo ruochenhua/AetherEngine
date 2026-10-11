@@ -34,7 +34,16 @@ impl ProjectPanel {
     }
 
     pub(super) fn select_resource(&mut self, path: Option<PathBuf>) {
-        self.selected_resource = path.map(|path| normalize_path(&path));
+        self.selected_resource = path.map(|path| {
+            let path = path.strip_prefix(&self.root).unwrap_or(path.as_path());
+            let normalized = normalize_path(path);
+            let parent = Path::new(&normalized)
+                .parent()
+                .and_then(Path::to_str)
+                .unwrap_or("");
+            self.visit_directory(parent);
+            normalized
+        });
     }
 
     pub(super) fn selected_resource(&self) -> Option<&str> {
