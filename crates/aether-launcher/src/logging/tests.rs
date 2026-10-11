@@ -40,7 +40,7 @@ fn ew1_concurrent_producers_bound_queue_and_count_overflow() {
     assert!(health.degraded());
 }
 
-fn event(level: &str, target: &str, message: &str) -> CapturedEvent {
+pub(super) fn event(level: &str, target: &str, message: &str) -> CapturedEvent {
     CapturedEvent {
         timestamp_ms: 1,
         level: level.into(),
@@ -76,7 +76,7 @@ fn ew1_view_filters_clear_and_pause_never_stop_collection() {
     assert_eq!(store.visible(&view.filter).count(), 3);
 }
 
-fn directory(label: &str) -> std::path::PathBuf {
+pub(super) fn directory(label: &str) -> std::path::PathBuf {
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let path = std::env::temp_dir().join(format!(
         "aether-ew1-{label}-{}-{}",
@@ -86,7 +86,7 @@ fn directory(label: &str) -> std::path::PathBuf {
     std::fs::create_dir_all(&path).unwrap();
     path
 }
-fn file_config(
+pub(super) fn file_config(
     directory: std::path::PathBuf,
     max_bytes: u64,
     retained_files: usize,

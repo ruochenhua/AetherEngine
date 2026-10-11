@@ -124,9 +124,12 @@ type Fallback = std::sync::Arc<dyn Fn(&str) + Send + Sync>;
 
 #[derive(Default)]
 pub(crate) struct Health {
+    #[cfg(test)]
+    file_hooks: Option<std::sync::Arc<file::tests::Hooks>>,
     dropped: [std::sync::atomic::AtomicU64; 5],
     pub fallback_count: std::sync::atomic::AtomicU64,
     stopping: std::sync::atomic::AtomicBool,
+    active_admissions: std::sync::atomic::AtomicUsize,
     error: std::sync::Mutex<Option<String>>,
     fallback: std::sync::Mutex<Option<Fallback>>,
 }

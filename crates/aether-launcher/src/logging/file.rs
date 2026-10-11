@@ -21,9 +21,26 @@ pub(crate) struct FileSink {
 impl FileSink {
     pub fn send(&self, event: CapturedEvent) {
         let index = super::level_index(&event.level);
-        if self.health.stopping.load(Ordering::Acquire) || self.sender.try_send(event).is_err() {
+        // Sequential consistency orders registration before the stop check. Once
+        // shutdown observes no producers, any later producer can only reject.
+        self.health.active_admissions.fetch_add(1, Ordering::SeqCst);
+        if self.health.stopping.load(Ordering::SeqCst) {
             self.health.dropped[index].fetch_add(1, Ordering::Relaxed);
+        } else {
+            #[cfg(test)]
+            if let Some(hook) = self
+                .health
+                .file_hooks
+                .as_ref()
+                .and_then(|hooks| hooks.before_send.as_ref())
+            {
+                hook();
+            }
+            if self.sender.try_send(event).is_err() {
+                self.health.dropped[index].fetch_add(1, Ordering::Relaxed);
+            }
         }
+        self.health.active_admissions.fetch_sub(1, Ordering::SeqCst);
     }
 }
 pub(crate) fn file_channel(capacity: usize) -> (FileSink, Receiver<CapturedEvent>) {
@@ -77,7 +94,7 @@ impl FileWriter {
         Self { health, thread }
     }
     pub fn shutdown(&mut self) {
-        self.health.stopping.store(true, Ordering::Release);
+        self.health.stopping.store(true, Ordering::SeqCst);
         if let Some(thread) = self.thread.take() {
             if thread.join().is_err() {
                 self.health.fail("runtime log writer panicked".into());
@@ -95,6 +112,7 @@ struct Output {
     config: FileConfig,
     file: BufWriter<File>,
     bytes: u64,
+    pending: [u64; 5],
 }
 impl Output {
     fn open(config: FileConfig) -> io::Result<Self> {
@@ -105,6 +123,7 @@ impl Output {
             config,
             file,
             bytes: 0,
+            pending: [0; 5],
         })
     }
     fn write(&mut self, event: &CapturedEvent) -> io::Result<()> {
@@ -117,15 +136,35 @@ impl Output {
             ));
         }
         if self.bytes + length > self.config.max_bytes {
-            self.file.flush()?;
+            self.flush()?;
             rotate(&self.config)?;
             self.file =
                 BufWriter::new(File::create(self.config.directory.join("runtime.0.jsonl"))?);
             self.bytes = 0;
         }
+        // Flush explicitly before BufWriter would flush implicitly so the
+        // pending counters contain exactly the records still in its buffer.
+        if self.file.buffer().len() + record.len() > self.file.capacity() {
+            self.flush()?;
+        }
         self.file.write_all(&record)?;
+        if !self.file.buffer().is_empty() {
+            self.pending[super::level_index(&event.level)] += 1;
+        }
         self.bytes += length;
         Ok(())
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        self.file.flush()?;
+        self.pending = [0; 5];
+        Ok(())
+    }
+    fn discard(self, health: &Health) {
+        for (index, count) in self.pending.into_iter().enumerate() {
+            health.dropped[index].fetch_add(count, Ordering::Relaxed);
+        }
+        // Do not retry buffered writes in BufWriter::drop after reporting loss.
+        let _ = self.file.into_parts();
     }
 }
 fn rotate(config: &FileConfig) -> io::Result<()> {
@@ -157,41 +196,87 @@ fn write_events(receiver: Receiver<CapturedEvent>, health: &Health, config: File
             None
         }
     };
+    #[cfg(test)]
+    if let (Some(output), Some(hooks)) = (output.as_mut(), health.file_hooks.as_ref()) {
+        if let Some(file) = hooks.output_file.lock().unwrap().take() {
+            output.file = BufWriter::new(file);
+        }
+    }
     loop {
-        let result = if health.stopping.load(Ordering::Acquire) {
+        #[cfg(test)]
+        if let Some(hook) = health
+            .file_hooks
+            .as_ref()
+            .and_then(|hooks| hooks.before_receive.as_ref())
+        {
+            hook();
+        }
+        // Check the producer count BEFORE probing the empty queue. A producer
+        // which passed the stop check must finish admission before final drain.
+        let result = if health.stopping.load(Ordering::SeqCst)
+            && health.active_admissions.load(Ordering::SeqCst) == 0
+        {
             receiver
                 .try_recv()
                 .map_err(|_| mpsc::RecvTimeoutError::Disconnected)
         } else {
             receiver.recv_timeout(Duration::from_millis(50))
         };
+        #[cfg(test)]
+        if result.is_err() && health.stopping.load(Ordering::Acquire) {
+            if let Some(hook) = health
+                .file_hooks
+                .as_ref()
+                .and_then(|hooks| hooks.before_empty_shutdown.as_ref())
+            {
+                hook();
+            }
+        }
         match result {
             Ok(event) => {
                 let result = output.as_mut().map_or_else(
                     || Err(io::Error::other("runtime log output unavailable")),
                     |output| output.write(&event),
                 );
+                #[cfg(test)]
+                if result.is_ok() {
+                    if let Some(hook) = health
+                        .file_hooks
+                        .as_ref()
+                        .and_then(|hooks| hooks.after_write.as_ref())
+                    {
+                        hook(output.as_ref().unwrap().file.buffer().len());
+                    }
+                }
                 if let Err(error) = result {
                     health.dropped[super::level_index(&event.level)]
                         .fetch_add(1, Ordering::Relaxed);
                     health.fail(error.to_string());
-                    output = None;
+                    if let Some(writer) = output.take() {
+                        writer.discard(health);
+                    }
                 }
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 if let Some(writer) = output.as_mut() {
-                    if let Err(error) = writer.file.flush() {
+                    if let Err(error) = writer.flush() {
                         health.fail(error.to_string());
-                        output = None;
+                        if let Some(writer) = output.take() {
+                            writer.discard(health);
+                        }
                     }
                 }
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
     }
-    if let Some(writer) = output.as_mut() {
-        if let Err(error) = writer.file.flush() {
+    if let Some(mut writer) = output {
+        if let Err(error) = writer.flush() {
             health.fail(error.to_string());
+            writer.discard(health);
         }
     }
 }
+
+#[cfg(test)]
+pub(super) mod tests;
