@@ -31,6 +31,9 @@ pub struct WaterReflectionPass {
     object_bind_group: wgpu::BindGroup,
     texture_bind_group_layout: wgpu::BindGroupLayout,
     texture_bind_groups: Vec<wgpu::BindGroup>,
+    skin_palette_layout: wgpu::BindGroupLayout,
+    fallback_skin_palette: wgpu::Buffer,
+    skin_palette_bind_groups: Vec<wgpu::BindGroup>,
     instance_buffer: wgpu::Buffer,
     instance_buffer_capacity: usize,
 
@@ -92,6 +95,15 @@ mod tests {
     }
 
     #[test]
+    fn animated_reflection_uses_safe_joint_indices_and_inverse_transpose_normals() {
+        naga::front::wgsl::parse_str(shaders::REFLECTION_SHADER_SRC)
+            .expect("animated reflection shader should remain valid WGSL");
+        assert!(shaders::REFLECTION_SHADER_SRC.contains("safe_joints = select"));
+        assert!(shaders::REFLECTION_SHADER_SRC.contains("cofactor * normal"));
+        assert!(shaders::REFLECTION_SHADER_SRC.contains("transform_normal(nm, local_normal)"));
+    }
+
+    #[test]
     fn water_reflection_pass_stores_terrain_geometry() {
         let (device, queue) = headless_device();
         let pass = WaterReflectionPass::new(&device, &queue);
@@ -148,6 +160,8 @@ mod tests {
         pass.apply_frame(&frame);
         assert_eq!(pass.animation_bounds.as_ref(), &[bounds]);
         assert_eq!(pass.animation_items.len(), 1);
+        assert_eq!(pass.batches.len(), 1);
+        assert_eq!(pass.batches[0].mesh.vertex_count, 2);
         assert!(matches!(
             &pass.animation_items[0],
             crate::animation::AnimationRenderItem::Skinned(item)

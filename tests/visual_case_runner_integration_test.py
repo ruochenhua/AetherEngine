@@ -55,14 +55,15 @@ class VisualCaseRunnerIntegrationTests(unittest.TestCase):
                            "worker_gpu_commit": False, "state_machine": "valid"},
                 "asset_events": [{"event": "loaded", "generation": 1}], "graph": None,
             }
-            evidence_command = [sys.executable, "-c", f"import json; print({json.dumps(json.dumps(evidence))!r})"]
+            evidence_command = [sys.executable, "-c", f"import json; print({json.dumps(evidence)!r})"]
             result = subprocess.run([
                 sys.executable, str(RUNNER), "--slice", "T8.1", "--materialized", str(materialized),
                 "--launcher", str(launcher), "--report-dir", str(report), "--case-timeout", "3",
                 "--grace-period", ".1", "--command-json", json.dumps(command),
                 "--evidence-command-json", json.dumps(evidence_command),
             ], cwd=ROOT, capture_output=True, text=True, timeout=15)
-            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout +
+                             ((report / "aggregate.json").read_text() if (report / "aggregate.json").exists() else ""))
             aggregate = json.loads((report / "aggregate.json").read_text())
             self.assertTrue(aggregate["command_pass"])
             self.assertTrue(aggregate["passed"])

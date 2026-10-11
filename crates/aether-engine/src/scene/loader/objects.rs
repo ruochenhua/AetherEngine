@@ -116,6 +116,10 @@ pub(super) fn build_objects(
                             gpu_mesh,
                             mesh_source.clone(),
                             format!("{}::{}", mesh_name, submesh.name),
+                        )
+                        .with_gltf_primitive(
+                            submesh.source_node_index,
+                            submesh.source_primitive_index,
                         ),
                         material_config,
                         material,

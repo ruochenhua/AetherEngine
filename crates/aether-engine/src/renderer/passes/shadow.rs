@@ -14,7 +14,7 @@
 use crate::asset::mesh::{InstanceData, Vertex};
 use crate::asset::shader::ShaderLibrary;
 use crate::math::Aabb;
-use crate::renderer::extract::{opaque_batches, RenderBatch};
+use crate::renderer::extract::{animation_aware_batches, RenderBatch};
 use crate::renderer::frame::RenderFrame;
 use crate::renderer::pass::{InitContext, Pass, PassSignature, ResHandle};
 use crate::renderer::resource::*;
@@ -54,6 +54,9 @@ pub struct ShadowPass {
     pipeline: wgpu::RenderPipeline,
     cascade_uniform_buffer: wgpu::Buffer,
     cascade_bind_group: wgpu::BindGroup,
+    skin_palette_layout: wgpu::BindGroupLayout,
+    fallback_skin_palette: wgpu::Buffer,
+    skin_palette_bind_groups: Vec<wgpu::BindGroup>,
     /// Per-instance transform vertex buffer.
     instance_buffer: wgpu::Buffer,
     instance_buffer_capacity: usize,
@@ -103,7 +106,11 @@ impl Pass for ShadowPass {
     }
 
     fn apply_frame(&mut self, frame: &RenderFrame) {
-        self.batches = opaque_batches(&frame.batches);
+        self.batches = Arc::from(animation_aware_batches(
+            &self.device,
+            &frame.batches,
+            frame.animation,
+        ));
         self.animation_items = frame
             .animation
             .map_or_else(|| Arc::from([]), |animation| animation.items.clone());
@@ -111,6 +118,21 @@ impl Pass for ShadowPass {
             || Arc::<[Aabb]>::from([]),
             crate::animation::AnimationFrame::conservative_bounds,
         );
+        self.skin_palette_bind_groups = self
+            .batches
+            .iter()
+            .map(|batch| {
+                crate::renderer::skinning::create_palette_bind_group(
+                    &self.device,
+                    &self.skin_palette_layout,
+                    batch
+                        .skin_palette
+                        .as_deref()
+                        .unwrap_or(&self.fallback_skin_palette),
+                    "Shadow Joint Palette BG",
+                )
+            })
+            .collect();
         self.terrain_geometry = frame.terrain_geometry.clone();
         let light_dir = glam::Vec3::from_array(frame.lighting.light.direction).normalize();
 
@@ -180,13 +202,14 @@ impl Pass for ShadowPass {
             pass.set_bind_group(0, &self.cascade_bind_group, &[(i as u32 * aligned_size)]);
 
             let mut instance_offset = 0usize;
-            for batch in self.batches.iter() {
+            for (batch_index, batch) in self.batches.iter().enumerate() {
                 let instance_count = batch.instances.len() as u32;
                 if instance_count == 0 || batch.mesh.vertex_count == 0 {
                     continue;
                 }
 
                 pass.set_vertex_buffer(0, batch.mesh.vertex_buffer.slice(..));
+                pass.set_bind_group(1, &self.skin_palette_bind_groups[batch_index], &[]);
                 let instance_byte_start =
                     (instance_offset * std::mem::size_of::<InstanceData>()) as wgpu::BufferAddress;
                 let instance_byte_end = instance_byte_start

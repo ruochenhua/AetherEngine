@@ -4,6 +4,8 @@ struct VertexInput {
     @location(1) normal: vec3<f32>,
     @location(2) uv: vec2<f32>,
     @location(3) tangent: vec4<f32>,
+    @location(9) joints: vec4<u32>,
+    @location(10) weights: vec4<f32>,
 };
 struct InstanceInput {
     @location(4) model_matrix_0: vec4<f32>,
@@ -32,16 +34,41 @@ struct ObjectData { albedo: vec4<f32>, roughness: f32, metallic: f32, };
 @group(1) @binding(0) var<uniform> obj: ObjectData;
 @group(2) @binding(0) var albedo_texture: texture_2d<f32>;
 @group(2) @binding(1) var albedo_sampler: sampler;
+struct JointPalette { matrices: array<mat4x4<f32>, 128>, };
+@group(3) @binding(0) var<storage, read> joint_palette: JointPalette;
+
+fn transform_normal(linear: mat3x3<f32>, normal: vec3<f32>) -> vec3<f32> {
+    let a = linear[0];
+    let b = linear[1];
+    let c = linear[2];
+    let determinant = dot(a, cross(b, c));
+    if (abs(determinant) <= 1e-8) { return normalize(linear * normal); }
+    let cofactor = mat3x3<f32>(cross(b, c), cross(c, a), cross(a, b));
+    return normalize((cofactor * normal) / determinant);
+}
 
 @vertex
 fn vs_main(in: VertexInput, instance: InstanceInput) -> VertexOutput {
     var out: VertexOutput;
     let model = mat4x4<f32>(instance.model_matrix_0, instance.model_matrix_1, instance.model_matrix_2, instance.model_matrix_3);
-    let world_pos = model * vec4<f32>(in.position, 1.0);
+    let total_weight = dot(in.weights, vec4<f32>(1.0));
+    var local_position = in.position;
+    var local_normal = in.normal;
+    if (total_weight > 0.0) {
+        let safe_joints = select(vec4<u32>(0u), in.joints, in.weights > vec4<f32>(0.0));
+        let skin = joint_palette.matrices[safe_joints.x] * in.weights.x
+            + joint_palette.matrices[safe_joints.y] * in.weights.y
+            + joint_palette.matrices[safe_joints.z] * in.weights.z
+            + joint_palette.matrices[safe_joints.w] * in.weights.w;
+        local_position = (skin * vec4<f32>(in.position, 1.0)).xyz / total_weight;
+        let skin_linear = mat3x3<f32>(skin[0].xyz, skin[1].xyz, skin[2].xyz);
+        local_normal = transform_normal(skin_linear, in.normal);
+    }
+    let world_pos = model * vec4<f32>(local_position, 1.0);
     out.clip_position = ru.proj * ru.view * world_pos;
     out.world_pos = world_pos.xyz;
     let nm = mat3x3<f32>(model[0].xyz, model[1].xyz, model[2].xyz);
-    out.world_normal = normalize(nm * in.normal);
+    out.world_normal = transform_normal(nm, local_normal);
     out.uv = in.uv;
     return out;
 }

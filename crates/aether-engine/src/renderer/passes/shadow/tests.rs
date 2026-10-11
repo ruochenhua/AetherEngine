@@ -172,6 +172,8 @@ fn shadow_pass_stores_terrain_geometry() {
     pass.apply_frame(&frame);
     assert_eq!(pass.animation_bounds.as_ref(), &[bounds]);
     assert_eq!(pass.animation_items.len(), 1);
+    assert_eq!(pass.batches.len(), 1);
+    assert_eq!(pass.batches[0].mesh.vertex_count, 2);
     assert!(matches!(
         &pass.animation_items[0],
         crate::animation::AnimationRenderItem::Skinned(item)
@@ -193,4 +195,11 @@ fn shadow_shader_filters_edge_on_triangles() {
     assert!(shaders::SHADOW_SHADER_SRC.contains("dpdx(in.world_position)"));
     assert!(shaders::SHADOW_SHADER_SRC.contains("dpdy(in.world_position)"));
     assert!(shaders::SHADOW_SHADER_SRC.contains("discard;"));
+}
+
+#[test]
+fn animated_shadow_shader_masks_unused_joint_indices() {
+    naga::front::wgsl::parse_str(shaders::SHADOW_SHADER_SRC)
+        .expect("animated shadow shader should remain valid WGSL");
+    assert!(shaders::SHADOW_SHADER_SRC.contains("safe_joints = select"));
 }

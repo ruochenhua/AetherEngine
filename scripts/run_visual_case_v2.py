@@ -7,6 +7,7 @@ import json
 import operator
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -16,6 +17,36 @@ ROOT = Path(__file__).resolve().parents[1]
 RUNNER = ROOT / "scripts/runner_process.py"
 OPS = {"Eq": operator.eq, "Ne": operator.ne, "Lt": operator.lt,
        "Le": operator.le, "Gt": operator.gt, "Ge": operator.ge}
+T7_ANIMATION_LOG = re.compile(
+    r"T7_ANIMATION_FRAME frame_id=(\d+) sample_time=([-+0-9.eE]+) "
+    r"skinned_items=(\d+) drawable_items=(\d+)"
+)
+
+
+def check_t7_animation_capture(slice_name, case, logs):
+    if slice_name not in {"T7.2", "T7.3"}:
+        return None, []
+    matches = list(T7_ANIMATION_LOG.finditer(logs))
+    if not matches:
+        return None, ["launcher scene did not report a T7_ANIMATION_FRAME"]
+    match = matches[-1]
+    observed = {
+        "frame_id": int(match.group(1)),
+        "sample_time": float(match.group(2)),
+        "skinned_items": int(match.group(3)),
+        "drawable_items": int(match.group(4)),
+    }
+    errors = []
+    expected_time = float(case["time"]["simulation_time"])
+    if abs(observed["sample_time"] - expected_time) > 1.0e-6:
+        errors.append(
+            f"launcher animation seek time: expected {expected_time}, got {observed['sample_time']}"
+        )
+    if observed["skinned_items"] < 1:
+        errors.append("launcher scene produced no skinned render item")
+    if observed["drawable_items"] < 1:
+        errors.append("launcher scene produced no drawable skinned geometry")
+    return observed, errors
 
 
 def launcher_args(case, output):
@@ -232,11 +263,21 @@ def main():
                 launcher_errors.append("rendered output.png is missing")
             if process_log.get("diagnostic"):
                 launcher_errors.append(f"launcher process: {process_log['diagnostic']}")
+            captured_logs = "\n".join(
+                (directory / name).read_text(errors="replace")
+                for name in ("stdout", "stderr")
+                if (directory / name).exists()
+            )
+            animation_capture, animation_errors = check_t7_animation_capture(
+                args.slice, case, captured_logs
+            )
+            launcher_errors.extend(animation_errors)
             launcher_capture = {
                 "scene": case["scene"],
                 "output": "output.png" if (directory / "output.png").is_file() else None,
                 "process": process_log,
                 "image": image_result,
+                "animation": animation_capture,
                 "passed": not launcher_errors,
                 "errors": launcher_errors,
             }

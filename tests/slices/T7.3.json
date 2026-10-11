@@ -50,7 +50,13 @@
       {
         "id": "seek_0",
         "launcher_args_append": [],
-        "time_override": null,
+        "time_override": {
+          "mode": "seek",
+          "simulation_time": 0.0,
+          "fixed_dt": 0.016666667,
+          "max_substeps": 4,
+          "max_seek_steps": 4096
+        },
         "camera_override": null,
         "benchmark_override": null,
         "expected_result": {
@@ -79,7 +85,13 @@
       {
         "id": "seek_0p25",
         "launcher_args_append": [],
-        "time_override": null,
+        "time_override": {
+          "mode": "seek",
+          "simulation_time": 0.25,
+          "fixed_dt": 0.016666667,
+          "max_substeps": 4,
+          "max_seek_steps": 4096
+        },
         "camera_override": null,
         "benchmark_override": null,
         "expected_result": {
@@ -108,7 +120,13 @@
       {
         "id": "seek_0p50",
         "launcher_args_append": [],
-        "time_override": null,
+        "time_override": {
+          "mode": "seek",
+          "simulation_time": 0.5,
+          "fixed_dt": 0.016666667,
+          "max_substeps": 4,
+          "max_seek_steps": 4096
+        },
         "camera_override": null,
         "benchmark_override": null,
         "expected_result": {
@@ -137,7 +155,13 @@
       {
         "id": "seek_0p75",
         "launcher_args_append": [],
-        "time_override": null,
+        "time_override": {
+          "mode": "seek",
+          "simulation_time": 0.75,
+          "fixed_dt": 0.016666667,
+          "max_substeps": 4,
+          "max_seek_steps": 4096
+        },
         "camera_override": null,
         "benchmark_override": null,
         "expected_result": {

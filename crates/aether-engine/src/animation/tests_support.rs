@@ -3,8 +3,9 @@ use super::{
     AnimationFrame, AnimationPrimitive, AnimatorRuntime, AnimatorState, MeshRef, SceneSnapshot,
 };
 use crate::asset::gltf_document::{
-    AnimationChannel, AnimationClipAsset, AnimationPath, AnimationValues, DocumentNode,
-    DocumentSkin, GltfDocument, Interpolation, SkeletonAsset,
+    AnimationChannel, AnimationClipAsset, AnimationPath, AnimationValues, DocumentMesh,
+    DocumentNode, DocumentPrimitive, DocumentSkin, GltfDocument, Interpolation, JointWeights,
+    SkeletonAsset,
 };
 use crate::asset::store::{canonicalize, AssetId, AssetKind};
 use crate::asset::{mesh::CpuMesh, Handle};
@@ -43,6 +44,14 @@ impl AnimationAssets for TestAssets {
 
 /// Build a real skinned AnimationFrame through the production extractor for renderer tests.
 pub(crate) fn animation_frame_with_bounds(bounds: Aabb) -> AnimationFrame {
+    let static_mesh = CpuMesh {
+        positions: vec![bounds.min.to_array(), bounds.max.to_array()],
+        normals: vec![[0.0, 1.0, 0.0]; 2],
+        uvs: vec![[0.0, 0.0]; 2],
+        tangents: Vec::new(),
+        indices: Vec::new(),
+        submeshes: Vec::new(),
+    };
     let document = Arc::new(GltfDocument {
         nodes: Arc::new(vec![DocumentNode {
             mesh: Some(0),
@@ -56,6 +65,16 @@ pub(crate) fn animation_frame_with_bounds(bounds: Aabb) -> AnimationFrame {
         skins: Arc::new(vec![DocumentSkin {
             joints: vec![0],
             inverse_bind_matrices: vec![Mat4::IDENTITY.to_cols_array_2d()],
+        }]),
+        meshes: Arc::new(vec![DocumentMesh {
+            primitives: vec![DocumentPrimitive {
+                mesh: Some(static_mesh.clone()),
+                weights: vec![
+                    JointWeights::validated([0; 4], [1.0, 0.0, 0.0, 0.0])
+                        .expect("fixture weights should validate");
+                    2
+                ],
+            }],
         }]),
         ..GltfDocument::default()
     });
@@ -85,14 +104,6 @@ pub(crate) fn animation_frame_with_bounds(bounds: Aabb) -> AnimationFrame {
         document,
         skeleton,
         clip,
-    };
-    let static_mesh = CpuMesh {
-        positions: vec![bounds.min.to_array(), bounds.max.to_array()],
-        normals: Vec::new(),
-        uvs: Vec::new(),
-        tangents: Vec::new(),
-        indices: Vec::new(),
-        submeshes: Vec::new(),
     };
     let primitives = [AnimationPrimitive {
         entity_bits: 1,

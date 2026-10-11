@@ -121,12 +121,18 @@ impl GBufferPass {
                 ],
             });
 
+        let skin_palette_layout =
+            crate::renderer::skinning::create_palette_layout(device, "GBuffer Joint Palette BGL");
+        let fallback_skin_palette =
+            crate::renderer::skinning::create_identity_palette_buffer(device);
+
         let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("GBuffer PL"),
             bind_group_layouts: &[
                 Some(&vp_bgl),
                 Some(&object_bind_group_layout),
                 Some(&texture_bind_group_layout),
+                Some(&skin_palette_layout),
             ],
             immediate_size: 0,
         });
@@ -260,6 +266,9 @@ impl GBufferPass {
             object_bind_group_layout,
             texture_bind_group_layout,
             texture_bind_groups: Vec::new(),
+            skin_palette_layout,
+            fallback_skin_palette,
+            skin_palette_bind_groups: Vec::new(),
             fallback_white,
             fallback_normal,
             instance_buffer,

@@ -121,6 +121,8 @@ pub fn load(path: &Path) -> anyhow::Result<CpuMesh> {
                 index_offset: merged.len(),
                 index_count: bucket_indices.len(),
                 material,
+                source_node_index: None,
+                source_primitive_index: None,
             });
 
             merged.extend_from_slice(&bucket_indices);

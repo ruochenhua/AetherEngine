@@ -3,6 +3,9 @@
 mod extract;
 mod palette;
 mod player;
+mod skinning;
+#[cfg(test)]
+mod skinning_tests;
 #[cfg(test)]
 mod tests_support;
 
@@ -16,5 +19,6 @@ pub use player::{
     pose_state_hash, sample_animator, sample_animator_with_looping, AnimationError,
     AnimatorRuntime, AnimatorState, LocalPose, PoseSample,
 };
+pub(crate) use skinning::validate_skinning_inputs;
 #[cfg(test)]
 pub(crate) use tests_support::animation_frame_with_bounds;

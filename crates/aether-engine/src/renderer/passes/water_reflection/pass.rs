@@ -3,7 +3,7 @@
 use super::{ReflectionUniform, WaterReflectionPass};
 use crate::asset::mesh::InstanceData;
 use crate::math::Aabb;
-use crate::renderer::extract::opaque_batches;
+use crate::renderer::extract::animation_aware_batches;
 use crate::renderer::frame::RenderFrame;
 use crate::renderer::pass::{InitContext, Pass, PassSignature};
 use crate::renderer::renderable::ObjectUniform;
@@ -33,6 +33,11 @@ impl Pass for WaterReflectionPass {
     }
 
     fn apply_frame(&mut self, frame: &RenderFrame) {
+        self.batches = Arc::from(animation_aware_batches(
+            &self.device,
+            &frame.batches,
+            frame.animation,
+        ));
         self.animation_items = frame
             .animation
             .map_or_else(|| Arc::from([]), |animation| animation.items.clone());
@@ -40,6 +45,21 @@ impl Pass for WaterReflectionPass {
             || Arc::<[Aabb]>::from([]),
             crate::animation::AnimationFrame::conservative_bounds,
         );
+        self.skin_palette_bind_groups = self
+            .batches
+            .iter()
+            .map(|batch| {
+                crate::renderer::skinning::create_palette_bind_group(
+                    &self.device,
+                    &self.skin_palette_layout,
+                    batch
+                        .skin_palette
+                        .as_deref()
+                        .unwrap_or(&self.fallback_skin_palette),
+                    "WaterReflection Joint Palette BG",
+                )
+            })
+            .collect();
         if let Some(water) = frame.optional.water.clone() {
             self.has_water = true;
             self.reflection_enabled = water.config.reflection_enabled;
@@ -53,8 +73,6 @@ impl Pass for WaterReflectionPass {
         if !self.reflection_enabled {
             return;
         }
-
-        self.batches = opaque_batches(&frame.batches);
 
         // Mirror the camera across the water plane by post-multiplying the view
         // matrix with a Y-reflection matrix. This is more robust than manually
@@ -233,6 +251,7 @@ impl Pass for WaterReflectionPass {
             let offset = batch_index as u32 * obj_size as u32;
             pass.set_bind_group(1, &self.object_bind_group, &[offset]);
             pass.set_bind_group(2, &self.texture_bind_groups[batch_index], &[]);
+            pass.set_bind_group(3, &self.skin_palette_bind_groups[batch_index], &[]);
 
             pass.set_vertex_buffer(0, batch.mesh.vertex_buffer.slice(..));
             let instance_byte_start =

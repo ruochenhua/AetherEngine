@@ -1,7 +1,7 @@
 // WGSL shader for cascaded shadow mapping.
 
 pub(super) const SHADOW_SHADER_SRC: &str = r#"
-struct VertexInput { @location(0) position: vec3<f32>, @location(1) normal: vec3<f32>, @location(2) uv: vec2<f32>, @location(3) tangent: vec4<f32>, };
+struct VertexInput { @location(0) position: vec3<f32>, @location(1) normal: vec3<f32>, @location(2) uv: vec2<f32>, @location(3) tangent: vec4<f32>, @location(9) joints: vec4<u32>, @location(10) weights: vec4<f32>, };
 struct InstanceInput {
     @location(4) model_matrix_0: vec4<f32>,
     @location(5) model_matrix_1: vec4<f32>,
@@ -15,11 +15,23 @@ struct VertexOutput {
 };
 struct LightVP { light_view_proj: mat4x4<f32>, };
 @group(0) @binding(0) var<uniform> lvp: LightVP;
+struct JointPalette { matrices: array<mat4x4<f32>, 128>, };
+@group(1) @binding(0) var<storage, read> joint_palette: JointPalette;
 @vertex
 fn vs_main(in: VertexInput, instance: InstanceInput) -> VertexOutput {
     var out: VertexOutput;
     let model = mat4x4<f32>(instance.model_matrix_0, instance.model_matrix_1, instance.model_matrix_2, instance.model_matrix_3);
-    let world_position = (model * vec4<f32>(in.position, 1.0)).xyz;
+    let total_weight = dot(in.weights, vec4<f32>(1.0));
+    var position = in.position;
+    if (total_weight > 0.0) {
+        let safe_joints = select(vec4<u32>(0u), in.joints, in.weights > vec4<f32>(0.0));
+        let skin = joint_palette.matrices[safe_joints.x] * in.weights.x
+            + joint_palette.matrices[safe_joints.y] * in.weights.y
+            + joint_palette.matrices[safe_joints.z] * in.weights.z
+            + joint_palette.matrices[safe_joints.w] * in.weights.w;
+        position = (skin * vec4<f32>(in.position, 1.0)).xyz / total_weight;
+    }
+    let world_position = (model * vec4<f32>(position, 1.0)).xyz;
     out.clip_position = lvp.light_view_proj * vec4<f32>(world_position, 1.0);
     out.world_position = world_position;
     return out;

@@ -8,7 +8,9 @@
 //! This module decouples ECS access from GPU command encoding: after extraction,
 //! no render pass needs a `&World` reference.
 
+mod animation;
 mod optional;
+pub use animation::animation_aware_batches;
 pub use optional::{extract_optional_pass_data, OptionalPassData};
 
 use crate::asset::mesh::{GpuMesh, InstanceData};
@@ -106,6 +108,8 @@ pub struct RenderBatch {
     pub emissive_texture: Option<Handle<CpuTexture>>,
     /// Optional general transparent material contract.
     pub transparent_material: Option<TransparentMaterial>,
+    /// Fixed 128-joint storage palette for animated geometry.
+    pub skin_palette: Option<Arc<wgpu::Buffer>>,
     /// Instances to draw.
     pub instances: Vec<InstanceData>,
 }
@@ -194,6 +198,7 @@ pub fn extract_render_batches_with_frustum_culling(
                 orm_texture,
                 emissive_texture,
                 transparent_material: transparent.cloned(),
+                skin_palette: None,
                 instances: Vec::new(),
             })
             .instances

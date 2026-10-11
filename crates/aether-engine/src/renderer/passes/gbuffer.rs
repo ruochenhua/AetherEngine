@@ -11,7 +11,7 @@
 
 use crate::asset::mesh::InstanceData;
 use crate::math::Aabb;
-use crate::renderer::extract::{opaque_batches, RenderBatch};
+use crate::renderer::extract::{animation_aware_batches, RenderBatch};
 use crate::renderer::frame::RenderFrame;
 use crate::renderer::pass::{InitContext, Pass, PassSignature, ResHandle};
 use crate::renderer::renderable::*;
@@ -39,6 +39,9 @@ pub struct GBufferPass {
     /// Per-batch material texture bind group layout and bind groups.
     texture_bind_group_layout: wgpu::BindGroupLayout,
     texture_bind_groups: Vec<wgpu::BindGroup>,
+    skin_palette_layout: wgpu::BindGroupLayout,
+    fallback_skin_palette: wgpu::Buffer,
+    skin_palette_bind_groups: Vec<wgpu::BindGroup>,
     fallback_white: Arc<crate::asset::texture::GpuTexture>,
     fallback_normal: Arc<crate::asset::texture::GpuTexture>,
     /// Per-instance transform + entity_id vertex buffer.
@@ -88,7 +91,11 @@ impl Pass for GBufferPass {
     }
 
     fn apply_frame(&mut self, frame: &RenderFrame) {
-        self.batches = opaque_batches(&frame.batches);
+        self.batches = Arc::from(animation_aware_batches(
+            &self.device,
+            &frame.batches,
+            frame.animation,
+        ));
         self.animation_items = frame
             .animation
             .map_or_else(|| Arc::from([]), |animation| animation.items.clone());
@@ -96,6 +103,21 @@ impl Pass for GBufferPass {
             || Arc::<[Aabb]>::from([]),
             crate::animation::AnimationFrame::conservative_bounds,
         );
+        self.skin_palette_bind_groups = self
+            .batches
+            .iter()
+            .map(|batch| {
+                crate::renderer::skinning::create_palette_bind_group(
+                    &self.device,
+                    &self.skin_palette_layout,
+                    batch
+                        .skin_palette
+                        .as_deref()
+                        .unwrap_or(&self.fallback_skin_palette),
+                    "GBuffer Joint Palette BG",
+                )
+            })
+            .collect();
         self.view = frame.camera.view_matrix();
         self.proj = frame.camera.projection_matrix(frame.aspect);
 
@@ -335,6 +357,7 @@ impl Pass for GBufferPass {
             let offset = batch_index as u32 * obj_size as u32;
             pass.set_bind_group(1, &self.object_bind_group, &[offset]);
             pass.set_bind_group(2, &self.texture_bind_groups[batch_index], &[]);
+            pass.set_bind_group(3, &self.skin_palette_bind_groups[batch_index], &[]);
 
             pass.set_vertex_buffer(0, batch.mesh.vertex_buffer.slice(..));
             let instance_byte_start =

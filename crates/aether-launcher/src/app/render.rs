@@ -167,6 +167,72 @@ pub(crate) fn frame(
             );
             optional.lighting = lighting_frame;
             extract_ms = t_extract_0.elapsed().as_secs_f64() * 1000.0;
+            let animation_frame =
+                app.scene_animation.as_mut().and_then(|animation| {
+                    match animation.extract(
+                        world,
+                        super::animation::AnimationFrameInput {
+                            camera: &app.camera,
+                            aspect,
+                            frame_id: u64::from(app.frame_counter).saturating_add(1),
+                            delta_time: dt,
+                            paused: app.freeze_time,
+                            seek_time: (app.cli.time.mode == aether_engine::time::TimeMode::Seek)
+                                .then_some(app.cli.time.simulation_time),
+                        },
+                    ) {
+                        Ok(frame) => Some(frame),
+                        Err(error) => {
+                            tracing::warn!("animation frame extraction failed: {error}");
+                            None
+                        }
+                    }
+                });
+            if app.pending_screenshot_path.is_some() && app.frame_counter == 1 {
+                if let Some(frame) = &animation_frame {
+                    let skinned_items = frame
+                        .items
+                        .iter()
+                        .filter(|item| {
+                            matches!(
+                                item,
+                                aether_engine::animation::AnimationRenderItem::Skinned(_)
+                            )
+                        })
+                        .count();
+                    let drawable_items = frame
+                        .items
+                        .iter()
+                        .filter(|item| match item {
+                            aether_engine::animation::AnimationRenderItem::Skinned(item) => {
+                                !item.source_mesh.positions.is_empty()
+                                    && item.source_mesh.positions.len() == item.weights.len()
+                            }
+                            aether_engine::animation::AnimationRenderItem::StaticFallback(_) => {
+                                false
+                            }
+                        })
+                        .count();
+                    info!(
+                        "T7_ANIMATION_FRAME frame_id={} sample_time={:.9} skinned_items={} drawable_items={}",
+                        frame.frame_id,
+                        frame
+                            .items
+                            .iter()
+                            .find_map(|item| match item {
+                                aether_engine::animation::AnimationRenderItem::Skinned(item) => {
+                                    Some(item.sample_time)
+                                }
+                                aether_engine::animation::AnimationRenderItem::StaticFallback(_) => {
+                                    None
+                                }
+                            })
+                            .unwrap_or_default(),
+                        skinned_items,
+                        drawable_items
+                    );
+                }
+            }
 
             // Update shared terrain geometry cache when the scene contains terrain.
             if let Some(terrain) = optional.terrain.as_ref() {
@@ -227,7 +293,7 @@ pub(crate) fn frame(
             // Build per-frame context — all passes extract
             // what they need via apply_frame.
             let frame = RenderFrame {
-                animation: None,
+                animation: animation_frame.as_ref(),
                 batches: Arc::from(batches),
                 camera: &app.camera,
                 lighting,

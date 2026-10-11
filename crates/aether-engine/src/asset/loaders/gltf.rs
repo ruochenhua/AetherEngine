@@ -115,6 +115,7 @@ pub fn load(path: &Path) -> anyhow::Result<CpuMesh> {
                 if index_count > 0 {
                     submeshes.push(build_submesh_from_primitive(
                         primitive,
+                        node.index(),
                         index_offset,
                         index_count,
                         base_dir,
@@ -188,6 +189,7 @@ pub fn load(path: &Path) -> anyhow::Result<CpuMesh> {
 
 fn build_submesh_from_primitive(
     primitive: gltf::Primitive,
+    node_index: usize,
     index_offset: usize,
     index_count: usize,
     base_dir: &Path,
@@ -222,6 +224,8 @@ fn build_submesh_from_primitive(
             roughness: pbr.roughness_factor(),
             albedo_texture,
         },
+        source_node_index: Some(node_index),
+        source_primitive_index: Some(primitive.index()),
     }
 }
 

@@ -75,12 +75,20 @@ impl WaterReflectionPass {
                 ],
             });
 
+        let skin_palette_layout = crate::renderer::skinning::create_palette_layout(
+            device,
+            "WaterReflection Joint Palette BGL",
+        );
+        let fallback_skin_palette =
+            crate::renderer::skinning::create_identity_palette_buffer(device);
+
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("WaterReflection Pipeline Layout"),
             bind_group_layouts: &[
                 Some(&uniform_bind_group_layout),
                 Some(&object_bind_group_layout),
                 Some(&texture_bind_group_layout),
+                Some(&skin_palette_layout),
             ],
             immediate_size: 0,
         });
@@ -262,6 +270,9 @@ impl WaterReflectionPass {
             object_bind_group,
             texture_bind_group_layout,
             texture_bind_groups: Vec::new(),
+            skin_palette_layout,
+            fallback_skin_palette,
+            skin_palette_bind_groups: Vec::new(),
             instance_buffer,
             instance_buffer_capacity: 256,
             terrain_geometry: None,

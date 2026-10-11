@@ -2,6 +2,7 @@
 
 use super::palette::{build_joint_palette, JointPalette};
 use super::player::{sample_animator_with_looping, AnimationError, AnimatorRuntime};
+use super::validate_skinning_inputs;
 use crate::asset::gltf_document::{AnimationClipAsset, GltfDocument, SkeletonAsset};
 use crate::asset::store::AssetId;
 use crate::asset::{mesh::CpuMesh, AssetManager, Handle};
@@ -129,6 +130,12 @@ pub struct SkinnedRenderItem {
     pub skeleton: Handle<SkeletonAsset>,
     /// Immutable joint palette.
     pub palette: Arc<JointPalette>,
+    /// Original source geometry whose joints and weights drive GPU skinning.
+    pub source_mesh: Arc<CpuMesh>,
+    /// Four validated joint influences for every source vertex.
+    pub weights: Arc<[crate::asset::gltf_document::JointWeights]>,
+    /// Animator time used to produce this palette.
+    pub sample_time: f32,
     /// World transform.
     pub world_transform: Mat4,
     /// Shared conservative bounds sent to every render pass.
@@ -300,10 +307,33 @@ pub fn extract_animation_frame(
                 primitive.world_transform,
                 context.scene_generation,
             )?;
-            Ok::<_, AnimationError>((skeleton, pose, palette))
+            let mesh_index = node.mesh.ok_or(AnimationError::InvalidPalette)?;
+            let document_primitive = document
+                .meshes
+                .get(mesh_index)
+                .and_then(|mesh| mesh.primitives.get(primitive.primitive_index as usize))
+                .ok_or(AnimationError::InvalidPalette)?;
+            let source_mesh = document_primitive
+                .mesh
+                .as_ref()
+                .ok_or(AnimationError::InvalidPalette)?;
+            validate_skinning_inputs(
+                source_mesh.positions.len(),
+                &document_primitive.weights,
+                &palette,
+            )?;
+            let clip_duration = clip.as_ref().map_or(0.0, |clip| clip.duration);
+            Ok::<_, AnimationError>((
+                skeleton,
+                pose,
+                palette,
+                Arc::new(source_mesh.clone()),
+                Arc::from(document_primitive.weights.clone()),
+                clip_duration,
+            ))
         })();
         match resolved {
-            Ok((_skeleton, pose, palette)) => {
+            Ok((_skeleton, pose, palette, source_mesh, weights, clip_duration)) => {
                 let local = pose
                     .locals
                     .iter()
@@ -335,6 +365,13 @@ pub fn extract_animation_frame(
                     skeleton: skeleton_handle,
                     bounds: palette.bounds,
                     palette,
+                    source_mesh,
+                    weights,
+                    sample_time: if state.looping {
+                        state.time.rem_euclid(clip_duration)
+                    } else {
+                        state.time.clamp(0.0, clip_duration)
+                    },
                     world_transform: primitive.world_transform,
                 }));
             }

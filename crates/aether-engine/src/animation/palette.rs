@@ -20,7 +20,7 @@ pub struct JointPalette {
     pub bounds: Aabb,
 }
 
-/// Build `inverse_bind × global_joint` matrices and conservative world bounds.
+/// Build `global_joint × inverse_bind` matrices and conservative world bounds.
 pub fn build_joint_palette(
     document: &GltfDocument,
     skeleton: &SkeletonAsset,
@@ -51,7 +51,7 @@ pub fn build_joint_palette(
             &mut visiting,
         )?;
         let inverse_bind = Mat4::from_cols_array_2d(&skeleton.inverse_bind_matrices[joint_index]);
-        let palette = inverse_bind * global;
+        let palette = global * inverse_bind;
         if !palette.is_finite() {
             return Err(AnimationError::InvalidPalette);
         }

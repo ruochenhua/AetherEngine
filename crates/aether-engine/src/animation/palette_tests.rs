@@ -33,7 +33,7 @@ fn one_joint_document() -> (GltfDocument, SkeletonAsset) {
 }
 
 #[test]
-fn palette_uses_column_major_inverse_bind_times_global_joint() {
+fn palette_uses_column_major_global_joint_times_inverse_bind() {
     let (document, skeleton) = one_joint_document();
     let pose = PoseSample {
         locals: Arc::from(
@@ -54,7 +54,8 @@ fn palette_uses_column_major_inverse_bind_times_global_joint() {
         Quat::from_array(document.nodes[0].rotation),
         Vec3::from_array(document.nodes[0].translation),
     );
-    assert!(palette.matrices[0].abs_diff_eq(inverse * global, 1.0e-6));
+    assert!(palette.matrices[0].abs_diff_eq(global * inverse, 1.0e-6));
+    assert!(!palette.matrices[0].abs_diff_eq(inverse * global, 1.0e-3));
     assert_eq!(palette.generation, 9);
     assert_eq!(palette.skeleton, source_id());
 }

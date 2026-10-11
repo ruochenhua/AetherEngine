@@ -70,7 +70,7 @@ pub(super) fn gltf_fixture_evidence(variant: &str) -> Result<Value, Box<dyn std:
             let mut document = gltf_fixture(129);
             let mut nodes = document.nodes.as_ref().clone();
             nodes.push(DocumentNode {
-                mesh: Some(0),
+                mesh: Some(1),
                 skin: Some(1),
                 translation: [0.0; 3],
                 rotation: [0.0, 0.0, 0.0, 1.0],
@@ -79,6 +79,12 @@ pub(super) fn gltf_fixture_evidence(variant: &str) -> Result<Value, Box<dyn std:
                 parent: None,
             });
             document.nodes = Arc::new(nodes);
+            let independent_mesh = document.meshes[0].primitives[0].clone();
+            let mut meshes = document.meshes.as_ref().clone();
+            meshes.push(DocumentMesh {
+                primitives: vec![independent_mesh],
+            });
+            document.meshes = Arc::new(meshes);
             let mut skins = document.skins.as_ref().clone();
             skins.push(DocumentSkin {
                 joints: vec![129],
@@ -127,7 +133,7 @@ pub(super) fn gltf_fixture_evidence(variant: &str) -> Result<Value, Box<dyn std:
                 },
                 AnimationPrimitive {
                     entity_bits: 2,
-                    primitive_index: 1,
+                    primitive_index: 0,
                     node_index: 129,
                     mesh: mesh_ref,
                     document: Handle::new(1),
@@ -323,11 +329,14 @@ fn gltf_fixture(joint_count: usize) -> GltfDocument {
         })
         .collect::<Vec<_>>();
     let mut primitives = vec![DocumentPrimitive {
-        mesh: None,
-        weights: vec![JointWeights {
-            joints: [0; 4],
-            weights: [1.0, 0.0, 0.0, 0.0],
-        }],
+        mesh: Some(aether_engine::asset::mesh::CpuMesh::cube()),
+        weights: vec![
+            JointWeights {
+                joints: [0; 4],
+                weights: [1.0, 0.0, 0.0, 0.0],
+            };
+            24
+        ],
     }];
     if joint_count > 128 {
         // Keep a second independent item in the same mesh to verify that an

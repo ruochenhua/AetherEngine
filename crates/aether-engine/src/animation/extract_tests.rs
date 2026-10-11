@@ -1,7 +1,8 @@
 use super::*;
 use crate::animation::{AnimationCameraFrame, AnimatorState};
 use crate::asset::gltf_document::{
-    AnimationChannel, AnimationPath, AnimationValues, DocumentNode, DocumentSkin, Interpolation,
+    AnimationChannel, AnimationPath, AnimationValues, DocumentMesh, DocumentNode,
+    DocumentPrimitive, DocumentSkin, Interpolation, JointWeights,
 };
 use crate::asset::store::{canonicalize, AssetKind};
 use glam::Vec3;
@@ -59,6 +60,12 @@ fn fixture(joint_count: usize) -> Assets {
         .collect::<Vec<_>>();
     let document = Arc::new(GltfDocument {
         nodes: Arc::new(nodes),
+        meshes: Arc::new(vec![DocumentMesh {
+            primitives: vec![DocumentPrimitive {
+                mesh: Some(crate::asset::mesh::CpuMesh::cube()),
+                weights: vec![JointWeights::validated([0; 4], [1.0, 0.0, 0.0, 0.0]).unwrap(); 24],
+            }],
+        }]),
         skins: Arc::new(vec![DocumentSkin {
             joints: (0..joint_count).collect(),
             inverse_bind_matrices: vec![glam::Mat4::IDENTITY.to_cols_array_2d(); joint_count],
@@ -156,6 +163,8 @@ fn extracted_frame_publishes_one_palette_and_shared_bounds() {
     };
     assert_eq!(item.palette.matrices.len(), 128);
     assert_eq!(item.bounds, item.palette.bounds);
+    assert_eq!(item.source_mesh.positions.len(), item.weights.len());
+    assert_eq!(item.weights[0].weights[0], 1.0);
 }
 
 #[test]

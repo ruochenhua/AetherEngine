@@ -44,6 +44,25 @@ class VisualCaseRunnerTests(unittest.TestCase):
         self.assertIn("0.25", args)
         self.assertEqual(args[-2:], ["--fixture-variant", "valid_128"])
 
+    def test_t7_scene_capture_requires_a_drawable_skinned_item_at_the_seek_time(self):
+        case = {"time": {"simulation_time": 0.5}}
+        log = "T7_ANIMATION_FRAME frame_id=4 sample_time=0.500000000 skinned_items=1 drawable_items=1\n"
+        observed, errors = runner.check_t7_animation_capture("T7.2", case, log)
+        self.assertEqual(errors, [])
+        self.assertEqual(observed["skinned_items"], 1)
+        observed, errors = runner.check_t7_animation_capture(
+            "T7.3", {"time": {"simulation_time": 0.25}}, log
+        )
+        self.assertTrue(any("seek time" in error for error in errors))
+        self.assertIsNotNone(observed)
+
+    def test_t7_scene_capture_fails_without_drawable_animation_evidence(self):
+        observed, errors = runner.check_t7_animation_capture(
+            "T7.2", {"time": {"simulation_time": 0.5}}, ""
+        )
+        self.assertIsNone(observed)
+        self.assertTrue(any("T7_ANIMATION_FRAME" in error for error in errors))
+
 
 if __name__ == "__main__":
     unittest.main()

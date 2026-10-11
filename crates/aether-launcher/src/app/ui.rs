@@ -1,5 +1,6 @@
 //! egui UI rendering for the launcher.
 
+mod animation_controls;
 mod physics_panel;
 mod renderer_controls;
 
@@ -94,6 +95,11 @@ pub(crate) fn render(
             inspector_target = Some(target);
         }
     }
+    let mut animation_controls = selected_entity.and_then(|entity| {
+        app.scene_animation
+            .as_ref()?
+            .controls(entity.to_bits().get())
+    });
 
     // Extract hierarchy data (mesh entities + named scene-level actors)
     let mut hierarchy_items: Vec<HierarchyItem> = Vec::new();
@@ -263,6 +269,9 @@ pub(crate) fn render(
                                     if let Some(ref mut target) = inspector_target.as_mut() {
                                         inspector::render(ui, target);
                                     }
+                                    if let Some(controls) = animation_controls.as_mut() {
+                                        animation_controls::render(ui, controls);
+                                    }
 
                                     egui::CollapsingHeader::new("Scene Info")
                                         .default_open(false)
@@ -385,6 +394,14 @@ pub(crate) fn render(
                 }
             }
         }
+    }
+
+    if let (Some(entity), Some(controls), Some(animation)) = (
+        selected_entity,
+        animation_controls,
+        app.scene_animation.as_mut(),
+    ) {
+        animation.apply_controls(entity.to_bits().get(), controls);
     }
 
     let egui_winit_state = app.egui_winit_state.as_mut().unwrap();

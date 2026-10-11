@@ -1,7 +1,7 @@
 // WGSL shader for G-Buffer rendering.
 
 pub(super) const GBUFFER_SHADER_SRC: &str = r#"
-struct VertexInput { @location(0) position: vec3<f32>, @location(1) normal: vec3<f32>, @location(2) uv: vec2<f32>, @location(3) tangent: vec4<f32>, };
+struct VertexInput { @location(0) position: vec3<f32>, @location(1) normal: vec3<f32>, @location(2) uv: vec2<f32>, @location(3) tangent: vec4<f32>, @location(9) joints: vec4<u32>, @location(10) weights: vec4<f32>, };
 struct InstanceInput {
     @location(4) model_matrix_0: vec4<f32>,
     @location(5) model_matrix_1: vec4<f32>,
@@ -45,17 +45,62 @@ struct ObjectData {
 @group(2) @binding(5) var orm_sampler: sampler;
 @group(2) @binding(6) var emissive_texture: texture_2d<f32>;
 @group(2) @binding(7) var emissive_sampler: sampler;
+struct JointPalette { matrices: array<mat4x4<f32>, 128>, };
+@group(3) @binding(0) var<storage, read> joint_palette: JointPalette;
+
+fn skin_position(position: vec3<f32>, joints: vec4<u32>, weights: vec4<f32>) -> vec3<f32> {
+    let total_weight = dot(weights, vec4<f32>(1.0));
+    if (total_weight <= 0.0) { return position; }
+    let safe_joints = select(vec4<u32>(0u), joints, weights > vec4<f32>(0.0));
+    let skin = joint_palette.matrices[safe_joints.x] * weights.x
+        + joint_palette.matrices[safe_joints.y] * weights.y
+        + joint_palette.matrices[safe_joints.z] * weights.z
+        + joint_palette.matrices[safe_joints.w] * weights.w;
+    return (skin * vec4<f32>(position, 1.0)).xyz / total_weight;
+}
+fn transform_normal(linear: mat3x3<f32>, normal: vec3<f32>) -> vec3<f32> {
+    let a = linear[0];
+    let b = linear[1];
+    let c = linear[2];
+    let determinant = dot(a, cross(b, c));
+    if (abs(determinant) <= 1e-8) { return normalize(linear * normal); }
+    let cofactor = mat3x3<f32>(cross(b, c), cross(c, a), cross(a, b));
+    return normalize((cofactor * normal) / determinant);
+}
+fn skin_direction(direction: vec3<f32>, joints: vec4<u32>, weights: vec4<f32>) -> vec3<f32> {
+    let total_weight = dot(weights, vec4<f32>(1.0));
+    if (total_weight <= 0.0) { return direction; }
+    let safe_joints = select(vec4<u32>(0u), joints, weights > vec4<f32>(0.0));
+    let skin = joint_palette.matrices[safe_joints.x] * weights.x
+        + joint_palette.matrices[safe_joints.y] * weights.y
+        + joint_palette.matrices[safe_joints.z] * weights.z
+        + joint_palette.matrices[safe_joints.w] * weights.w;
+    return normalize((skin * vec4<f32>(direction, 0.0)).xyz / total_weight);
+}
+fn skin_normal(normal: vec3<f32>, joints: vec4<u32>, weights: vec4<f32>) -> vec3<f32> {
+    let total_weight = dot(weights, vec4<f32>(1.0));
+    if (total_weight <= 0.0) { return normal; }
+    let safe_joints = select(vec4<u32>(0u), joints, weights > vec4<f32>(0.0));
+    let skin = joint_palette.matrices[safe_joints.x] * weights.x
+        + joint_palette.matrices[safe_joints.y] * weights.y
+        + joint_palette.matrices[safe_joints.z] * weights.z
+        + joint_palette.matrices[safe_joints.w] * weights.w;
+    let skin_linear = mat3x3<f32>(skin[0].xyz, skin[1].xyz, skin[2].xyz);
+    return transform_normal(skin_linear, normal);
+}
 
 @vertex
 fn vs_main(in: VertexInput, instance: InstanceInput) -> VertexOutput {
     var out: VertexOutput;
     let model = mat4x4<f32>(instance.model_matrix_0, instance.model_matrix_1, instance.model_matrix_2, instance.model_matrix_3);
-    let world_pos = model * vec4<f32>(in.position, 1.0);
+    let skinned_position = skin_position(in.position, in.joints, in.weights);
+    let world_pos = model * vec4<f32>(skinned_position, 1.0);
     out.clip_position = vp.proj * vp.view * world_pos;
     out.world_pos = world_pos.xyz;
     let nm = mat3x3<f32>(model[0].xyz, model[1].xyz, model[2].xyz);
-    out.world_normal = normalize(nm * in.normal);
-    out.world_tangent = normalize(nm * in.tangent.xyz);
+    let local_normal = skin_normal(in.normal, in.joints, in.weights);
+    out.world_normal = transform_normal(nm, local_normal);
+    out.world_tangent = normalize(nm * skin_direction(in.tangent.xyz, in.joints, in.weights));
     out.tangent_sign = in.tangent.w;
     out.uv = in.uv;
     return out;

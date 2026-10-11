@@ -146,9 +146,22 @@ fn gbuffer_consumes_animation_frame_bounds() {
     pass.apply_frame(&frame);
     assert_eq!(pass.animation_bounds.as_ref(), &[bounds]);
     assert_eq!(pass.animation_items.len(), 1);
+    assert_eq!(pass.batches.len(), 1);
+    assert_eq!(pass.batches[0].mesh.vertex_count, 2);
     assert!(matches!(
         &pass.animation_items[0],
         crate::animation::AnimationRenderItem::Skinned(item)
             if item.palette.matrices.len() == 1 && item.bounds == pass.animation_bounds[0]
     ));
+}
+
+#[test]
+fn animated_gbuffer_uses_safe_joint_indices_and_inverse_transpose_normals() {
+    naga::front::wgsl::parse_str(shaders::GBUFFER_SHADER_SRC)
+        .expect("animated G-buffer shader should remain valid WGSL");
+    assert!(shaders::GBUFFER_SHADER_SRC.contains("safe_joints = select"));
+    assert!(shaders::GBUFFER_SHADER_SRC.contains("cofactor * normal"));
+    assert!(shaders::GBUFFER_SHADER_SRC.contains("transform_normal(skin_linear, normal)"));
+    assert!(shaders::GBUFFER_SHADER_SRC.contains("skin_normal(in.normal"));
+    assert!(shaders::GBUFFER_SHADER_SRC.contains("transform_normal(nm, local_normal)"));
 }

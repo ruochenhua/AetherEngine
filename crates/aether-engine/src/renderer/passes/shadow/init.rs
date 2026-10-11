@@ -23,9 +23,14 @@ impl ShadowPass {
             }],
         });
 
+        let skin_palette_layout =
+            crate::renderer::skinning::create_palette_layout(device, "Shadow Joint Palette BGL");
+        let fallback_skin_palette =
+            crate::renderer::skinning::create_identity_palette_buffer(device);
+
         let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Shadow PL"),
-            bind_group_layouts: &[Some(&vp_bgl)],
+            bind_group_layouts: &[Some(&vp_bgl), Some(&skin_palette_layout)],
             immediate_size: 0,
         });
 
@@ -105,6 +110,9 @@ impl ShadowPass {
             pipeline,
             cascade_uniform_buffer: vp_buf,
             cascade_bind_group: vp_bg,
+            skin_palette_layout,
+            fallback_skin_palette,
+            skin_palette_bind_groups: Vec::new(),
             instance_buffer,
             instance_buffer_capacity: initial_instance_capacity,
             shadow_depth_handle: None,

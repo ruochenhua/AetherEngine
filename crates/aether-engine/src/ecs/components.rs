@@ -60,6 +60,10 @@ pub struct MeshHandle {
     pub source: MeshSource,
     /// Human-readable mesh name for the UI / debug output.
     pub name: String,
+    /// Source glTF node represented by this submesh entity, when available.
+    pub source_node_index: Option<usize>,
+    /// Source glTF primitive represented by this submesh entity, when available.
+    pub source_primitive_index: Option<usize>,
 }
 
 impl MeshHandle {
@@ -69,7 +73,20 @@ impl MeshHandle {
             mesh,
             source,
             name: name.into(),
+            source_node_index: None,
+            source_primitive_index: None,
         }
+    }
+
+    /// Attach source glTF identity to an imported per-primitive mesh entity.
+    pub fn with_gltf_primitive(
+        mut self,
+        node_index: Option<usize>,
+        primitive_index: Option<usize>,
+    ) -> Self {
+        self.source_node_index = node_index;
+        self.source_primitive_index = primitive_index;
+        self
     }
 }
 

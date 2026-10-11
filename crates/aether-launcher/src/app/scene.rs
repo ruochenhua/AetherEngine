@@ -128,6 +128,16 @@ pub(crate) fn open_cli_scene(app: &mut App, ctx: &RenderContext) {
             ) {
                 Ok(new_lighting) => {
                     *lighting = new_lighting;
+                    app.scene_animation = match super::animation::SceneAnimation::from_world(
+                        world,
+                        &mut app.asset_manager,
+                    ) {
+                        Ok(animation) => animation,
+                        Err(error) => {
+                            tracing::warn!("scene animation setup failed: {error}");
+                            None
+                        }
+                    };
                     if let Err(error) = super::particle_runtime::load_scene(
                         &mut app.particle_runtime.particles,
                         world,
@@ -169,6 +179,16 @@ pub(crate) fn process_pending_load(app: &mut App) {
             ) {
                 Ok(new_lighting) => {
                     *lighting = new_lighting;
+                    app.scene_animation = match super::animation::SceneAnimation::from_world(
+                        world,
+                        &mut app.asset_manager,
+                    ) {
+                        Ok(animation) => animation,
+                        Err(error) => {
+                            tracing::warn!("scene animation setup failed: {error}");
+                            None
+                        }
+                    };
                     super::particle_runtime::physics_runtime::scene_switched(
                         &mut app.particle_runtime,
                     );
