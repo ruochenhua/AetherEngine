@@ -5,7 +5,7 @@
 
 mod animation_fixture;
 mod asset_hot_reload;
-mod cli;
+pub(crate) mod cli;
 mod editor;
 mod handler;
 mod input;
@@ -13,9 +13,9 @@ mod material_reload;
 mod particle_runtime;
 mod ready;
 mod render;
-mod scene;
-mod ui;
-mod workspace;
+pub(crate) mod scene;
+pub(crate) mod ui;
+pub(crate) mod workspace;
 
 #[cfg(test)]
 mod workspace_tests;
@@ -88,6 +88,7 @@ pub(crate) struct App {
     pub(crate) show_overlay: bool,
     pub(crate) fullscreen_3d: bool,
     pub(crate) workspace: workspace::Workspace,
+    pub(crate) logs: crate::logging::LogPanel,
     pub(crate) pending_select_entity: Option<Entity>,
     pub(crate) debug_mode: i32,
     pub(crate) ssao_enabled: bool,
@@ -148,7 +149,7 @@ pub(crate) struct App {
 }
 
 impl App {
-    fn new(cli: CliArgs) -> Self {
+    pub(crate) fn new(cli: CliArgs) -> Self {
         let debug_mode = cli.debug_mode.unwrap_or_default();
 
         let no_gui_overlay = cli.no_gui_overlay;
@@ -198,6 +199,7 @@ impl App {
             show_overlay: false,
             fullscreen_3d: false,
             workspace: workspace::Workspace::default(),
+            logs: crate::logging::LogPanel::default(),
             pending_select_entity: None,
             debug_mode,
             ssao_enabled: cli.ssao_enabled,
@@ -360,9 +362,20 @@ fn set_working_dir_to_project_root() {
 pub fn run() {
     set_working_dir_to_project_root();
 
-    tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::INFO)
-        .init();
+    use tracing_subscriber::prelude::*;
+    let root = std::env::current_dir().unwrap_or_default();
+    let (layer, logs, mut writer) = crate::logging::session(root);
+    // RUST_LOG is the developer route for DEBUG/TRACE; the default stays at INFO.
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+    if let Err(error) = tracing_subscriber::registry()
+        .with(filter)
+        .with(layer)
+        .try_init()
+    {
+        eprintln!("Could not install runtime logging: {error}");
+        return;
+    }
     info!("Aether Engine Launcher starting...");
 
     let cli = cli::parse_env_or_exit();
@@ -371,5 +384,7 @@ pub fn run() {
     event_loop.set_control_flow(ControlFlow::Poll);
 
     let mut app = App::new(cli);
+    app.logs = logs;
     event_loop.run_app(&mut app).expect("Event loop error");
+    writer.shutdown();
 }

@@ -141,7 +141,7 @@ pub(crate) fn open_cli_scene(app: &mut App, ctx: &RenderContext) {
                     app.pending_terrain_pipeline_rebuild = true;
                 }
                 Err(e) => {
-                    error!("Open scene error: {:?}", e);
+                    report_load_error(&path, &e);
                     // Keep the default empty scene alive so the launcher can
                     // still be used for manual scene discovery/editing.
                 }
@@ -184,7 +184,7 @@ pub(crate) fn process_pending_load(app: &mut App) {
                     super::editor::activate_scene(app, path.clone());
                 }
                 Err(e) => {
-                    error!("Open scene error: {:?}", e);
+                    report_load_error(&path, &e);
                 }
             }
         }
@@ -195,3 +195,7 @@ pub(crate) fn process_pending_load(app: &mut App) {
 mod ops;
 mod save;
 pub(crate) use ops::process_post_ui_ops;
+
+pub(crate) fn report_load_error(path: &std::path::Path, error: &anyhow::Error) {
+    tracing::error!(path = %path.display(), %error, "Open scene error");
+}

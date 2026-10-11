@@ -44,7 +44,12 @@ impl Workspace {
         self.select_resource(None);
     }
 
-    pub(crate) fn render(&mut self, ui: &mut egui::Ui, message: Option<&str>) {
+    pub(crate) fn render(
+        &mut self,
+        ui: &mut egui::Ui,
+        message: Option<&str>,
+        logs: &mut crate::logging::LogPanel,
+    ) {
         egui::Panel::top("workspace_controls").show_inside(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.toggle_value(&mut self.visible, "Workspace");
@@ -84,8 +89,16 @@ impl Workspace {
                     }
                 });
                 ui.separator();
-                egui::ScrollArea::vertical().show(ui, |ui| match self.tab {
-                    WorkspaceTab::Project => {
+                if self.tab == WorkspaceTab::Log {
+                    if let Some(message) = message {
+                        ui.label(message);
+                    }
+                    if let Some(path) = logs.render(ui) {
+                        self.select_resource(Some(path));
+                        self.select_tab(WorkspaceTab::Project);
+                    }
+                } else {
+                    egui::ScrollArea::vertical().show(ui, |ui| {
                         ui.add(
                             egui::TextEdit::singleline(&mut self.search)
                                 .hint_text("Search resources"),
@@ -99,15 +112,8 @@ impl Workspace {
                                 self.close_resource();
                             }
                         }
-                    }
-                    WorkspaceTab::Log => {
-                        if let Some(message) = message {
-                            ui.label(message);
-                        } else {
-                            ui.label("No log messages yet.");
-                        }
-                    }
-                });
+                    });
+                }
             });
         self.height = panel.response.rect.height();
     }

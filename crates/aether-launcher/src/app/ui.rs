@@ -21,6 +21,7 @@ pub(crate) fn render(
     egui::TexturesDelta,
     egui_wgpu::ScreenDescriptor,
 ) {
+    app.logs.drain();
     let window = app.window.as_ref().unwrap().clone();
     let raw_input = app
         .egui_winit_state
@@ -57,6 +58,7 @@ pub(crate) fn render(
 
 /// Draw editor UI without a GPU/window so input behavior can be exercised directly.
 pub(crate) fn draw(app: &mut App, dt: f32, raw_input: egui::RawInput) -> egui::FullOutput {
+    app.logs.drain();
     if app.no_gui_overlay && matches!(app.state, LauncherState::Running { .. }) {
         return egui::FullOutput::default();
     }
@@ -89,6 +91,7 @@ pub(crate) fn draw(app: &mut App, dt: f32, raw_input: egui::RawInput) -> egui::F
     let show_overlay = &mut app.show_overlay;
     let fullscreen_3d = &mut app.fullscreen_3d;
     let workspace = &mut app.workspace;
+    let logs = &mut app.logs;
     let debug_mode = app.debug_mode;
     let pending_select_entity = &mut app.pending_select_entity;
     let pending_editor_operation = &mut app.pending_editor_operation;
@@ -145,7 +148,7 @@ pub(crate) fn draw(app: &mut App, dt: f32, raw_input: egui::RawInput) -> egui::F
         *scroll_input += ui.ctx().input(|i| i.smooth_scroll_delta.y * 0.01);
 
         if (matches!(state, LauncherState::Menu) || *show_overlay) && !*fullscreen_3d {
-            workspace.render(ui, editor_operation_message.as_deref());
+            workspace.render(ui, editor_operation_message.as_deref(), logs);
         }
 
         match state {

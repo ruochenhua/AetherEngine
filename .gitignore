@@ -32,6 +32,7 @@ assets/meshes/*.glb
 
 # Logs
 *.log
+.aether/logs/
 
 # Parallel work manifests (per-worktree, not versioned)
 .aether-changes.yml
