@@ -15,6 +15,10 @@ mod ready;
 mod render;
 mod scene;
 mod ui;
+mod workspace;
+
+#[cfg(test)]
+mod workspace_tests;
 
 use aether_engine::{
     asset::{registry::BuiltinMeshRegistry, texture_cache::GpuTextureCache, AssetManager},
@@ -83,6 +87,7 @@ pub(crate) struct App {
     pub(crate) pending_load: Option<usize>,
     pub(crate) show_overlay: bool,
     pub(crate) fullscreen_3d: bool,
+    pub(crate) workspace: workspace::Workspace,
     pub(crate) pending_select_entity: Option<Entity>,
     pub(crate) debug_mode: i32,
     pub(crate) ssao_enabled: bool,
@@ -192,6 +197,7 @@ impl App {
             pending_load: None,
             show_overlay: false,
             fullscreen_3d: false,
+            workspace: workspace::Workspace::default(),
             pending_select_entity: None,
             debug_mode,
             ssao_enabled: cli.ssao_enabled,

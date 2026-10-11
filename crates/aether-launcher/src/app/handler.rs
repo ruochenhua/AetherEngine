@@ -120,7 +120,9 @@ impl ApplicationHandler for App {
         event: WindowEvent,
     ) {
         // Handle undo/redo before any ctx borrow to avoid lifetime conflicts.
-        if let WindowEvent::RedrawRequested = event {
+        if matches!(event, WindowEvent::RedrawRequested)
+            && !self.egui_ctx.egui_wants_keyboard_input()
+        {
             if self.input.ctrl_held() && self.input.key_pressed(KeyCode::KeyZ) {
                 self.apply_undo();
             }

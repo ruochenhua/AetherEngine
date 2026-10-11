@@ -32,19 +32,16 @@ fn pick_at_screen_position(
 
 /// Update camera, picking, and gizmo interaction for the current frame.
 pub(crate) fn update_camera_and_picking(app: &mut App, dt: f32, egui_consumed: bool) {
-    if !egui_consumed && matches!(app.state, LauncherState::Running { .. }) {
+    if !egui_consumed
+        && !app.egui_ctx.egui_wants_keyboard_input()
+        && matches!(app.state, LauncherState::Running { .. })
+    {
         let (dx, dy) = app.input.mouse_delta();
         app.camera.update(dt, dx, dy, app.scroll_input, &app.input);
         app.scroll_input = 0.0;
     }
 
-    if app.input.key_pressed(winit::keyboard::KeyCode::Delete) {
-        if let LauncherState::Running { ref mut world, .. } = app.state {
-            if let Some((entity, _)) = selected_entity_transform(world) {
-                app.pending_despawn_entity = Some(entity);
-            }
-        }
-    }
+    super::process_scene_shortcuts(app, app.input.key_pressed(winit::keyboard::KeyCode::Delete));
 
     let mut legacy_edit_recorded = false;
     if !egui_consumed {

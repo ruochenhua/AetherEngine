@@ -21,12 +21,12 @@ pub(crate) fn render(
     egui::TexturesDelta,
     egui_wgpu::ScreenDescriptor,
 ) {
-    let window = app.window.as_ref().unwrap();
+    let window = app.window.as_ref().unwrap().clone();
     let raw_input = app
         .egui_winit_state
         .as_mut()
         .unwrap()
-        .take_egui_input(window);
+        .take_egui_input(&window);
     let skip_egui = app.no_gui_overlay && matches!(app.state, LauncherState::Running { .. });
 
     if skip_egui {
@@ -38,6 +38,28 @@ pub(crate) fn render(
         return (vec![], egui::TexturesDelta::default(), sd);
     }
 
+    let egui_output = draw(app, dt, raw_input);
+
+    let egui_winit_state = app.egui_winit_state.as_mut().unwrap();
+    egui_winit_state.handle_platform_output(&window, egui_output.platform_output);
+    let pj = app
+        .egui_ctx
+        .tessellate(egui_output.shapes, egui_output.pixels_per_point);
+    let sd = egui_wgpu::ScreenDescriptor {
+        size_in_pixels: [
+            app.ctx.as_ref().unwrap().config.width,
+            app.ctx.as_ref().unwrap().config.height,
+        ],
+        pixels_per_point: window.scale_factor() as f32,
+    };
+    (pj, egui_output.textures_delta, sd)
+}
+
+/// Draw editor UI without a GPU/window so input behavior can be exercised directly.
+pub(crate) fn draw(app: &mut App, dt: f32, raw_input: egui::RawInput) -> egui::FullOutput {
+    if app.no_gui_overlay && matches!(app.state, LauncherState::Running { .. }) {
+        return egui::FullOutput::default();
+    }
     // Extract mutable references needed by the egui closure
     let scroll_input = &mut app.scroll_input;
     let state = &app.state;
@@ -66,6 +88,7 @@ pub(crate) fn render(
     let ssr_debug_mode = app.ssr_debug_mode;
     let show_overlay = &mut app.show_overlay;
     let fullscreen_3d = &mut app.fullscreen_3d;
+    let workspace = &mut app.workspace;
     let debug_mode = app.debug_mode;
     let pending_select_entity = &mut app.pending_select_entity;
     let pending_editor_operation = &mut app.pending_editor_operation;
@@ -120,6 +143,10 @@ pub(crate) fn render(
 
     let egui_output = app.egui_ctx.run_ui(raw_input, |ui| {
         *scroll_input += ui.ctx().input(|i| i.smooth_scroll_delta.y * 0.01);
+
+        if (matches!(state, LauncherState::Menu) || *show_overlay) && !*fullscreen_3d {
+            workspace.render(ui, editor_operation_message.as_deref());
+        }
 
         match state {
             LauncherState::Menu => {
@@ -419,17 +446,5 @@ pub(crate) fn render(
         }
     }
 
-    let egui_winit_state = app.egui_winit_state.as_mut().unwrap();
-    egui_winit_state.handle_platform_output(window, egui_output.platform_output);
-    let pj = app
-        .egui_ctx
-        .tessellate(egui_output.shapes, egui_output.pixels_per_point);
-    let sd = egui_wgpu::ScreenDescriptor {
-        size_in_pixels: [
-            app.ctx.as_ref().unwrap().config.width,
-            app.ctx.as_ref().unwrap().config.height,
-        ],
-        pixels_per_point: window.scale_factor() as f32,
-    };
-    (pj, egui_output.textures_delta, sd)
+    egui_output
 }
