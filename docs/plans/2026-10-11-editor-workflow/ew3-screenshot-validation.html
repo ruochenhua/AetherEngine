@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EW3 编辑器界面截图验证报告</title>
+<style>
+  :root { color-scheme: light; font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #172033; background: #f4f7fb; }
+  body { max-width: 1100px; margin: 40px auto; padding: 0 24px 48px; }
+  header, section { background: white; border: 1px solid #dbe3ef; border-radius: 14px; padding: 24px 28px; margin: 18px 0; box-shadow: 0 6px 24px #1b315012; }
+  h1 { margin: 0 0 8px; font-size: 30px; }
+  h2 { margin-top: 0; font-size: 20px; }
+  .status { display: inline-block; border-radius: 999px; padding: 3px 12px; color: #075c3b; background: #d9f7e9; font-weight: 700; }
+  .caveat { border-left: 4px solid #e9a52e; padding: 8px 14px; background: #fff8e9; }
+  img { display: block; width: 100%; height: auto; border-radius: 8px; border: 1px solid #ccd5e2; background: #111; }
+  figcaption { color: #536178; font-size: 14px; margin-top: 8px; }
+  code { background: #f0f3f8; padding: 2px 5px; border-radius: 4px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 9px 10px; text-align: left; border-bottom: 1px solid #e4e9f1; vertical-align: top; }
+  th { width: 190px; color: #4a5870; }
+</style>
+<body>
+  <header>
+    <span class="status">实际窗口已核验</span>
+    <h1>EW3 · 编辑器面板界面验证</h1>
+    <p>这张是 release launcher 的真实桌面窗口截图，展示 Project 文件资源管理器与编辑器主要面板。先前报告里的场景渲染图不包含编辑器 UI，现已纠正。</p>
+  </header>
+  <section>
+    <h2>实际编辑器窗口</h2>
+    <figure>
+      <img src="../../../tests/output/ew3-editor-workspace.png" alt="Aether Engine Launcher 实际编辑器窗口，显示 Project 面板">
+      <figcaption>实际桌面截图 · <code>tests/output/ew3-editor-workspace.png</code> · release launcher · 已打开 <code>18_file_mesh.ron</code></figcaption>
+    </figure>
+  </section>
+  <section>
+    <h2>面板核验结果</h2>
+    <table>
+      <tr><th>左侧</th><td>Scene 层级，列出 Camera、DirectionalLight 和 OBJ 网格。</td></tr>
+      <tr><th>中间</th><td>场景渲染视口，OBJ 与棋盘纹理显示。</td></tr>
+      <tr><th>右侧</th><td>Physics、Scene Info、Render Features 和 Input Debug 设置面板。</td></tr>
+      <tr><th>底部</th><td>Project 资源管理器，显示 Assets / Scenes 目录树、资源列表、搜索与类型筛选。</td></tr>
+      <tr><th>日志入口</th><td>窗口顶部和底部面板栏均显示 Project / Log 切换入口；本张截图停留在 Project 标签，因此没有展示 Log 内容区。</td></tr>
+      <tr><th>运行结果</th><td>Release launcher 实际窗口可见；场景模型与编辑器控件均已绘制。</td></tr>
+      <tr><th>自动化回归</th><td><code>./scripts/verify-ci.sh</code> 全通过；Engine 410 项、Launcher 122 项测试通过；模块健康 349 个 Rust 文件、0 个超限。</td></tr>
+    </table>
+    <p class="caveat"><strong>后续确认：</strong>Log 面板实现和相关测试已通过，但本次实际截图没有切换到 Log 标签；Project → Viewport 的真实鼠标拖放也仍需手动验收。</p>
+  </section>
+  <section>
+    <h2>纯场景渲染图</h2>
+    <p>这是先前生成的 2560 × 1440 离屏场景图。它用于确认场景渲染，不是编辑器 UI 截图。</p>
+    <figure><img src="../../../tests/output/ew3-file-mesh.png" alt="18_file_mesh 离屏渲染画面"></figure>
+  </section>
+</body>
+</html>

@@ -1,11 +1,15 @@
 use super::error::{ComponentKind, EditorError};
 use super::snapshot::{ComponentRecord, EDITOR_SCHEMA_VERSION};
 use crate::ecs::components::{
-    Atmosphere, Camera, Clouds, Light, MeshHandle, Name, Transform, Visibility,
+    Atmosphere, Camera, Clouds, Light, MaterialAssetRef, MaterialAssetStatus, MeshHandle,
+    MeshSource, Name, Selected, Transform, Visibility,
 };
 use crate::ecs::{Entity, World};
+use crate::renderer::extracted_material::ExtractedMaterial;
 use crate::renderer::light::LightingUniforms;
 use crate::renderer::renderable::MaterialUniform;
+use crate::scene::{MaterialConfig, ObjectConfig};
+use glam::{Quat, Vec3};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -38,6 +42,11 @@ pub enum EditorOperation {
         entity_name: String,
         /// Component value.
         component: ComponentRecord,
+    },
+    /// Place a file-backed renderable using host-resolved runtime assets.
+    PlaceObject {
+        /// Stable object configuration persisted in the scene and operation log.
+        object: ObjectConfig,
     },
 }
 
@@ -129,6 +138,71 @@ pub struct EditorContext<'a> {
     pub operation_log_target: &'a Path,
 }
 
+/// Host-resolved runtime data for one stable `PlaceObject` operation.
+///
+/// The launcher constructs this only after validating and loading the asset.
+/// Runtime GPU handles remain outside the serialized operation log.
+pub struct PreparedObject {
+    /// Serializable scene object written to the RON document and operation log.
+    pub object: ObjectConfig,
+    /// Resolved runtime mesh handle.
+    pub mesh: MeshHandle,
+    /// Resolved runtime material uniform.
+    pub material: MaterialUniform,
+    /// Resolved renderer material state.
+    pub extracted_material: ExtractedMaterial,
+}
+
+impl PreparedObject {
+    pub(crate) fn validate(&self) -> Result<(), EditorError> {
+        if self.object.name.trim().is_empty() {
+            return Err(EditorError::EmptyName);
+        }
+        if self.object.material_asset.is_some() || self.object.physics.is_some() {
+            return Err(EditorError::InvalidObjectOperation(
+                "drop placement does not support linked materials or physics".into(),
+            ));
+        }
+        match (&self.object.mesh, &self.mesh.source) {
+            (crate::scene::MeshRef::File(expected), MeshSource::File(actual))
+                if expected == actual =>
+            {
+                Ok(())
+            }
+            _ => Err(EditorError::InvalidObjectOperation(
+                "prepared mesh source does not match the serialized object".into(),
+            )),
+        }
+    }
+
+    pub(crate) fn spawn_into(&self, world: &mut World) -> Result<Entity, EditorError> {
+        self.validate()?;
+        if world
+            .query::<&Name>()
+            .iter()
+            .any(|name| name.0 == self.object.name)
+        {
+            return Err(EditorError::DuplicateName {
+                name: self.object.name.clone(),
+            });
+        }
+        let entity = world.spawn((
+            Transform {
+                translation: Vec3::from_array(self.object.transform.translation),
+                rotation: Quat::from_array(self.object.transform.rotation),
+                scale: Vec3::from_array(self.object.transform.scale),
+            },
+            self.mesh.clone(),
+            self.material,
+            self.object.material.clone(),
+            self.extracted_material.clone(),
+            Visibility(self.object.visible),
+            Name(self.object.name.clone()),
+        ));
+        Ok(entity)
+    }
+}
+
 impl<'a> EditorContext<'a> {
     /// Construct an editor transaction context.
     pub fn new(
@@ -153,6 +227,11 @@ pub(super) struct RuntimeEntity {
     pub(super) transform: Option<Transform>,
     pub(super) mesh: Option<MeshHandle>,
     pub(super) material: Option<MaterialUniform>,
+    pub(super) material_config: Option<MaterialConfig>,
+    pub(super) extracted_material: Option<ExtractedMaterial>,
+    pub(super) material_asset: Option<MaterialAssetRef>,
+    pub(super) material_asset_status: Option<MaterialAssetStatus>,
+    pub(super) selected: bool,
     pub(super) visibility: Option<Visibility>,
     pub(super) name: Option<Name>,
     pub(super) light: Option<Light>,
@@ -174,6 +253,27 @@ impl RuntimeEntity {
                 .get()
                 .ok()
                 .copied(),
+            material_config: world
+                .query_one::<&MaterialConfig>(entity)
+                .get()
+                .ok()
+                .cloned(),
+            extracted_material: world
+                .query_one::<&ExtractedMaterial>(entity)
+                .get()
+                .ok()
+                .cloned(),
+            material_asset: world
+                .query_one::<&MaterialAssetRef>(entity)
+                .get()
+                .ok()
+                .cloned(),
+            material_asset_status: world
+                .query_one::<&MaterialAssetStatus>(entity)
+                .get()
+                .ok()
+                .cloned(),
+            selected: world.query_one::<&Selected>(entity).get().is_ok(),
             visibility: world.query_one::<&Visibility>(entity).get().ok().copied(),
             name: world.query_one::<&Name>(entity).get().ok().cloned(),
             light: world.query_one::<&Light>(entity).get().ok().cloned(),
@@ -183,7 +283,11 @@ impl RuntimeEntity {
         })
     }
 
-    pub(super) fn spawn_into(&self, world: &mut World) -> Result<Entity, EditorError> {
+    pub(super) fn spawn_into(
+        &self,
+        world: &mut World,
+        restore_selection: bool,
+    ) -> Result<Entity, EditorError> {
         let entity = world.spawn(());
         let result = (|| {
             if let Some(value) = &self.transform {
@@ -199,6 +303,31 @@ impl RuntimeEntity {
             if let Some(value) = self.material {
                 world
                     .insert(entity, (value,))
+                    .map_err(|error| EditorError::RollbackFailed(error.to_string()))?;
+            }
+            if let Some(value) = &self.material_config {
+                world
+                    .insert(entity, (value.clone(),))
+                    .map_err(|error| EditorError::RollbackFailed(error.to_string()))?;
+            }
+            if let Some(value) = &self.extracted_material {
+                world
+                    .insert(entity, (value.clone(),))
+                    .map_err(|error| EditorError::RollbackFailed(error.to_string()))?;
+            }
+            if let Some(value) = &self.material_asset {
+                world
+                    .insert(entity, (value.clone(),))
+                    .map_err(|error| EditorError::RollbackFailed(error.to_string()))?;
+            }
+            if let Some(value) = &self.material_asset_status {
+                world
+                    .insert(entity, (value.clone(),))
+                    .map_err(|error| EditorError::RollbackFailed(error.to_string()))?;
+            }
+            if self.selected && restore_selection {
+                world
+                    .insert(entity, (Selected,))
                     .map_err(|error| EditorError::RollbackFailed(error.to_string()))?;
             }
             if let Some(value) = self.visibility {

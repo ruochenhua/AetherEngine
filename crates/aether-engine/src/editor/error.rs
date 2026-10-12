@@ -75,6 +75,20 @@ pub enum EditorError {
         /// Component that lacks a safe runtime resolver.
         component: ComponentKind,
     },
+    /// The launcher must resolve GPU/runtime assets before this operation can apply.
+    #[error("operation requires host asset resolution before it can be applied")]
+    HostResolutionRequired,
+    /// A prepared scene object does not match the supported placement contract.
+    #[error("invalid object placement: {0}")]
+    InvalidObjectOperation(String),
+    /// A two-file write failed and one or more old files could not be restored.
+    #[error("editor persistence failed ({original}); rollback also failed: {rollback}")]
+    PersistenceRollbackFailed {
+        /// Error that triggered recovery.
+        original: String,
+        /// Errors encountered while restoring prior files.
+        rollback: String,
+    },
     /// File-system failure during atomic persistence.
     #[error("I/O error at {path}: {source}")]
     Io {

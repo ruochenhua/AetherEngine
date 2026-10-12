@@ -11,6 +11,22 @@ pub(crate) enum WorkspaceTab {
     Log,
 }
 
+/// egui-native Project asset drag payload.
+#[derive(Clone, Debug)]
+pub(crate) struct AssetDragPayload {
+    pub(crate) relative_path: String,
+}
+
+/// Physical pointer position plus the central viewport's logical hit rectangle.
+#[derive(Clone, Debug)]
+pub(crate) struct ViewportDropRequest {
+    pub(crate) relative_path: String,
+    pub(crate) pointer_physical: [f32; 2],
+    pub(crate) viewport_points_min: [f32; 2],
+    pub(crate) viewport_points_max: [f32; 2],
+    pub(crate) pixels_per_point: f32,
+}
+
 pub(crate) struct Workspace {
     pub(crate) tab: WorkspaceTab,
     pub(crate) visible: bool,
@@ -25,7 +41,7 @@ impl Default for Workspace {
         Self {
             tab: WorkspaceTab::Project,
             visible: true,
-            height: 180.0,
+            height: 260.0,
             selected_resource: None,
             project: project_panel::ProjectPanel::new(
                 std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
@@ -35,10 +51,18 @@ impl Default for Workspace {
 }
 
 impl Workspace {
+    pub(crate) fn project_root(&self) -> &std::path::Path {
+        self.project.root()
+    }
     #[cfg(test)]
     pub(crate) fn set_project_root(&mut self, root: PathBuf) {
         self.project = project_panel::ProjectPanel::new(root);
         self.project.wait_for_refresh();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn project_folder_width(&self) -> f32 {
+        self.project.folder_width()
     }
 
     #[cfg(test)]
@@ -64,12 +88,15 @@ impl Workspace {
     ) -> Option<PathBuf> {
         egui::Panel::top("workspace_controls").show_inside(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.toggle_value(&mut self.visible, "Workspace");
-                if ui.button("Project").clicked() {
-                    self.select_tab(WorkspaceTab::Project);
-                }
-                if ui.button("Log").clicked() {
-                    self.select_tab(WorkspaceTab::Log);
+                if self.visible {
+                    ui.toggle_value(&mut self.visible, "Workspace");
+                } else {
+                    if ui.button("Project").clicked() {
+                        self.select_tab(WorkspaceTab::Project);
+                    }
+                    if ui.button("Log").clicked() {
+                        self.select_tab(WorkspaceTab::Log);
+                    }
                 }
             });
         });
@@ -111,6 +138,9 @@ impl Workspace {
                         self.select_tab(WorkspaceTab::Project);
                     }
                 } else {
+                    if let Some(message) = message {
+                        ui.label(message);
+                    }
                     pending_open = self.project.render(ui);
                     self.selected_resource = self.project.selected_resource().map(PathBuf::from);
                 }

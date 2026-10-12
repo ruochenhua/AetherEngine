@@ -5,12 +5,20 @@ use crate::project_index::{
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
 
+mod helpers;
+use helpers::{
+    child_directories, current_prefix, file_name, kind_name, normalize_path, resource_icon,
+    sort_name, ui_state_empty, validity_name,
+};
+
 pub(super) struct ProjectPanel {
     root: PathBuf,
     index: ProjectIndex,
     search: String,
     kind: Option<ResourceKind>,
     sort: ProjectSort,
+    folder_width: f32,
+    folder_drag_start_width: Option<f32>,
     history: PathHistory,
     selected_resource: Option<String>,
     scan_result: Option<Receiver<(u64, Result<IndexSnapshot, crate::project_index::IndexError>)>>,
@@ -24,6 +32,8 @@ impl ProjectPanel {
             search: String::new(),
             kind: None,
             sort: ProjectSort::Name,
+            folder_width: 260.0,
+            folder_drag_start_width: None,
             history: PathHistory::default(),
             selected_resource: None,
             scan_result: None,
@@ -31,6 +41,15 @@ impl ProjectPanel {
         panel.history.visit("");
         panel.schedule_refresh();
         panel
+    }
+
+    pub(super) fn root(&self) -> &Path {
+        &self.root
+    }
+
+    #[cfg(test)]
+    pub(super) fn folder_width(&self) -> f32 {
+        self.folder_width
     }
 
     pub(super) fn select_resource(&mut self, path: Option<PathBuf>) {
@@ -91,10 +110,11 @@ impl ProjectPanel {
         let mut pending_open = None;
         ui.horizontal(|ui| {
             ui.heading("Project resources");
+            ui.add_space(8.0);
             if ui.button("Refresh").clicked() {
                 self.schedule_refresh();
             }
-            if ui.button("Close resource details").clicked() {
+            if self.selected_resource.is_some() && ui.button("Close resource details").clicked() {
                 self.selected_resource = None;
             }
         });
@@ -114,7 +134,7 @@ impl ProjectPanel {
             ui.add(
                 egui::TextEdit::singleline(&mut self.search)
                     .hint_text("Search resources")
-                    .desired_width(190.0),
+                    .desired_width(260.0),
             );
             egui::ComboBox::from_label("Kind")
                 .selected_text(self.kind.map(kind_name).unwrap_or("All kinds"))
@@ -145,54 +165,147 @@ impl ProjectPanel {
 
         let snapshot = self.index.snapshot().clone();
         let current = self.current_directory().to_owned();
-        ui.columns(2, |columns| {
-            columns[0].heading("Folders");
-            egui::ScrollArea::vertical()
-                .id_salt("project_folders")
-                .show(&mut columns[0], |ui| {
-                    self.render_directory_tree(ui, &snapshot, "", 0);
-                });
+        let browser_size = ui.available_size_before_wrap();
+        ui.allocate_ui_with_layout(
+            browser_size,
+            egui::Layout::left_to_right(egui::Align::Min),
+            |ui| {
+                ui.allocate_ui_with_layout(
+                    egui::vec2(self.folder_width, browser_size.y.max(80.0)),
+                    egui::Layout::top_down(egui::Align::Min),
+                    |ui| {
+                        ui.heading("Folders");
+                        egui::ScrollArea::vertical()
+                            .id_salt("project_folders")
+                            .show(ui, |ui| {
+                                self.render_directory_tree(ui, &snapshot, "", 0);
+                            });
+                    },
+                );
 
-            columns[1].heading("Resources");
-            let query = ProjectQuery::default().search(&self.search).sort(self.sort);
-            let resources = query.apply(&snapshot);
-            let resources = resources
-                .into_iter()
-                .filter(|entry| entry.path.starts_with(&current_prefix(&current)))
-                .filter(|entry| self.kind.map_or(true, |kind| entry.kind == kind))
-                .collect::<Vec<_>>();
-            if resources.is_empty() {
-                if self.search.trim().is_empty() {
-                    ui_state_empty(&mut columns[1], &snapshot, &current);
-                } else {
-                    columns[1].label("No results");
-                }
-            } else {
-                egui::ScrollArea::vertical()
-                    .id_salt("project_resources")
-                    .show(&mut columns[1], |ui| {
-                        for entry in resources {
-                            let selected =
-                                self.selected_resource.as_deref() == Some(entry.path.as_str());
-                            let label =
-                                format!("{}  ·  {}", file_name(&entry.path), kind_name(entry.kind));
-                            let response = ui.selectable_label(selected, label);
-                            if response.clicked() {
-                                self.selected_resource = Some(entry.path.clone());
+                let (_, splitter_rect) =
+                    ui.allocate_space(egui::vec2(18.0, browser_size.y.max(80.0)));
+
+                let resource_width = ui.available_width();
+                ui.allocate_ui_with_layout(
+                    egui::vec2(resource_width, browser_size.y.max(80.0)),
+                    egui::Layout::top_down(egui::Align::Min),
+                    |ui| {
+                        ui.heading("Resources");
+                        let query = ProjectQuery::default().search(&self.search).sort(self.sort);
+                        let resources = query.apply(&snapshot);
+                        let resources = resources
+                            .into_iter()
+                            .filter(|entry| entry.path.starts_with(&current_prefix(&current)))
+                            .filter(|entry| self.kind.map_or(true, |kind| entry.kind == kind))
+                            .collect::<Vec<_>>();
+                        if resources.is_empty() {
+                            if self.search.trim().is_empty() {
+                                ui_state_empty(ui, &snapshot, &current);
+                            } else {
+                                ui.label("No results");
                             }
-                            if response.double_clicked()
-                                && entry.kind == ResourceKind::Scene
-                                && entry.validity == ResourceValidity::Valid
-                            {
-                                pending_open =
-                                    Some(self.root.join(
-                                        entry.path.replace('/', std::path::MAIN_SEPARATOR_STR),
-                                    ));
-                            }
+                        } else {
+                            egui::ScrollArea::vertical()
+                                .id_salt("project_resources")
+                                .show(ui, |ui| {
+                                    for entry in resources {
+                                        let selected = self.selected_resource.as_deref()
+                                            == Some(entry.path.as_str());
+                                        let (icon, color) = resource_icon(entry.kind, ui);
+                                        let label = format!(
+                                            "{}  ·  {}",
+                                            file_name(&entry.path),
+                                            kind_name(entry.kind)
+                                        );
+                                        let response = ui
+                                            .push_id(&entry.path, |ui| {
+                                                ui.horizontal(|ui| {
+                                                    ui.colored_label(color, icon);
+                                                    ui.selectable_label(selected, label)
+                                                        .interact(egui::Sense::click_and_drag())
+                                                })
+                                            })
+                                            .inner
+                                            .inner;
+                                        let response = response.on_hover_text(format!(
+                                            "{} · {} · {}",
+                                            entry.path,
+                                            kind_name(entry.kind),
+                                            validity_name(entry.validity)
+                                        ));
+                                        if entry.kind == ResourceKind::Obj
+                                            && entry.validity == ResourceValidity::Valid
+                                        {
+                                            response.dnd_set_drag_payload(
+                                                super::AssetDragPayload {
+                                                    relative_path: entry.path.clone(),
+                                                },
+                                            );
+                                        }
+                                        if response.clicked() {
+                                            self.selected_resource = Some(entry.path.clone());
+                                        }
+                                        if response.double_clicked()
+                                            && entry.kind == ResourceKind::Scene
+                                            && entry.validity == ResourceValidity::Valid
+                                        {
+                                            pending_open =
+                                                Some(self.root.join(
+                                                    entry.path.replace(
+                                                        '/',
+                                                        std::path::MAIN_SEPARATOR_STR,
+                                                    ),
+                                                ));
+                                        }
+                                    }
+                                });
                         }
-                    });
-            }
-        });
+                    },
+                );
+
+                // Register after both columns so the scroll areas cannot cover
+                // the divider's drag target at the shared edge.
+                let splitter = ui
+                    .interact(
+                        splitter_rect,
+                        egui::Id::new("project_folder_splitter"),
+                        egui::Sense::drag(),
+                    )
+                    .on_hover_cursor(egui::CursorIcon::ResizeHorizontal);
+                let accent = if splitter.dragged() {
+                    ui.visuals().widgets.active.fg_stroke.color
+                } else if splitter.hovered() {
+                    ui.visuals().widgets.hovered.fg_stroke.color
+                } else {
+                    ui.visuals().weak_text_color()
+                };
+                ui.painter().vline(
+                    splitter_rect.center().x,
+                    splitter_rect.y_range(),
+                    egui::Stroke::new(1.0, accent),
+                );
+                for offset in [-4.0, 0.0, 4.0] {
+                    ui.painter().circle_filled(
+                        splitter_rect.center() + egui::vec2(0.0, offset),
+                        1.5,
+                        accent,
+                    );
+                }
+                if splitter.drag_started() {
+                    self.folder_drag_start_width = Some(self.folder_width);
+                }
+                if splitter.dragged() {
+                    if let Some(start_width) = self.folder_drag_start_width {
+                        let delta = splitter.total_drag_delta().unwrap_or_default().x;
+                        self.folder_width = (start_width + delta).clamp(140.0, 480.0);
+                    }
+                }
+                if splitter.drag_stopped() {
+                    self.folder_drag_start_width = None;
+                }
+            },
+        );
         pending_open
     }
 
@@ -300,84 +413,5 @@ impl ProjectPanel {
 
     pub(super) fn current_directory(&self) -> &str {
         self.history.current().unwrap_or("")
-    }
-}
-
-fn ui_state_empty(ui: &mut egui::Ui, snapshot: &IndexSnapshot, directory: &str) {
-    if !snapshot.missing_roots.is_empty() && directory.is_empty() {
-        ui.label(format!(
-            "Empty project · missing {}",
-            snapshot.missing_roots.join(", ")
-        ));
-    } else {
-        ui.label("No resources in this folder");
-    }
-}
-
-fn current_prefix(path: &str) -> String {
-    if path.is_empty() {
-        String::new()
-    } else {
-        format!("{path}/")
-    }
-}
-
-fn child_directories(snapshot: &IndexSnapshot, parent: &str) -> Vec<String> {
-    let prefix = current_prefix(parent);
-    let mut children = snapshot
-        .entries
-        .iter()
-        .filter_map(|entry| {
-            let rest = entry.path.strip_prefix(&prefix)?;
-            let segment = rest.split('/').next()?;
-            (rest.contains('/')).then(|| {
-                if prefix.is_empty() {
-                    segment.to_owned()
-                } else {
-                    format!("{prefix}{segment}")
-                }
-            })
-        })
-        .collect::<Vec<_>>();
-    if parent.is_empty() {
-        for root in ["assets", "scenes"] {
-            children.push(root.to_owned());
-        }
-    }
-    children.sort();
-    children.dedup();
-    children
-}
-
-fn normalize_path(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
-}
-
-fn file_name(path: &str) -> &str {
-    path.rsplit('/').next().unwrap_or(path)
-}
-fn kind_name(kind: ResourceKind) -> &'static str {
-    match kind {
-        ResourceKind::Scene => "Scene",
-        ResourceKind::Prefab => "Prefab",
-        ResourceKind::Material => "Material",
-        ResourceKind::Gltf => "glTF",
-        ResourceKind::Obj => "OBJ",
-        ResourceKind::Image => "Image",
-        ResourceKind::Unknown => "Unknown",
-    }
-}
-fn validity_name(validity: ResourceValidity) -> &'static str {
-    match validity {
-        ResourceValidity::Valid => "Valid",
-        ResourceValidity::Invalid => "Invalid",
-        ResourceValidity::Unknown => "Unknown",
-    }
-}
-fn sort_name(sort: ProjectSort) -> &'static str {
-    match sort {
-        ProjectSort::Name => "Name",
-        ProjectSort::Path => "Path",
-        ProjectSort::Kind => "Kind",
     }
 }

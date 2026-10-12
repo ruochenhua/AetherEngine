@@ -18,6 +18,10 @@ pub(crate) mod ui;
 pub(crate) mod workspace;
 
 #[cfg(test)]
+mod workspace_drop_tests;
+#[cfg(test)]
+mod workspace_layout_tests;
+#[cfg(test)]
 mod workspace_project_tests;
 #[cfg(test)]
 mod workspace_tests;
@@ -122,8 +126,10 @@ pub(crate) struct App {
     pub(crate) pending_add_terrain: bool,
     pub(crate) pending_add_water: bool,
     pub(crate) pending_editor_operation: Option<aether_engine::editor::EditorOperation>,
+    pub(crate) pending_asset_drop: Option<workspace::ViewportDropRequest>,
     pub(crate) editor_history: aether_engine::editor::EditorHistory,
     pub(crate) editor_operation_message: Option<String>,
+    pub(crate) editor_write_degraded: Option<String>,
     pub(crate) undo_action_order: Vec<editor::UndoActionKind>,
     pub(crate) redo_action_order: Vec<editor::UndoActionKind>,
     pub(crate) pending_despawn_entity: Option<Entity>,
@@ -232,8 +238,10 @@ impl App {
             pending_add_terrain: false,
             pending_add_water: false,
             pending_editor_operation: None,
+            pending_asset_drop: None,
             editor_history: aether_engine::editor::EditorHistory::default(),
             editor_operation_message: None,
+            editor_write_degraded: None,
             undo_action_order: Vec::new(),
             redo_action_order: Vec::new(),
             pending_despawn_entity: None,

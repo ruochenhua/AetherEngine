@@ -69,7 +69,10 @@ pub(crate) fn process_debug_hotkeys(app: &mut App) {
 }
 
 pub(crate) fn process_scene_shortcuts(app: &mut App, delete_pressed: bool) {
-    if !app.egui_ctx.egui_wants_keyboard_input() && delete_pressed {
+    if app.editor_write_degraded.is_none()
+        && !app.egui_ctx.egui_wants_keyboard_input()
+        && delete_pressed
+    {
         if let super::LauncherState::Running { ref mut world, .. } = app.state {
             if let Some((entity, _)) =
                 aether_engine::renderer::gizmo::selected_entity_transform(world)

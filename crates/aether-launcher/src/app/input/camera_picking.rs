@@ -44,7 +44,7 @@ pub(crate) fn update_camera_and_picking(app: &mut App, dt: f32, egui_consumed: b
     super::process_scene_shortcuts(app, app.input.key_pressed(winit::keyboard::KeyCode::Delete));
 
     let mut legacy_edit_recorded = false;
-    if !egui_consumed {
+    if !egui_consumed && app.editor_write_degraded.is_none() {
         if let LauncherState::Running { ref mut world, .. } = app.state {
             let ctx = app.ctx.as_ref().unwrap();
             let width = ctx.config.width as f32;

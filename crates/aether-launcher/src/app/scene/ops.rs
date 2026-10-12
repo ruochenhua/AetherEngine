@@ -116,7 +116,9 @@ pub(crate) fn process_post_ui_ops(app: &mut App) {
     // Import scene
     if app.pending_import_dialog {
         app.pending_import_dialog = false;
-        if let Some(path) = rfd::FileDialog::new()
+        if let Some(reason) = import_scene_block_reason(app) {
+            app.editor_operation_message = Some(reason);
+        } else if let Some(path) = rfd::FileDialog::new()
             .set_directory("./scenes")
             .add_filter("RON", &["ron"])
             .pick_file()
@@ -145,7 +147,11 @@ pub(crate) fn process_post_ui_ops(app: &mut App) {
     // Save scene
     if app.pending_save_dialog {
         app.pending_save_dialog = false;
-        if let LauncherState::Running {
+        if let Some(reason) = app.editor_write_degraded.as_ref() {
+            app.editor_operation_message = Some(format!(
+                "场景写入已停止：{reason}。请重新打开场景或恢复磁盘文件。"
+            ));
+        } else if let LauncherState::Running {
             ref mut world,
             ref lighting,
         } = app.state
@@ -189,6 +195,14 @@ pub(crate) fn process_post_ui_ops(app: &mut App) {
 
     // Handle add object actions
     let mut added_entity: Option<Entity> = None;
+
+    if app.editor_write_degraded.is_some() {
+        app.pending_add_cube = false;
+        app.pending_add_sphere = false;
+        app.pending_add_terrain = false;
+        app.pending_add_water = false;
+        app.pending_despawn_entity = None;
+    }
 
     if app.pending_add_cube {
         app.pending_add_cube = false;
@@ -374,6 +388,12 @@ pub(crate) fn process_post_ui_ops(app: &mut App) {
     }
 }
 
+fn import_scene_block_reason(app: &App) -> Option<String> {
+    app.editor_write_degraded
+        .as_ref()
+        .map(|reason| format!("场景导入已停止：{reason}。请重新打开场景或恢复磁盘文件。"))
+}
+
 fn process_project_browser_open(app: &mut App) {
     // Browser requests can be produced while the shared workspace is visible
     // in Menu. Keep them pending until renderer startup has created a world.
@@ -424,5 +444,46 @@ pub(crate) fn process_project_browser_open_with_device(app: &mut App, device: &w
             }
             Err(error) => report_load_error(&path, &error),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::cli::parse_args;
+    use aether_engine::{
+        ecs::{components::Name, World},
+        renderer::light::LightingUniforms,
+    };
+
+    #[test]
+    fn degraded_editor_consumes_import_request_without_mutating_world() {
+        let mut world = World::new();
+        world.spawn((Name("Baseline".into()),));
+        let mut app = App {
+            editor_write_degraded: Some("scene restore failed".into()),
+            pending_import_dialog: true,
+            ..App::new(parse_args(&["aether-launcher".into()]).unwrap())
+        };
+        app.state = LauncherState::Running {
+            world,
+            lighting: LightingUniforms::default(),
+        };
+
+        process_post_ui_ops(&mut app);
+
+        assert!(!app.pending_import_dialog);
+        assert!(app
+            .editor_operation_message
+            .as_deref()
+            .unwrap()
+            .contains("场景导入已停止"));
+        let LauncherState::Running { world, .. } = &app.state else {
+            panic!("scene state should remain running")
+        };
+        assert!(world
+            .query::<&Name>()
+            .iter()
+            .any(|name| name.0 == "Baseline"));
     }
 }

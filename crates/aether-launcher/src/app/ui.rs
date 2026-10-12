@@ -93,9 +93,11 @@ pub(crate) fn draw(app: &mut App, dt: f32, raw_input: egui::RawInput) -> egui::F
     let workspace = &mut app.workspace;
     let logs = &mut app.logs;
     let mut project_open_request = None;
+    let mut viewport_drop_request = None;
     let debug_mode = app.debug_mode;
     let pending_select_entity = &mut app.pending_select_entity;
     let pending_editor_operation = &mut app.pending_editor_operation;
+    let pending_asset_drop = &mut app.pending_asset_drop;
     let has_saved_scene = app.cli.scene.is_some();
     let editor_operation_message = app.editor_operation_message.clone();
     let playback_state = app.particle_runtime.playback;
@@ -386,7 +388,9 @@ pub(crate) fn draw(app: &mut App, dt: f32, raw_input: egui::RawInput) -> egui::F
                 // Central panel: 3D viewport (transparent so 3D render shows through)
                 egui::CentralPanel::default()
                     .frame(egui::Frame::NONE)
-                    .show_inside(ui, |_ui| {});
+                    .show_inside(ui, |ui| {
+                        viewport_drop_request = capture_viewport_drop(ui);
+                    });
             }
         }
     });
@@ -394,50 +398,53 @@ pub(crate) fn draw(app: &mut App, dt: f32, raw_input: egui::RawInput) -> egui::F
     if project_open_request.is_some() {
         app.pending_project_open = project_open_request;
     }
+    *pending_asset_drop = viewport_drop_request;
 
     // Write back inspector changes
-    if let Some(ref target) = inspector_target {
-        let undo_count = app.undo_stack.len();
-        if let LauncherState::Running { ref mut world, .. } = app.state {
-            let _ = inspector::apply(
-                target,
-                world,
-                &mut app.undo_stack,
-                &mut app.redo_stack,
-                &mut app.asset_manager,
-            );
-            if let inspector::InspectorTarget::ParticleEmitter {
-                entity, restart, ..
-            } = target
-            {
-                if let Err(message) = app.particle_runtime.configure(world) {
-                    error!("Particle emitter edit rejected: {message}");
-                } else if *restart {
-                    let entity_bits = entity.to_bits().get();
-                    if let Err(message) = super::particle_runtime::restart_emitter(
-                        &mut app.particle_runtime.particles,
-                        &mut app.cli.time,
-                        entity_bits,
-                    ) {
-                        error!("Particle emitter restart failed: {message}");
+    if app.editor_write_degraded.is_none() {
+        if let Some(ref target) = inspector_target {
+            let undo_count = app.undo_stack.len();
+            if let LauncherState::Running { ref mut world, .. } = app.state {
+                let _ = inspector::apply(
+                    target,
+                    world,
+                    &mut app.undo_stack,
+                    &mut app.redo_stack,
+                    &mut app.asset_manager,
+                );
+                if let inspector::InspectorTarget::ParticleEmitter {
+                    entity, restart, ..
+                } = target
+                {
+                    if let Err(message) = app.particle_runtime.configure(world) {
+                        error!("Particle emitter edit rejected: {message}");
+                    } else if *restart {
+                        let entity_bits = entity.to_bits().get();
+                        if let Err(message) = super::particle_runtime::restart_emitter(
+                            &mut app.particle_runtime.particles,
+                            &mut app.cli.time,
+                            entity_bits,
+                        ) {
+                            error!("Particle emitter restart failed: {message}");
+                        }
+                    }
+                }
+                // If the camera was edited, sync intrinsic params to the runtime fly camera.
+                if matches!(target, inspector::InspectorTarget::Camera { .. }) {
+                    if let Some(camera) = world.query::<&Camera>().iter().next() {
+                        app.camera.fov = camera.fov;
+                        app.camera.speed = camera.speed;
+                        app.camera.base_speed = camera.speed;
+                        app.camera.near = camera.near;
+                        app.camera.far = camera.far;
                     }
                 }
             }
-            // If the camera was edited, sync intrinsic params to the runtime fly camera.
-            if matches!(target, inspector::InspectorTarget::Camera { .. }) {
-                if let Some(camera) = world.query::<&Camera>().iter().next() {
-                    app.camera.fov = camera.fov;
-                    app.camera.speed = camera.speed;
-                    app.camera.base_speed = camera.speed;
-                    app.camera.near = camera.near;
-                    app.camera.far = camera.far;
-                }
+            if app.undo_stack.len() > undo_count {
+                app.undo_action_order
+                    .push(super::editor::UndoActionKind::Legacy);
+                app.redo_action_order.clear();
             }
-        }
-        if app.undo_stack.len() > undo_count {
-            app.undo_action_order
-                .push(super::editor::UndoActionKind::Legacy);
-            app.redo_action_order.clear();
         }
     }
 
@@ -455,4 +462,30 @@ pub(crate) fn draw(app: &mut App, dt: f32, raw_input: egui::RawInput) -> egui::F
     }
 
     egui_output
+}
+
+fn capture_viewport_drop(ui: &mut egui::Ui) -> Option<super::workspace::ViewportDropRequest> {
+    let response = ui.allocate_rect(ui.max_rect(), egui::Sense::hover());
+    if response
+        .dnd_hover_payload::<super::workspace::AssetDragPayload>()
+        .is_some()
+    {
+        ui.painter().text(
+            response.rect.center(),
+            egui::Align2::CENTER_CENTER,
+            "Release to place model",
+            egui::FontId::proportional(18.0),
+            ui.visuals().text_color(),
+        );
+    }
+    let payload = response.dnd_release_payload::<super::workspace::AssetDragPayload>()?;
+    let pointer = ui.ctx().input(|input| input.pointer.interact_pos())?;
+    let scale = ui.ctx().pixels_per_point();
+    Some(super::workspace::ViewportDropRequest {
+        relative_path: payload.relative_path.clone(),
+        pointer_physical: [pointer.x * scale, pointer.y * scale],
+        viewport_points_min: [response.rect.min.x, response.rect.min.y],
+        viewport_points_max: [response.rect.max.x, response.rect.max.y],
+        pixels_per_point: scale,
+    })
 }

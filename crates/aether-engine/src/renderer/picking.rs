@@ -6,7 +6,7 @@
 use crate::ecs::components::{MeshHandle, Selected, Transform};
 use crate::ecs::World;
 use crate::math::Aabb;
-use glam::{Mat4, Vec3, Vec4};
+use glam::{Mat4, Vec2, Vec3, Vec4};
 
 /// A ray in world space.
 #[derive(Clone, Copy, Debug)]
@@ -15,6 +15,109 @@ pub struct Ray {
     pub origin: Vec3,
     /// Normalized ray direction.
     pub dir: Vec3,
+}
+
+/// A half-open rectangle in physical screen pixels.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ScreenRect {
+    /// Inclusive top-left corner.
+    pub min: Vec2,
+    /// Exclusive bottom-right corner.
+    pub max: Vec2,
+}
+
+impl ScreenRect {
+    /// Convert an egui point rectangle to physical pixels.
+    pub fn from_points(min: Vec2, max: Vec2, pixels_per_point: f32) -> Option<Self> {
+        if !min.is_finite()
+            || !max.is_finite()
+            || !pixels_per_point.is_finite()
+            || pixels_per_point <= 0.0
+            || max.x <= min.x
+            || max.y <= min.y
+        {
+            return None;
+        }
+
+        Some(Self {
+            min: min * pixels_per_point,
+            max: max * pixels_per_point,
+        })
+    }
+
+    /// Test a physical pixel against the half-open rectangle `[min, max)`.
+    pub fn contains(self, point: Vec2) -> bool {
+        self.is_valid()
+            && point.is_finite()
+            && point.x >= self.min.x
+            && point.y >= self.min.y
+            && point.x < self.max.x
+            && point.y < self.max.y
+    }
+
+    fn is_valid(self) -> bool {
+        self.min.is_finite()
+            && self.max.is_finite()
+            && self.max.x > self.min.x
+            && self.max.y > self.min.y
+    }
+}
+
+/// Build a full-window projection ray only when the pointer is inside the drop rectangle.
+pub fn screen_ray_for_pointer(
+    point: Vec2,
+    drop_rect: ScreenRect,
+    window_size: Vec2,
+    view: Mat4,
+    proj: Mat4,
+    camera_pos: Vec3,
+) -> Option<Ray> {
+    if !drop_rect.contains(point)
+        || !window_size.is_finite()
+        || window_size.x <= 0.0
+        || window_size.y <= 0.0
+        || point.x < 0.0
+        || point.y < 0.0
+        || point.x >= window_size.x
+        || point.y >= window_size.y
+        || !camera_pos.is_finite()
+    {
+        return None;
+    }
+
+    let ray = screen_ray(
+        point.x,
+        point.y,
+        window_size.x,
+        window_size.y,
+        view,
+        proj,
+        camera_pos,
+    );
+    if ray.dir.is_finite() && ray.dir.length_squared() > 0.0 {
+        Some(ray)
+    } else {
+        None
+    }
+}
+
+/// Intersect a ray with a horizontal plane, accepting only forward intersections.
+pub fn intersect_horizontal_plane(ray: &Ray, plane_y: f32) -> Option<Vec3> {
+    if !ray.origin.is_finite() || !ray.dir.is_finite() || !plane_y.is_finite() {
+        return None;
+    }
+
+    let denom = ray.dir.y;
+    if denom.abs() <= 1.0e-6 {
+        return None;
+    }
+    let t = (plane_y - ray.origin.y) / denom;
+    if !t.is_finite() || t <= 0.0 {
+        return None;
+    }
+
+    let point = ray.origin + ray.dir * t;
+    point.is_finite().then_some(point)
 }
 
 /// Build a world-space ray from the camera through a screen pixel.
@@ -202,5 +305,134 @@ mod tests {
             "Center-screen ray should point toward origin, expected dir={expected_dir:?}, got dir={:?}, dot={dot}",
             ray.dir
         );
+    }
+
+    #[test]
+    fn physical_viewport_rect_scales_points_and_uses_half_open_bounds() {
+        let rect =
+            ScreenRect::from_points(Vec2::new(10.0, 20.0), Vec2::new(110.0, 70.0), 2.0).unwrap();
+
+        assert_eq!(rect.min, Vec2::new(20.0, 40.0));
+        assert_eq!(rect.max, Vec2::new(220.0, 140.0));
+        assert!(rect.contains(Vec2::new(20.0, 40.0)));
+        assert!(rect.contains(Vec2::new(219.99, 139.99)));
+        assert!(!rect.contains(Vec2::new(220.0, 80.0)));
+        assert!(!rect.contains(Vec2::new(80.0, 140.0)));
+        assert!(!rect.contains(Vec2::new(19.99, 80.0)));
+    }
+
+    #[test]
+    fn screen_ray_uses_window_coordinates_after_drop_rect_hit_test() {
+        let view = look_at(Vec3::new(0.0, 0.0, 5.0), Vec3::ZERO, Vec3::Y);
+        let projection = perspective_projection(1.0, 1.0, 0.1, 100.0);
+        let drop_rect = ScreenRect {
+            min: Vec2::new(100.0, 50.0),
+            max: Vec2::new(900.0, 850.0),
+        };
+
+        let center = screen_ray_for_pointer(
+            Vec2::new(500.0, 450.0),
+            drop_rect,
+            Vec2::new(1000.0, 900.0),
+            view,
+            projection,
+            Vec3::new(0.0, 0.0, 5.0),
+        )
+        .unwrap();
+        assert!(center.dir.dot(Vec3::NEG_Z) > 0.999);
+        let off_center = screen_ray_for_pointer(
+            Vec2::new(700.0, 450.0),
+            drop_rect,
+            Vec2::new(1000.0, 900.0),
+            view,
+            projection,
+            Vec3::new(0.0, 0.0, 5.0),
+        )
+        .unwrap();
+        let expected = screen_ray(
+            700.0,
+            450.0,
+            1000.0,
+            900.0,
+            view,
+            projection,
+            Vec3::new(0.0, 0.0, 5.0),
+        );
+        assert!(off_center.dir.dot(expected.dir) > 0.9999);
+        assert!(screen_ray_for_pointer(
+            Vec2::new(900.0, 450.0),
+            drop_rect,
+            Vec2::new(1000.0, 900.0),
+            view,
+            projection,
+            Vec3::new(0.0, 0.0, 5.0),
+        )
+        .is_none());
+        assert!(screen_ray_for_pointer(
+            Vec2::new(500.0, 450.0),
+            drop_rect,
+            Vec2::new(0.0, 600.0),
+            view,
+            projection,
+            Vec3::new(0.0, 0.0, 5.0),
+        )
+        .is_none());
+        let oversized_drop_rect = ScreenRect {
+            min: Vec2::new(-10.0, -10.0),
+            max: Vec2::new(1010.0, 910.0),
+        };
+        for outside in [
+            Vec2::new(-0.01, 10.0),
+            Vec2::new(10.0, -0.01),
+            Vec2::new(1000.0, 10.0),
+            Vec2::new(10.0, 900.0),
+        ] {
+            assert!(screen_ray_for_pointer(
+                outside,
+                oversized_drop_rect,
+                Vec2::new(1000.0, 900.0),
+                view,
+                projection,
+                Vec3::new(0.0, 0.0, 5.0),
+            )
+            .is_none());
+        }
+    }
+
+    #[test]
+    fn horizontal_ground_intersection_rejects_parallel_and_non_forward_rays() {
+        let point = intersect_horizontal_plane(
+            &Ray {
+                origin: Vec3::new(-2.0, 4.0, -3.0),
+                dir: Vec3::new(0.0, -1.0, 0.0),
+            },
+            0.0,
+        )
+        .unwrap();
+        assert_eq!(point, Vec3::new(-2.0, 0.0, -3.0));
+        assert!(intersect_horizontal_plane(
+            &Ray {
+                origin: Vec3::new(0.0, 4.0, 0.0),
+                dir: Vec3::X,
+            },
+            0.0,
+        )
+        .is_none());
+        assert!(intersect_horizontal_plane(
+            &Ray {
+                origin: Vec3::new(0.0, 4.0, 0.0),
+                dir: Vec3::Y,
+            },
+            0.0,
+        )
+        .is_none());
+        assert!(intersect_horizontal_plane(
+            &Ray {
+                origin: Vec3::ZERO,
+                dir: Vec3::NEG_Y,
+            },
+            0.0,
+        )
+        .is_none());
     }
 }

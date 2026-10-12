@@ -10,6 +10,9 @@ use crate::renderer::renderable::MaterialUniform;
 use glam::{Quat, Vec3};
 use sha2::{Digest, Sha256};
 
+#[path = "history/placement.rs"]
+mod placement;
+
 struct HistoryEntry {
     inverse: Inverse,
     operation: EditorOperation,
@@ -88,6 +91,11 @@ impl EditorHistory {
             rollback_operation(ctx.world, rollback).map_err(EditorError::RollbackFailed)?;
             self.redo.push(entry);
             return Err(error);
+        }
+        if matches!(&entry.operation, EditorOperation::PlaceObject { .. }) {
+            if let Inverse::Delete { entity } = &next_inverse {
+                select_entity(ctx.world, *entity);
+            }
         }
         self.log = next_log;
         entry.inverse = next_inverse;
@@ -174,6 +182,18 @@ fn resolve_name(world: &World, name: &str) -> Result<Entity, EditorError> {
     }
 }
 
+fn select_entity(world: &mut World, selected: Entity) {
+    let previous: Vec<_> = world
+        .query::<(Entity, &crate::ecs::components::Selected)>()
+        .iter()
+        .map(|(entity, _)| entity)
+        .collect();
+    for entity in previous {
+        let _ = world.remove::<(crate::ecs::components::Selected,)>(entity);
+    }
+    let _ = world.insert(selected, (crate::ecs::components::Selected,));
+}
+
 fn validate_new_name(world: &World, name: &str) -> Result<(), EditorError> {
     if name.trim().is_empty() {
         return Err(EditorError::EmptyName);
@@ -244,7 +264,9 @@ fn apply_operation(
             validate_new_name(world, new_name)?;
             let mut state = RuntimeEntity::capture(world, source)?;
             state.name = Some(Name(new_name.clone()));
-            let copy = state.spawn_into(world)?;
+            // Copy preserves the source selection; it does not create a second selected entity.
+            state.selected = false;
+            let copy = state.spawn_into(world, false)?;
             Ok((
                 Inverse::Delete { entity: copy },
                 Inverse::Delete { entity: copy },
@@ -283,6 +305,7 @@ fn apply_operation(
                 Inverse::Remove { entity, kind },
             ))
         }
+        EditorOperation::PlaceObject { .. } => Err(EditorError::HostResolutionRequired),
     }
 }
 
@@ -409,7 +432,13 @@ fn apply_inverse(world: &mut World, inverse: Inverse) -> Result<(Inverse, Invers
             ))
         }
         Inverse::Restore { state } => {
-            let entity = state.spawn_into(world)?;
+            let restore_selection = state.selected
+                && world
+                    .query::<&crate::ecs::components::Selected>()
+                    .iter()
+                    .next()
+                    .is_none();
+            let entity = state.spawn_into(world, restore_selection)?;
             Ok((Inverse::Delete { entity }, Inverse::Delete { entity }))
         }
         Inverse::Remove { entity, kind } => {
