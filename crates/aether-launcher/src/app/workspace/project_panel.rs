@@ -227,12 +227,17 @@ impl ProjectPanel {
                                             kind_name(entry.kind),
                                             validity_name(entry.validity)
                                         ));
-                                        if entry.kind == ResourceKind::Obj
-                                            && entry.validity == ResourceValidity::Valid
+                                        if matches!(
+                                            entry.kind,
+                                            ResourceKind::Obj
+                                                | ResourceKind::Material
+                                                | ResourceKind::Image
+                                        ) && entry.validity == ResourceValidity::Valid
                                         {
                                             response.dnd_set_drag_payload(
                                                 super::AssetDragPayload {
                                                     relative_path: entry.path.clone(),
+                                                    kind: entry.kind,
                                                 },
                                             );
                                         }

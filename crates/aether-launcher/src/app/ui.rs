@@ -1,6 +1,7 @@
 //! egui UI rendering for the launcher.
 
 mod animation_panel;
+mod asset_drop;
 mod editor_operations;
 mod hierarchy;
 mod physics_panel;
@@ -94,6 +95,7 @@ pub(crate) fn draw(app: &mut App, dt: f32, raw_input: egui::RawInput) -> egui::F
     let logs = &mut app.logs;
     let mut project_open_request = None;
     let mut viewport_drop_request = None;
+    let mut material_drop_request = None;
     let debug_mode = app.debug_mode;
     let pending_select_entity = &mut app.pending_select_entity;
     let pending_editor_operation = &mut app.pending_editor_operation;
@@ -307,7 +309,7 @@ pub(crate) fn draw(app: &mut App, dt: f32, raw_input: egui::RawInput) -> egui::F
 
                                     // Inspector
                                     if let Some(ref mut target) = inspector_target.as_mut() {
-                                        inspector::render(ui, target);
+                                        material_drop_request = inspector::render(ui, target);
                                     }
 
                                     egui::CollapsingHeader::new("Scene Info")
@@ -389,7 +391,7 @@ pub(crate) fn draw(app: &mut App, dt: f32, raw_input: egui::RawInput) -> egui::F
                 egui::CentralPanel::default()
                     .frame(egui::Frame::NONE)
                     .show_inside(ui, |ui| {
-                        viewport_drop_request = capture_viewport_drop(ui);
+                        viewport_drop_request = asset_drop::capture_viewport_drop(ui);
                     });
             }
         }
@@ -399,6 +401,7 @@ pub(crate) fn draw(app: &mut App, dt: f32, raw_input: egui::RawInput) -> egui::F
         app.pending_project_open = project_open_request;
     }
     *pending_asset_drop = viewport_drop_request;
+    app.pending_material_drop = material_drop_request;
 
     // Write back inspector changes
     if app.editor_write_degraded.is_none() {
@@ -462,30 +465,4 @@ pub(crate) fn draw(app: &mut App, dt: f32, raw_input: egui::RawInput) -> egui::F
     }
 
     egui_output
-}
-
-fn capture_viewport_drop(ui: &mut egui::Ui) -> Option<super::workspace::ViewportDropRequest> {
-    let response = ui.allocate_rect(ui.max_rect(), egui::Sense::hover());
-    if response
-        .dnd_hover_payload::<super::workspace::AssetDragPayload>()
-        .is_some()
-    {
-        ui.painter().text(
-            response.rect.center(),
-            egui::Align2::CENTER_CENTER,
-            "Release to place model",
-            egui::FontId::proportional(18.0),
-            ui.visuals().text_color(),
-        );
-    }
-    let payload = response.dnd_release_payload::<super::workspace::AssetDragPayload>()?;
-    let pointer = ui.ctx().input(|input| input.pointer.interact_pos())?;
-    let scale = ui.ctx().pixels_per_point();
-    Some(super::workspace::ViewportDropRequest {
-        relative_path: payload.relative_path.clone(),
-        pointer_physical: [pointer.x * scale, pointer.y * scale],
-        viewport_points_min: [response.rect.min.x, response.rect.min.y],
-        viewport_points_max: [response.rect.max.x, response.rect.max.y],
-        pixels_per_point: scale,
-    })
 }

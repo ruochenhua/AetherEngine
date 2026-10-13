@@ -7,42 +7,19 @@ use aether_engine::ecs::components::{
 };
 
 /// Render the inspector UI for the given target.
-pub(crate) fn render(ui: &mut egui::Ui, target: &mut InspectorTarget) {
+pub(crate) fn render(
+    ui: &mut egui::Ui,
+    target: &mut InspectorTarget,
+) -> Option<crate::app::workspace::MaterialDropRequest> {
     ui.heading("Inspector");
     ui.separator();
 
     match target {
         InspectorTarget::Mesh {
-            transform,
-            material,
-            material_asset,
-            material_asset_error,
-            detach_material,
-            euler,
-            ..
+            transform, euler, ..
         } => {
             render_transform(ui, transform, euler);
-            if let Some(path) = material_asset {
-                ui.label(format!("Material asset: {path}"));
-                if let Some(error) = material_asset_error {
-                    ui.colored_label(egui::Color32::LIGHT_RED, error);
-                } else {
-                    ui.label("Watching for file changes");
-                }
-                if !*detach_material && ui.button("Detach and edit").clicked() {
-                    *detach_material = true;
-                }
-                if !*detach_material {
-                    ui.add_enabled_ui(false, |ui| {
-                        super::material_render::render_material(ui, material);
-                    });
-                } else {
-                    ui.label("Detached copy");
-                    super::material_render::render_material(ui, material);
-                }
-            } else {
-                super::material_render::render_material(ui, material);
-            }
+            return super::asset_drop::render_mesh(ui, target);
         }
         InspectorTarget::Light {
             light, direction, ..
@@ -65,6 +42,7 @@ pub(crate) fn render(ui: &mut egui::Ui, target: &mut InspectorTarget) {
             ui.colored_label(egui::Color32::LIGHT_RED, error);
         }
     }
+    None
 }
 
 fn render_transform(ui: &mut egui::Ui, transform: &mut Transform, euler: &mut [f32; 3]) {

@@ -15,6 +15,7 @@ pub(crate) enum WorkspaceTab {
 #[derive(Clone, Debug)]
 pub(crate) struct AssetDragPayload {
     pub(crate) relative_path: String,
+    pub(crate) kind: crate::project_index::ResourceKind,
 }
 
 /// Physical pointer position plus the central viewport's logical hit rectangle.
@@ -25,6 +26,19 @@ pub(crate) struct ViewportDropRequest {
     pub(crate) viewport_points_min: [f32; 2],
     pub(crate) viewport_points_max: [f32; 2],
     pub(crate) pixels_per_point: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum MaterialDropTarget {
+    Asset,
+    Texture(aether_engine::scene::material::TextureUsage),
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct MaterialDropRequest {
+    pub(crate) entity: aether_engine::ecs::Entity,
+    pub(crate) target: MaterialDropTarget,
+    pub(crate) resource: AssetDragPayload,
 }
 
 pub(crate) struct Workspace {

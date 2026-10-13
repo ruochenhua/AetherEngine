@@ -33,7 +33,7 @@ pub(super) fn build_objects(
     world: &mut World,
 ) -> anyhow::Result<()> {
     let mut mesh_cache: HashMap<String, Arc<GpuMesh>> = HashMap::new();
-    let material_resolver = MaterialResolver::new(".");
+    let material_resolver = MaterialResolver::new(assets.project_root());
 
     for obj in &desc.objects {
         let linked_material = if let Some(path) = &obj.material_asset {

@@ -5,6 +5,7 @@
 //! Water, Atmosphere, Clouds, GodRay).
 
 mod apply;
+mod asset_drop;
 mod helpers;
 mod material;
 mod material_render;
@@ -307,9 +308,15 @@ fn rebase_material_textures(mut config: MaterialConfig, material_path: &str) -> 
 }
 
 /// Render the inspector UI for the given target.
-pub(crate) fn render(ui: &mut egui::Ui, target: &mut InspectorTarget) {
-    render::render(ui, target);
+pub(crate) fn render(
+    ui: &mut egui::Ui,
+    target: &mut InspectorTarget,
+) -> Option<crate::app::workspace::MaterialDropRequest> {
+    render::render(ui, target)
 }
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod drop_tests;

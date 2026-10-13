@@ -1,10 +1,15 @@
 //! Bridge replayable editor operations into the live launcher scene.
 
 mod asset_drop;
+mod image_decode;
+mod material_document;
+mod material_drop;
 pub(crate) mod replay;
+mod resource_path;
 
 pub(crate) fn apply_pending_asset_drop(app: &mut App) {
     asset_drop::apply_pending_drop(app);
+    material_drop::apply_pending_drop(app);
 }
 
 use super::{App, LauncherState};
@@ -39,6 +44,7 @@ fn reset_history(app: &mut App) {
     app.redo_action_order.clear();
     app.pending_editor_operation = None;
     app.pending_asset_drop = None;
+    app.pending_material_drop = None;
     app.editor_operation_message = None;
     app.editor_write_degraded = None;
 }
@@ -350,3 +356,9 @@ mod tests {
             .any(|name| name.0 == "Changed"));
     }
 }
+
+#[cfg(test)]
+mod material_drop_tests;
+
+#[cfg(test)]
+mod material_transaction_tests;

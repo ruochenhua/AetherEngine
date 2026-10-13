@@ -5,7 +5,7 @@ use aether_engine::{
         AssetManager,
     },
     ecs::components::{MeshHandle, MeshSource},
-    editor::{EditorContext, EditorError, OperationLog, PreparedObject},
+    editor::{EditorContext, EditorError, EditorOperation, OperationLog, PreparedObject},
     renderer::{extracted_material::ExtractedMaterial, renderable::MaterialUniform},
     scene::{material::MaterialResolver, MeshRef, ObjectConfig},
 };
@@ -50,9 +50,41 @@ pub fn replay_operation_log_from_baseline(app: &mut App, jsonl: &str) -> Result<
         ));
     };
     let mut context = EditorContext::new(world, lighting, &scene_name, &scene_path, &log_path);
-    editor_history.replay_with_prepared(&mut context, &log, |object| {
-        resolve_logged_object(object, &project_root, &device, asset_manager)
-    })
+    replay_resolved_log(
+        editor_history,
+        &mut context,
+        &log,
+        &project_root,
+        &device,
+        asset_manager,
+    )
+}
+
+/// Resolve every asset-bearing operation through the same host seam as live drops.
+pub(super) fn replay_resolved_log(
+    history: &mut aether_engine::editor::EditorHistory,
+    context: &mut EditorContext<'_>,
+    log: &OperationLog,
+    root: &Path,
+    device: &wgpu::Device,
+    assets: &mut AssetManager,
+) -> Result<(), EditorError> {
+    for entry in log.entries() {
+        match &entry.operation {
+            EditorOperation::PlaceObject { object } => {
+                let prepared = resolve_logged_object(object, root, device, assets)?;
+                history.apply_prepared(context, entry.operation.clone(), prepared)?;
+            }
+            EditorOperation::SetMaterial { assignment, .. } => {
+                let prepared =
+                    super::material_drop::resolve_material_assignment(assignment, root, assets)
+                        .map_err(|e| EditorError::InvalidMaterialOperation(e.to_string()))?;
+                history.apply_prepared_material(context, entry.operation.clone(), prepared)?;
+            }
+            operation => history.apply(context, operation.clone())?,
+        }
+    }
+    Ok(())
 }
 
 #[allow(dead_code)] // Used through the explicit replay entry point and its focused test.

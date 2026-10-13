@@ -141,3 +141,67 @@ fn unsupported_gltf_resource_cannot_start_a_placement_drop() {
     assert_eq!(world.query::<&Selected>().iter().count(), 1);
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn material_and_image_project_rows_never_become_viewport_placement() {
+    let (mut app, root) = app_with_obj();
+    fs::write(
+        root.join("assets/models/material.ron"),
+        ron::ser::to_string(&aether_engine::scene::MaterialConfig {
+            albedo_texture: Some("image.png".into()),
+            ..Default::default()
+        })
+        .unwrap(),
+    )
+    .unwrap();
+    image::RgbaImage::from_pixel(2, 2, image::Rgba([255; 4]))
+        .save(root.join("assets/models/image.png"))
+        .unwrap();
+    app.workspace.set_project_root(root.clone());
+    for label in ["material.ron  ·  Material", "image.png  ·  Image"] {
+        let output = frame(&mut app, vec![]);
+        let source = text_rect(&output, label)
+            .expect("project resource row")
+            .center();
+        frame(
+            &mut app,
+            vec![
+                Event::PointerMoved(source),
+                Event::PointerButton {
+                    pos: source,
+                    button: PointerButton::Primary,
+                    pressed: true,
+                    modifiers: Modifiers::default(),
+                },
+            ],
+        );
+        frame(
+            &mut app,
+            vec![Event::PointerMoved(source + Vec2::new(12.0, 0.0))],
+        );
+        let payload =
+            egui::DragAndDrop::payload::<super::workspace::AssetDragPayload>(&app.egui_ctx)
+                .expect("supported resource must begin typed drag");
+        assert_eq!(
+            payload.kind,
+            if label.contains("Material") {
+                crate::project_index::ResourceKind::Material
+            } else {
+                crate::project_index::ResourceKind::Image
+            }
+        );
+        let destination = Pos2::new(640.0, 300.0);
+        frame(&mut app, vec![Event::PointerMoved(destination)]);
+        frame(
+            &mut app,
+            vec![Event::PointerButton {
+                pos: destination,
+                button: PointerButton::Primary,
+                pressed: false,
+                modifiers: Modifiers::default(),
+            }],
+        );
+        assert!(app.pending_asset_drop.is_none());
+    }
+    fs::remove_dir_all(root).unwrap();
+}
