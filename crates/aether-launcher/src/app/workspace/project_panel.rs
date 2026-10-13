@@ -17,8 +17,6 @@ pub(super) struct ProjectPanel {
     search: String,
     kind: Option<ResourceKind>,
     sort: ProjectSort,
-    folder_width: f32,
-    folder_drag_start_width: Option<f32>,
     history: PathHistory,
     selected_resource: Option<String>,
     scan_result: Option<Receiver<(u64, Result<IndexSnapshot, crate::project_index::IndexError>)>>,
@@ -32,8 +30,6 @@ impl ProjectPanel {
             search: String::new(),
             kind: None,
             sort: ProjectSort::Name,
-            folder_width: 260.0,
-            folder_drag_start_width: None,
             history: PathHistory::default(),
             selected_resource: None,
             scan_result: None,
@@ -45,11 +41,6 @@ impl ProjectPanel {
 
     pub(super) fn root(&self) -> &Path {
         &self.root
-    }
-
-    #[cfg(test)]
-    pub(super) fn folder_width(&self) -> f32 {
-        self.folder_width
     }
 
     pub(super) fn select_resource(&mut self, path: Option<PathBuf>) {
@@ -170,25 +161,27 @@ impl ProjectPanel {
             browser_size,
             egui::Layout::left_to_right(egui::Align::Min),
             |ui| {
-                ui.allocate_ui_with_layout(
-                    egui::vec2(self.folder_width, browser_size.y.max(80.0)),
-                    egui::Layout::top_down(egui::Align::Min),
-                    |ui| {
+                egui::Panel::left("project_folder_panel")
+                    .default_size(260.0)
+                    .size_range(140.0..=480.0)
+                    .resizable(true)
+                    .show_inside(ui, |ui| {
                         ui.heading("Folders");
                         egui::ScrollArea::vertical()
                             .id_salt("project_folders")
                             .show(ui, |ui| {
                                 self.render_directory_tree(ui, &snapshot, "", 0);
                             });
-                    },
-                );
+                        ui.take_available_space();
+                    });
 
-                let (_, splitter_rect) =
-                    ui.allocate_space(egui::vec2(18.0, browser_size.y.max(80.0)));
-
-                let resource_width = ui.available_width();
+                // egui's native panel handle is registered as the folder
+                // panel closes. Keep later resource widgets outside its grab
+                // radius so the Resources scroll area cannot steal the drag.
+                ui.add_space(12.0);
+                let resource_height = browser_size.y.max(80.0);
                 ui.allocate_ui_with_layout(
-                    egui::vec2(resource_width, browser_size.y.max(80.0)),
+                    egui::vec2(ui.available_width(), resource_height),
                     egui::Layout::top_down(egui::Align::Min),
                     |ui| {
                         ui.heading("Resources");
@@ -263,47 +256,6 @@ impl ProjectPanel {
                         }
                     },
                 );
-
-                // Register after both columns so the scroll areas cannot cover
-                // the divider's drag target at the shared edge.
-                let splitter = ui
-                    .interact(
-                        splitter_rect,
-                        egui::Id::new("project_folder_splitter"),
-                        egui::Sense::drag(),
-                    )
-                    .on_hover_cursor(egui::CursorIcon::ResizeHorizontal);
-                let accent = if splitter.dragged() {
-                    ui.visuals().widgets.active.fg_stroke.color
-                } else if splitter.hovered() {
-                    ui.visuals().widgets.hovered.fg_stroke.color
-                } else {
-                    ui.visuals().weak_text_color()
-                };
-                ui.painter().vline(
-                    splitter_rect.center().x,
-                    splitter_rect.y_range(),
-                    egui::Stroke::new(1.0, accent),
-                );
-                for offset in [-4.0, 0.0, 4.0] {
-                    ui.painter().circle_filled(
-                        splitter_rect.center() + egui::vec2(0.0, offset),
-                        1.5,
-                        accent,
-                    );
-                }
-                if splitter.drag_started() {
-                    self.folder_drag_start_width = Some(self.folder_width);
-                }
-                if splitter.dragged() {
-                    if let Some(start_width) = self.folder_drag_start_width {
-                        let delta = splitter.total_drag_delta().unwrap_or_default().x;
-                        self.folder_width = (start_width + delta).clamp(140.0, 480.0);
-                    }
-                }
-                if splitter.drag_stopped() {
-                    self.folder_drag_start_width = None;
-                }
             },
         );
         pending_open

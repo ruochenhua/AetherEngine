@@ -61,11 +61,6 @@ impl Workspace {
     }
 
     #[cfg(test)]
-    pub(crate) fn project_folder_width(&self) -> f32 {
-        self.project.folder_width()
-    }
-
-    #[cfg(test)]
     pub(crate) fn project_directory(&self) -> &str {
         self.project.current_directory()
     }

@@ -91,18 +91,16 @@ fn ew3_project_folder_panel_can_be_resized_by_dragging_its_edge() {
     running(&mut app);
     frame(&mut app, vec![]);
 
-    let split_id = egui::Id::new("project_folder_splitter");
-    let splitter = app
+    let panel_id = egui::Id::new("project_folder_panel");
+    let panel_state = egui::containers::panel::PanelState::load(&app.egui_ctx, panel_id)
+        .expect("folder column should use egui's resizable Panel state");
+    let resize_id = panel_id.with("__resize");
+    let handle = app
         .egui_ctx
-        .read_response(split_id)
-        .expect("folder splitter should register its drag area");
-    assert!(
-        splitter.rect.width() >= 14.0,
-        "folder drag target width was {} points",
-        splitter.rect.width()
-    );
-    let initial_width = app.workspace.project_folder_width();
-    let start = splitter.rect.center();
+        .read_response(resize_id)
+        .expect("egui Panel should register its native resize handle");
+    let initial_width = panel_state.size().x;
+    let start = handle.rect.center();
     let end = start + Vec2::new(90.0, 0.0);
     frame(
         &mut app,
@@ -127,11 +125,11 @@ fn ew3_project_folder_panel_can_be_resized_by_dragging_its_edge() {
         );
         let response = app
             .egui_ctx
-            .read_response(split_id)
-            .expect("folder splitter should remain registered while dragging");
+            .read_response(resize_id)
+            .expect("egui Panel resize handle should remain registered while dragging");
         assert!(
             response.dragged(),
-            "splitter did not capture drag step {step}"
+            "egui Panel resize handle did not capture drag step {step}"
         );
     }
     frame(
@@ -145,7 +143,10 @@ fn ew3_project_folder_panel_can_be_resized_by_dragging_its_edge() {
     );
 
     frame(&mut app, vec![]);
-    let resized_width = app.workspace.project_folder_width();
+    let resized_width = egui::containers::panel::PanelState::load(&app.egui_ctx, panel_id)
+        .expect("resized folder panel state should remain available")
+        .size()
+        .x;
     assert!(
         resized_width >= initial_width + 40.0,
         "folder width changed from {initial_width} to {resized_width} after dragging"
