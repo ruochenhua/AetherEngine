@@ -1,4 +1,5 @@
 mod texture_snapshot;
+pub use texture_snapshot::TextureSnapshotLimits;
 
 use super::{
     Asset, AssetError, AssetId, AssetResult, AssetStore, AssetStoreConfig, FrameBoundary,
@@ -9,6 +10,7 @@ use std::path::Path;
 /// Compatibility adapter backed by the typed asset store.
 pub struct AssetManager {
     store: AssetStore,
+    texture_snapshots: texture_snapshot::SnapshotCache,
 }
 
 impl Default for AssetManager {
@@ -22,6 +24,7 @@ impl AssetManager {
     pub fn new() -> Self {
         Self {
             store: AssetStore::new(AssetStoreConfig::default()),
+            texture_snapshots: Default::default(),
         }
     }
 
@@ -29,7 +32,18 @@ impl AssetManager {
     pub fn with_project_root(root: impl Into<std::path::PathBuf>) -> Self {
         Self {
             store: AssetStore::new(AssetStoreConfig::new(root)),
+            texture_snapshots: Default::default(),
         }
+    }
+
+    /// Create a project adapter with explicit aggregate immutable texture limits.
+    pub fn with_project_root_and_texture_snapshot_limits(
+        root: impl Into<std::path::PathBuf>,
+        limits: TextureSnapshotLimits,
+    ) -> Self {
+        let mut manager = Self::with_project_root(root);
+        manager.texture_snapshots.limits = limits;
+        manager
     }
 
     /// Load an asset from a file path, returning an existing handle on cache hit.
@@ -133,3 +147,7 @@ impl AssetManager {
 #[cfg(test)]
 #[path = "texture_snapshot_tests.rs"]
 mod texture_snapshot_tests;
+
+#[cfg(test)]
+#[path = "texture_snapshot_budget_tests.rs"]
+mod texture_snapshot_budget_tests;

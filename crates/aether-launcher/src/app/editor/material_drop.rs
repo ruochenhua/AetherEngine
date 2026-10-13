@@ -70,12 +70,11 @@ pub(super) fn prepare_material_drop(
                     .is_err(),
                 "linked material textures are read-only; use Detach and edit first"
             );
-            let path = validate_resource(
+            validate_resource(
                 Path::new(&request.resource.relative_path),
                 root,
                 ResourceKind::Image,
             )?;
-            super::image_decode::validate_image(&path)?; // Decode the current file, even if AssetManager has an older cache entry.
             let mut material = world
                 .query_one::<&MaterialConfig>(request.entity)
                 .get()
@@ -167,6 +166,7 @@ fn prepare_texture_snapshots(
     root: &Path,
     assets: &mut AssetManager,
 ) -> anyhow::Result<std::collections::BTreeMap<PathBuf, Handle<CpuTexture>>> {
+    validate_material_scalars(config, assets)?;
     let mut validated = std::collections::BTreeMap::new();
     // Validate and decode every dependency before registering runtime snapshots.
     // The existing source cache and previous immutable versions remain untouched.
@@ -188,14 +188,46 @@ fn prepare_texture_snapshots(
         let decoded = super::image_decode::validate_image(&file)?;
         validated.insert(dependency, decoded);
     }
-    validated
-        .into_iter()
-        .map(|(path, pixels)| {
-            assets
-                .register_texture_snapshot(pixels)
-                .map(|handle| (path, handle))
-        })
-        .collect()
+    let (paths, pixels): (Vec<_>, Vec<_>) = validated.into_iter().unzip();
+    let handles = assets.register_texture_snapshots(pixels)?;
+    Ok(paths.into_iter().zip(handles).collect())
+}
+
+fn validate_material_scalars(
+    config: &MaterialConfig,
+    assets: &mut AssetManager,
+) -> anyhow::Result<()> {
+    for (field, values) in [
+        ("albedo", config.albedo.as_slice()),
+        ("emissive", config.emissive.as_slice()),
+    ] {
+        anyhow::ensure!(
+            values.iter().all(|value| value.is_finite()),
+            "material {field} must be finite"
+        );
+    }
+    for (field, value) in [
+        ("roughness", config.roughness),
+        ("metallic", config.metallic),
+    ] {
+        anyhow::ensure!(
+            value.is_finite() && (0.0..=1.0).contains(&value),
+            "material {field} must be finite and in [0, 1]"
+        );
+    }
+    // Validate resolver-backed ranges and transparent scalars without touching
+    // any texture asset or registering runtime snapshots.
+    let mut scalars = config.clone();
+    scalars.albedo_texture = None;
+    scalars.normal_texture = None;
+    scalars.orm_texture = None;
+    scalars.emissive_texture = None;
+    if let Some(transparent) = &mut scalars.transparent {
+        transparent.texture = None;
+    }
+    let resolution = MaterialResolver::new(assets.project_root()).resolve(&scalars, assets)?;
+    prepared_material(scalars, resolution, None)?;
+    Ok(())
 }
 
 fn bind_texture_snapshots(

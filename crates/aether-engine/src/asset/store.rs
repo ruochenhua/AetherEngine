@@ -3,6 +3,7 @@
 mod gpu;
 mod handles;
 mod lifecycle;
+mod sync_batch;
 mod worker;
 
 #[cfg(test)]

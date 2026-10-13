@@ -37,7 +37,7 @@ mod store_types;
 pub use asset_trait::Asset;
 pub use handle::Handle;
 pub use id::{AssetId, AssetIdError, AssetIdParseError, AssetKind, CanonicalPath};
-pub use manager::AssetManager;
+pub use manager::{AssetManager, TextureSnapshotLimits};
 pub use store::{
     canonicalize, ApplyOutcome, AssetError, AssetError as StoreError, AssetPayload, AssetResult,
     AssetStore, AssetStoreConfig, CancellationToken, FrameBoundary, GpuAssetKey, GpuCommitCache,

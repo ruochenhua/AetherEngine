@@ -365,3 +365,6 @@ mod material_transaction_tests;
 
 #[cfg(test)]
 mod stale_texture_tests;
+
+#[cfg(test)]
+mod snapshot_budget_tests;
