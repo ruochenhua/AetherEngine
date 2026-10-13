@@ -8,10 +8,7 @@ use crate::{
     project_index::ResourceKind,
 };
 use aether_engine::{
-    asset::{
-        material_asset::MaterialAsset, texture::CpuTexture, AssetId, AssetKind, AssetManager,
-        Handle,
-    },
+    asset::{texture::CpuTexture, AssetManager, Handle},
     ecs::{
         components::{MaterialAssetRef, MaterialAssetStatus, MeshHandle, Name},
         World,
@@ -22,7 +19,7 @@ use aether_engine::{
         transparent::TransparentMaterial,
     },
     scene::{
-        material::{MaterialResolution, MaterialResolver, TextureUsage},
+        material::{MaterialResolution, MaterialResolver, TextureCacheKey, TextureUsage},
         MaterialConfig,
     },
 };
@@ -116,46 +113,43 @@ pub(super) fn resolve_material_assignment(
         assets.project_root().canonicalize()? == canonical_root,
         "asset manager is rooted at a different project directory"
     );
-    let (material, resolution, reference, snapshots) = match assignment {
+    let (material, parent, reference) = match assignment {
         MaterialAssignment::Asset { path } => {
             let document = validate_resource(Path::new(path), root, ResourceKind::Material)?;
             // Read the current document directly; a previously cached material is not authoritative.
-            let config: MaterialConfig =
-                super::material_document::decode(&std::fs::read_to_string(document)?)?;
+            let config = super::material_document::decode(&std::fs::read_to_string(document)?)?;
             let parent = Path::new(path)
                 .parent()
                 .unwrap_or_else(|| Path::new("assets"));
-            let snapshots = prepare_texture_snapshots(&config, parent, root, assets)?;
-            let mut asset = MaterialAsset::from_config(config);
-            let id = AssetId::from_path(AssetKind::Material, &canonical_root, Path::new(path))?;
-            let manager_root = assets.project_root().to_path_buf();
-            asset.resolve(&id, &manager_root, assets)?;
-            let resolution = asset
-                .resolution()
-                .cloned()
-                .ok_or_else(|| anyhow::anyhow!("Material Asset did not resolve"))?;
-            (
-                asset.config().clone(),
-                resolution,
-                Some(MaterialAssetRef(path.clone())),
-                snapshots,
-            )
+            (config, parent, Some(MaterialAssetRef(path.clone())))
         }
-        MaterialAssignment::Inline { material } => {
-            let snapshots = prepare_texture_snapshots(material, Path::new(""), root, assets)?;
-            let mut runtime = material.clone();
-            if let Some(path) = runtime
-                .transparent
-                .as_ref()
-                .and_then(|t| t.texture.as_ref())
-            {
-                runtime.albedo_texture = Some(path.clone());
-            }
-            let resolution =
-                MaterialResolver::new(assets.project_root()).resolve(&runtime, assets)?;
-            (material.clone(), resolution, None, snapshots)
-        }
+        MaterialAssignment::Inline { material } => (material.clone(), Path::new(""), None),
     };
+    // Resolve only scalars/fallbacks: source-path texture loads would retain an
+    // unbudgeted duplicate CPU payload for every path, even for identical pixels.
+    let mut resolution = validate_material_scalars(&material, assets)?;
+    let albedo = material
+        .transparent
+        .as_ref()
+        .and_then(|transparent| transparent.texture.as_ref())
+        .or(material.albedo_texture.as_ref());
+    for (binding, path) in [
+        (&mut resolution.albedo, albedo),
+        (&mut resolution.normal, material.normal_texture.as_ref()),
+        (&mut resolution.orm, material.orm_texture.as_ref()),
+        (&mut resolution.emissive, material.emissive_texture.as_ref()),
+    ] {
+        if let Some(path) = path {
+            let dependency =
+                super::resource_path::material_dependency(parent, Path::new(path), root)?;
+            let source = canonical_root
+                .join(dependency)
+                .to_string_lossy()
+                .replace('\\', "/");
+            binding.key = TextureCacheKey::new(source, binding.usage);
+        }
+    }
+    let snapshots = prepare_texture_snapshots(&material, parent, root, assets)?;
     let resolution = bind_texture_snapshots(resolution, &snapshots, &canonical_root)?;
     prepared_material(material, resolution, reference)
 }
@@ -166,7 +160,6 @@ fn prepare_texture_snapshots(
     root: &Path,
     assets: &mut AssetManager,
 ) -> anyhow::Result<std::collections::BTreeMap<PathBuf, Handle<CpuTexture>>> {
-    validate_material_scalars(config, assets)?;
     let mut validated = std::collections::BTreeMap::new();
     // Validate and decode every dependency before registering runtime snapshots.
     // The existing source cache and previous immutable versions remain untouched.
@@ -196,7 +189,7 @@ fn prepare_texture_snapshots(
 fn validate_material_scalars(
     config: &MaterialConfig,
     assets: &mut AssetManager,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<MaterialResolution> {
     for (field, values) in [
         ("albedo", config.albedo.as_slice()),
         ("emissive", config.emissive.as_slice()),
@@ -226,8 +219,8 @@ fn validate_material_scalars(
         transparent.texture = None;
     }
     let resolution = MaterialResolver::new(assets.project_root()).resolve(&scalars, assets)?;
-    prepared_material(scalars, resolution, None)?;
-    Ok(())
+    prepared_material(scalars, resolution.clone(), None)?;
+    Ok(resolution)
 }
 
 fn bind_texture_snapshots(
@@ -245,8 +238,7 @@ fn bind_texture_snapshots(
         if source.file_name().is_some_and(|name| name == "<fallback>") {
             continue;
         }
-        let file = source.canonicalize()?;
-        let relative = file.strip_prefix(canonical_root)?;
+        let relative = source.strip_prefix(canonical_root)?;
         binding.handle = Some(*snapshots.get(relative).ok_or_else(|| {
             anyhow::anyhow!(
                 "texture was not validated for material assignment: {}",

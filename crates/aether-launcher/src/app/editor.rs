@@ -368,3 +368,6 @@ mod stale_texture_tests;
 
 #[cfg(test)]
 mod snapshot_budget_tests;
+
+#[cfg(test)]
+mod snapshot_source_cache_tests;
