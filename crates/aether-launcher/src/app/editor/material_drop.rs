@@ -8,7 +8,10 @@ use crate::{
     project_index::ResourceKind,
 };
 use aether_engine::{
-    asset::{material_asset::MaterialAsset, AssetId, AssetKind, AssetManager},
+    asset::{
+        material_asset::MaterialAsset, texture::CpuTexture, AssetId, AssetKind, AssetManager,
+        Handle,
+    },
     ecs::{
         components::{MaterialAssetRef, MaterialAssetStatus, MeshHandle, Name},
         World,
@@ -114,7 +117,7 @@ pub(super) fn resolve_material_assignment(
         assets.project_root().canonicalize()? == canonical_root,
         "asset manager is rooted at a different project directory"
     );
-    let (material, resolution, reference) = match assignment {
+    let (material, resolution, reference, snapshots) = match assignment {
         MaterialAssignment::Asset { path } => {
             let document = validate_resource(Path::new(path), root, ResourceKind::Material)?;
             // Read the current document directly; a previously cached material is not authoritative.
@@ -123,10 +126,11 @@ pub(super) fn resolve_material_assignment(
             let parent = Path::new(path)
                 .parent()
                 .unwrap_or_else(|| Path::new("assets"));
-            validate_textures(&config, parent, root)?;
+            let snapshots = prepare_texture_snapshots(&config, parent, root, assets)?;
             let mut asset = MaterialAsset::from_config(config);
             let id = AssetId::from_path(AssetKind::Material, &canonical_root, Path::new(path))?;
-            asset.resolve(&id, &canonical_root, assets)?;
+            let manager_root = assets.project_root().to_path_buf();
+            asset.resolve(&id, &manager_root, assets)?;
             let resolution = asset
                 .resolution()
                 .cloned()
@@ -135,10 +139,11 @@ pub(super) fn resolve_material_assignment(
                 asset.config().clone(),
                 resolution,
                 Some(MaterialAssetRef(path.clone())),
+                snapshots,
             )
         }
         MaterialAssignment::Inline { material } => {
-            validate_textures(material, Path::new(""), root)?;
+            let snapshots = prepare_texture_snapshots(material, Path::new(""), root, assets)?;
             let mut runtime = material.clone();
             if let Some(path) = runtime
                 .transparent
@@ -147,14 +152,24 @@ pub(super) fn resolve_material_assignment(
             {
                 runtime.albedo_texture = Some(path.clone());
             }
-            let resolution = MaterialResolver::new(&canonical_root).resolve(&runtime, assets)?;
-            (material.clone(), resolution, None)
+            let resolution =
+                MaterialResolver::new(assets.project_root()).resolve(&runtime, assets)?;
+            (material.clone(), resolution, None, snapshots)
         }
     };
+    let resolution = bind_texture_snapshots(resolution, &snapshots, &canonical_root)?;
     prepared_material(material, resolution, reference)
 }
 
-fn validate_textures(config: &MaterialConfig, parent: &Path, root: &Path) -> anyhow::Result<()> {
+fn prepare_texture_snapshots(
+    config: &MaterialConfig,
+    parent: &Path,
+    root: &Path,
+    assets: &mut AssetManager,
+) -> anyhow::Result<std::collections::BTreeMap<PathBuf, Handle<CpuTexture>>> {
+    let mut validated = std::collections::BTreeMap::new();
+    // Validate and decode every dependency before registering runtime snapshots.
+    // The existing source cache and previous immutable versions remain untouched.
     for path in [
         &config.albedo_texture,
         &config.normal_texture,
@@ -166,10 +181,52 @@ fn validate_textures(config: &MaterialConfig, parent: &Path, root: &Path) -> any
     .flatten()
     {
         let dependency = super::resource_path::material_dependency(parent, Path::new(path), root)?;
-        let validated = validate_resource(&dependency, root, ResourceKind::Image)?;
-        super::image_decode::validate_image(&validated)?;
+        if validated.contains_key(&dependency) {
+            continue;
+        }
+        let file = validate_resource(&dependency, root, ResourceKind::Image)?;
+        let decoded = super::image_decode::validate_image(&file)?;
+        validated.insert(dependency, decoded);
     }
-    Ok(())
+    validated
+        .into_iter()
+        .map(|(path, pixels)| {
+            assets
+                .register_texture_snapshot(pixels)
+                .map(|handle| (path, handle))
+        })
+        .collect()
+}
+
+fn bind_texture_snapshots(
+    mut resolution: MaterialResolution,
+    snapshots: &std::collections::BTreeMap<PathBuf, Handle<CpuTexture>>,
+    canonical_root: &Path,
+) -> anyhow::Result<MaterialResolution> {
+    for binding in [
+        &mut resolution.albedo,
+        &mut resolution.normal,
+        &mut resolution.orm,
+        &mut resolution.emissive,
+    ] {
+        let source = Path::new(binding.key.path());
+        if source.file_name().is_some_and(|name| name == "<fallback>") {
+            continue;
+        }
+        let file = source.canonicalize()?;
+        let relative = file.strip_prefix(canonical_root)?;
+        binding.handle = Some(*snapshots.get(relative).ok_or_else(|| {
+            anyhow::anyhow!(
+                "texture was not validated for material assignment: {}",
+                source.display()
+            )
+        })?);
+    }
+    resolution.material.albedo = resolution.albedo.handle;
+    resolution.material.normal = resolution.normal.handle;
+    resolution.material.orm = resolution.orm.handle;
+    resolution.material.emissive_texture = resolution.emissive.handle;
+    Ok(resolution)
 }
 
 fn prepared_material(

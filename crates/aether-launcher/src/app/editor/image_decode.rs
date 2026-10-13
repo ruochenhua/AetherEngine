@@ -1,7 +1,9 @@
 //! Bound CPU work before accepting a synchronous host-side image drop.
 use std::path::Path;
 
-pub(super) fn validate_image(path: &Path) -> anyhow::Result<()> {
+pub(super) fn validate_image(
+    path: &Path,
+) -> anyhow::Result<aether_engine::asset::texture::CpuTexture> {
     let (width, height) = image::ImageReader::open(path)?
         .with_guessed_format()?
         .into_dimensions()?;
@@ -19,6 +21,12 @@ pub(super) fn validate_image(path: &Path) -> anyhow::Result<()> {
     limits.max_image_height = Some(8192);
     limits.max_alloc = Some(128 * 1024 * 1024);
     reader.limits(limits);
-    reader.decode()?;
-    Ok(())
+    let rgba = reader.decode()?.to_rgba8();
+    Ok(aether_engine::asset::texture::CpuTexture {
+        width: rgba.width(),
+        height: rgba.height(),
+        channels: 4,
+        data: rgba.into_raw(),
+        format: aether_engine::asset::texture::TextureFormat::Rgba8,
+    })
 }

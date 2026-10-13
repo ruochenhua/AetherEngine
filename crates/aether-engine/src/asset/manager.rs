@@ -1,3 +1,5 @@
+mod texture_snapshot;
+
 use super::{
     Asset, AssetError, AssetId, AssetResult, AssetStore, AssetStoreConfig, FrameBoundary,
     GpuCommitCache, GpuCommitContext, Handle, LoadTicket, ReloadTicket,
@@ -127,3 +129,7 @@ impl AssetManager {
             .map_err(anyhow::Error::from)
     }
 }
+
+#[cfg(test)]
+#[path = "texture_snapshot_tests.rs"]
+mod texture_snapshot_tests;

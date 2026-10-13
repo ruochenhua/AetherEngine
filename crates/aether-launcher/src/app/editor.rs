@@ -362,3 +362,6 @@ mod material_drop_tests;
 
 #[cfg(test)]
 mod material_transaction_tests;
+
+#[cfg(test)]
+mod stale_texture_tests;
