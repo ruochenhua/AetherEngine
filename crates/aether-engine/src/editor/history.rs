@@ -10,8 +10,13 @@ use crate::renderer::renderable::MaterialUniform;
 use glam::{Quat, Vec3};
 use sha2::{Digest, Sha256};
 
+#[path = "history/material.rs"]
+mod material;
+#[path = "history/names.rs"]
+mod names;
 #[path = "history/placement.rs"]
 mod placement;
+use names::resolve_name;
 
 struct HistoryEntry {
     inverse: Inverse,
@@ -165,23 +170,6 @@ impl EditorHistory {
     }
 }
 
-fn resolve_name(world: &World, name: &str) -> Result<Entity, EditorError> {
-    let matches: Vec<_> = world
-        .query::<(Entity, &Name)>()
-        .iter()
-        .filter_map(|(entity, component)| (component.0 == name).then_some(entity))
-        .collect();
-    match matches.as_slice() {
-        [] => Err(EditorError::EntityNotFound {
-            name: name.to_string(),
-        }),
-        [entity] => Ok(*entity),
-        _ => Err(EditorError::DuplicateName {
-            name: name.to_string(),
-        }),
-    }
-}
-
 fn select_entity(world: &mut World, selected: Entity) {
     let previous: Vec<_> = world
         .query::<(Entity, &crate::ecs::components::Selected)>()
@@ -305,7 +293,9 @@ fn apply_operation(
                 Inverse::Remove { entity, kind },
             ))
         }
-        EditorOperation::PlaceObject { .. } => Err(EditorError::HostResolutionRequired),
+        EditorOperation::PlaceObject { .. } | EditorOperation::SetMaterial { .. } => {
+            Err(EditorError::HostResolutionRequired)
+        }
     }
 }
 
@@ -468,6 +458,9 @@ fn apply_inverse(world: &mut World, inverse: Inverse) -> Result<(Inverse, Invers
                     kind: record.kind(),
                 },
             ))
+        }
+        Inverse::Material { entity, state } => {
+            material::apply_inverse_material(world, entity, state)
         }
     }
 }

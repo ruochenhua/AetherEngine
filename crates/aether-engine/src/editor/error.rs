@@ -81,6 +81,9 @@ pub enum EditorError {
     /// A prepared scene object does not match the supported placement contract.
     #[error("invalid object placement: {0}")]
     InvalidObjectOperation(String),
+    /// A prepared material assignment violates the stable material operation contract.
+    #[error("invalid material assignment: {0}")]
+    InvalidMaterialOperation(String),
     /// A two-file write failed and one or more old files could not be restored.
     #[error("editor persistence failed ({original}); rollback also failed: {rollback}")]
     PersistenceRollbackFailed {

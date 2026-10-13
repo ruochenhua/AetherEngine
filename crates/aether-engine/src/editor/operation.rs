@@ -8,10 +8,15 @@ use crate::ecs::{Entity, World};
 use crate::renderer::extracted_material::ExtractedMaterial;
 use crate::renderer::light::LightingUniforms;
 use crate::renderer::renderable::MaterialUniform;
+use crate::renderer::transparent::TransparentMaterial;
 use crate::scene::{MaterialConfig, ObjectConfig};
 use glam::{Quat, Vec3};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
+
+mod material;
+pub(super) use material::MaterialRuntimeState;
+pub use material::{MaterialAssignment, PreparedMaterial};
 
 /// A stable-name editor operation suitable for JSONL replay.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -47,6 +52,13 @@ pub enum EditorOperation {
     PlaceObject {
         /// Stable object configuration persisted in the scene and operation log.
         object: ObjectConfig,
+    },
+    /// Replace a named Mesh entity's complete material assignment.
+    SetMaterial {
+        /// Existing stable Mesh name.
+        entity_name: String,
+        /// Inline configuration or a project-relative material asset reference.
+        assignment: MaterialAssignment,
     },
 }
 
@@ -231,6 +243,7 @@ pub(super) struct RuntimeEntity {
     pub(super) extracted_material: Option<ExtractedMaterial>,
     pub(super) material_asset: Option<MaterialAssetRef>,
     pub(super) material_asset_status: Option<MaterialAssetStatus>,
+    pub(super) transparent_material: Option<TransparentMaterial>,
     pub(super) selected: bool,
     pub(super) visibility: Option<Visibility>,
     pub(super) name: Option<Name>,
@@ -270,6 +283,11 @@ impl RuntimeEntity {
                 .cloned(),
             material_asset_status: world
                 .query_one::<&MaterialAssetStatus>(entity)
+                .get()
+                .ok()
+                .cloned(),
+            transparent_material: world
+                .query_one::<&TransparentMaterial>(entity)
                 .get()
                 .ok()
                 .cloned(),
@@ -321,6 +339,11 @@ impl RuntimeEntity {
                     .map_err(|error| EditorError::RollbackFailed(error.to_string()))?;
             }
             if let Some(value) = &self.material_asset_status {
+                world
+                    .insert(entity, (value.clone(),))
+                    .map_err(|error| EditorError::RollbackFailed(error.to_string()))?;
+            }
+            if let Some(value) = &self.transparent_material {
                 world
                     .insert(entity, (value.clone(),))
                     .map_err(|error| EditorError::RollbackFailed(error.to_string()))?;
@@ -388,5 +411,9 @@ pub(super) enum Inverse {
     Add {
         entity: Entity,
         record: ComponentRecord,
+    },
+    Material {
+        entity: Entity,
+        state: Box<MaterialRuntimeState>,
     },
 }

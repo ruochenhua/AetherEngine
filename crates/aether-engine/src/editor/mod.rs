@@ -9,7 +9,8 @@ mod snapshot;
 pub use error::{ComponentKind, EditorError};
 pub use history::EditorHistory;
 pub use operation::{
-    EditorContext, EditorOperation, OperationLog, OperationLogEntry, PreparedObject,
+    EditorContext, EditorOperation, MaterialAssignment, OperationLog, OperationLogEntry,
+    PreparedMaterial, PreparedObject,
 };
 pub use snapshot::{
     capture_snapshot, ComponentRecord, EditorEntitySnapshot, EDITOR_SCHEMA_VERSION,
@@ -23,3 +24,6 @@ mod inverse_tests;
 
 #[cfg(test)]
 mod operation_tests;
+
+#[cfg(test)]
+mod material_operation_tests;
