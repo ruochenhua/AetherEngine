@@ -82,6 +82,8 @@ The current renderer covers deferred PBR, IBL, directional and local lights, sha
 
 See the [roadmap](docs/plans/2026-09-17-non-raytracing-engine-roadmap/index.html) for slice status, outstanding verification, and evidence links. The project CI entry point is `./scripts/verify-ci.sh`; a successful run is reported by that command rather than implied by roadmap acceptance.
 
+The editor workflow has also grown beyond scene selection: the **Project** workspace browses the project's folders and indexed resources, while **Log** exposes searchable runtime diagnostics. Both live beside the viewport; the workspace height and the Folders/Resources split can be resized. The first EW3 slice supports dragging a single OBJ into the viewport with undo/redo. Material and texture assignment by drag-and-drop remains planned. See the [editor workflow plan](docs/plans/2026-10-11-editor-workflow/plan.md), [editor guide](docs/engine/editor.md), and [EW3 screenshot report](docs/plans/2026-10-11-editor-workflow/ew3-screenshot-validation.html).
+
 ## See it run
 
 You need a stable Rust toolchain (the workspace declares Rust 1.78) and a GPU/backend supported by `wgpu`.
@@ -111,7 +113,7 @@ cargo run -p aether-launcher -- --scene scenes/t7_gltf_actor.ron
 | --- | --- |
 | [Architecture](docs/engine/architecture.md) | ECS, frame extraction, and resource-declared render scheduling |
 | [Rendering](docs/engine/rendering.md) | PBR, lighting, shadows, SSR/SSAO, water, terrain, and clouds |
-| [Editor](docs/engine/editor.md) | Scene browser, hierarchy, inspector, transforms, and save flow |
+| [Editor](docs/engine/editor.md) | Project resource browser, runtime log, hierarchy, inspector, transforms, and save flow |
 | [Simulation](docs/engine/simulation.md) | Physics, particles, playback controls, and fixed-step behavior |
 | [Scenes and assets](docs/engine/scenes-assets.md) | RON scenes, models, textures, and asset paths |
 | [Roadmap](docs/plans/2026-09-17-non-raytracing-engine-roadmap/index.html) | Current milestones, slices, and acceptance evidence |

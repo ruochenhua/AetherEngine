@@ -82,6 +82,8 @@ VisualCase 固定场景、相机、时间和功能开关。报告会保留渲染
 
 切片状态、待处理验证和证据链接见[路线图](docs/plans/2026-09-17-non-raytracing-engine-roadmap/index.html)。项目 CI 入口为 `./scripts/verify-ci.sh`；只有该命令成功运行后才表示 CI 验证通过，路线图验收状态本身不代表 CI 已通过。
 
+编辑器工作流也已超出场景选择：**Project** 工作区可浏览项目目录和已索引资源，**Log** 面板可搜索运行诊断。两个面板都位于视口下方；工作区高度以及 Folders/Resources 之间的分栏都可拖动调整。EW3 首个切片支持将单个 OBJ 拖入视口，并可撤销/重做；材质和纹理的拖放赋值仍在后续规划中。详见[编辑器工作流计划](docs/plans/2026-10-11-editor-workflow/plan.md)、[编辑器指南](docs/engine/editor.md)和[EW3 截图报告](docs/plans/2026-10-11-editor-workflow/ew3-screenshot-validation.html)。
+
 ## 运行一个场景
 
 需要稳定版 Rust 工具链（workspace 声明 Rust 1.78）以及 `wgpu` 支持的 GPU 和图形后端。
@@ -111,7 +113,7 @@ cargo run -p aether-launcher -- --scene scenes/t7_gltf_actor.ron
 | --- | --- |
 | [架构](docs/engine/architecture.md) | ECS、帧数据提取和基于资源声明的渲染调度 |
 | [渲染](docs/engine/rendering.md) | PBR、光照、阴影、SSR/SSAO、水体、地形和体积云 |
-| [编辑器](docs/engine/editor.md) | 场景浏览、Hierarchy、Inspector、变换编辑和保存 |
+| [编辑器](docs/engine/editor.md) | Project 资源浏览器、运行日志、Hierarchy、Inspector、变换编辑和保存 |
 | [模拟](docs/engine/simulation.md) | 物理、粒子、播放控制和固定步长 |
 | [场景与资源](docs/engine/scenes-assets.md) | RON 场景、模型、纹理和资源路径 |
 | [路线图](docs/plans/2026-09-17-non-raytracing-engine-roadmap/index.html) | 当前里程碑、切片和验收证据 |
