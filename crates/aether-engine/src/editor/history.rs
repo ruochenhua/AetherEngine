@@ -235,11 +235,11 @@ fn apply_operation(
                 .0 = new_name.clone();
             Ok((
                 Inverse::Rename {
-                    entity,
+                    entity_name: new_name.clone(),
                     name: old_name.clone(),
                 },
                 Inverse::Rename {
-                    entity,
+                    entity_name: new_name.clone(),
                     name: old_name,
                 },
             ))
@@ -385,24 +385,26 @@ fn insert_component(
 
 fn apply_inverse(world: &mut World, inverse: Inverse) -> Result<(Inverse, Inverse), EditorError> {
     match inverse {
-        Inverse::Rename { entity, name } => {
+        Inverse::Rename { entity_name, name } => {
+            let entity = resolve_name(world, &entity_name)?;
             let current = world
                 .query_one::<&Name>(entity)
                 .get()
                 .map_err(|_| EditorError::MissingEntity(entity))?
                 .0
                 .clone();
+            validate_new_name(world, &name)?;
             world
                 .query_one_mut::<&mut Name>(entity)
                 .map_err(|_| EditorError::MissingEntity(entity))?
-                .0 = name;
+                .0 = name.clone();
             Ok((
                 Inverse::Rename {
-                    entity,
+                    entity_name: name.clone(),
                     name: current.clone(),
                 },
                 Inverse::Rename {
-                    entity,
+                    entity_name: name,
                     name: current,
                 },
             ))
@@ -459,8 +461,8 @@ fn apply_inverse(world: &mut World, inverse: Inverse) -> Result<(Inverse, Invers
                 },
             ))
         }
-        Inverse::Material { entity, state } => {
-            material::apply_inverse_material(world, entity, state)
+        Inverse::Material { entity_name, state } => {
+            material::apply_inverse_material(world, entity_name, state)
         }
     }
 }

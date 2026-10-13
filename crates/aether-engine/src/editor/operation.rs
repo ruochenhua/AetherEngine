@@ -395,7 +395,7 @@ impl RuntimeEntity {
 #[derive(Clone)]
 pub(super) enum Inverse {
     Rename {
-        entity: Entity,
+        entity_name: String,
         name: String,
     },
     Delete {
@@ -413,7 +413,7 @@ pub(super) enum Inverse {
         record: ComponentRecord,
     },
     Material {
-        entity: Entity,
+        entity_name: String,
         state: Box<MaterialRuntimeState>,
     },
 }

@@ -51,7 +51,7 @@ impl EditorHistory {
         self.log = next_log;
         self.undo.push(HistoryEntry {
             inverse: Inverse::Material {
-                entity,
+                entity_name: entity_name.clone(),
                 state: Box::new(previous),
             },
             operation,
@@ -63,18 +63,19 @@ impl EditorHistory {
 
 pub(super) fn apply_inverse_material(
     world: &mut World,
-    entity: Entity,
+    entity_name: String,
     state: Box<MaterialRuntimeState>,
 ) -> Result<(Inverse, Inverse), EditorError> {
+    let entity = super::resolve_name(world, &entity_name)?;
     let current = MaterialRuntimeState::capture(world, entity)?;
     install_material_state(world, entity, &state)?;
     Ok((
         Inverse::Material {
-            entity,
+            entity_name: entity_name.clone(),
             state: Box::new(current.clone()),
         },
         Inverse::Material {
-            entity,
+            entity_name,
             state: Box::new(current),
         },
     ))
@@ -85,16 +86,9 @@ pub(super) fn install_material_state(
     entity: Entity,
     state: &MaterialRuntimeState,
 ) -> Result<(), EditorError> {
-    world
-        .insert(
-            entity,
-            (
-                state.material.clone(),
-                state.uniform,
-                state.extracted_material.clone(),
-            ),
-        )
-        .map_err(|error| EditorError::RollbackFailed(error.to_string()))?;
+    set_optional_component(world, entity, state.material.clone())?;
+    set_optional_component(world, entity, state.uniform)?;
+    set_optional_component(world, entity, state.extracted_material.clone())?;
     set_optional_component::<crate::ecs::components::MaterialAssetRef>(
         world,
         entity,

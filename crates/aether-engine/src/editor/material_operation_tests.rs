@@ -281,6 +281,9 @@ fn prepared_material_apply_undo_redo_swaps_full_runtime_state_without_changing_s
     assert!(world.contains(other));
 }
 
+#[path = "material_operation_tests/edge_cases.rs"]
+mod edge_cases;
+
 #[test]
 fn invalid_material_preparation_and_generic_apply_fail_without_side_effects() {
     let (scene, log) = paths("validation");

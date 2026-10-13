@@ -45,9 +45,9 @@ pub struct PreparedMaterial {
 
 #[derive(Clone)]
 pub(crate) struct MaterialRuntimeState {
-    pub(crate) material: MaterialConfig,
-    pub(crate) uniform: MaterialUniform,
-    pub(crate) extracted_material: ExtractedMaterial,
+    pub(crate) material: Option<MaterialConfig>,
+    pub(crate) uniform: Option<MaterialUniform>,
+    pub(crate) extracted_material: Option<ExtractedMaterial>,
     pub(crate) material_asset: Option<MaterialAssetRef>,
     pub(crate) material_asset_status: Option<MaterialAssetStatus>,
     pub(crate) transparent_material: Option<TransparentMaterial>,
@@ -62,17 +62,18 @@ impl MaterialRuntimeState {
             material: world
                 .query_one::<&MaterialConfig>(entity)
                 .get()
-                .map_err(|_| missing_material_component("MaterialConfig"))?
-                .clone(),
-            uniform: *world
+                .ok()
+                .cloned(),
+            uniform: world
                 .query_one::<&MaterialUniform>(entity)
                 .get()
-                .map_err(|_| missing_material_component("MaterialUniform"))?,
+                .ok()
+                .copied(),
             extracted_material: world
                 .query_one::<&ExtractedMaterial>(entity)
                 .get()
-                .map_err(|_| missing_material_component("ExtractedMaterial"))?
-                .clone(),
+                .ok()
+                .cloned(),
             material_asset: world
                 .query_one::<&MaterialAssetRef>(entity)
                 .get()
@@ -93,16 +94,12 @@ impl MaterialRuntimeState {
 
     pub(crate) fn from_prepared(prepared: PreparedMaterial) -> Self {
         Self {
-            material: prepared.material,
-            uniform: prepared.uniform,
-            extracted_material: prepared.extracted_material,
+            material: Some(prepared.material),
+            uniform: Some(prepared.uniform),
+            extracted_material: Some(prepared.extracted_material),
             material_asset: prepared.material_asset,
             material_asset_status: prepared.material_asset_status,
             transparent_material: prepared.transparent_material,
         }
     }
-}
-
-fn missing_material_component(name: &str) -> EditorError {
-    EditorError::InvalidMaterialOperation(format!("target Mesh has no {name}"))
 }
