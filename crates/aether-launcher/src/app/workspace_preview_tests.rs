@@ -60,6 +60,20 @@ fn contains(output: &egui::FullOutput, prefix: &str) -> bool {
         .any(|shape| matches(&shape.shape, prefix))
 }
 
+fn text_position(output: &egui::FullOutput, prefix: &str) -> Option<egui::Pos2> {
+    fn find(shape: &Shape, prefix: &str) -> Option<egui::Pos2> {
+        match shape {
+            Shape::Text(text) if text.galley.text().starts_with(prefix) => Some(text.pos),
+            Shape::Vec(shapes) => shapes.iter().find_map(|shape| find(shape, prefix)),
+            _ => None,
+        }
+    }
+    output
+        .shapes
+        .iter()
+        .find_map(|shape| find(&shape.shape, prefix))
+}
+
 #[test]
 fn ew3_selected_thumbnail_placeholder_transitions_without_selection_changes() {
     let fixture = Fixture::new();
@@ -108,4 +122,32 @@ fn ew3_selected_thumbnail_placeholder_transitions_without_selection_changes() {
         assert!(app.pending_select_entity.is_none());
         assert!(app.pending_project_open.is_none());
     }
+}
+
+#[test]
+fn ew3_selected_preview_uses_the_open_space_to_the_right_of_the_resource_list() {
+    let fixture = Fixture::new();
+    let mut app = App::new(parse_args(&["aether-launcher".into()]).unwrap());
+    app.workspace.set_project_root(fixture.0.clone());
+    app.workspace.height = 460.;
+    app.workspace
+        .select_resource(Some(fixture.0.join("assets/image.png")));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let output = loop {
+        let output = frame(&mut app);
+        if contains(&output, "Image: 400 × 100 px") {
+            break output;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "image preview did not load"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    };
+    let resources_x = text_position(&output, "Resources").unwrap().x;
+    let dimensions_x = text_position(&output, "Image: 400 × 100 px").unwrap().x;
+    assert!(
+        dimensions_x > resources_x + 120.,
+        "preview metadata should be to the right of the resource list"
+    );
 }

@@ -158,7 +158,6 @@ impl ProjectPanel {
         });
 
         let snapshot = self.index.snapshot().clone();
-        self.render_details(ui, &snapshot);
 
         let current = self.current_directory().to_owned();
         let browser_size = ui.available_size_before_wrap();
@@ -185,8 +184,17 @@ impl ProjectPanel {
                 // radius so the Resources scroll area cannot steal the drag.
                 ui.add_space(12.0);
                 let resource_height = browser_size.y.max(80.0);
+                let selected = self.selected_resource.is_some();
+                let available_width = ui.available_width();
+                let resource_width = if selected {
+                    (available_width * 0.43)
+                        .clamp(280.0, 440.0)
+                        .min((available_width - 220.0).max(0.0))
+                } else {
+                    available_width
+                };
                 ui.allocate_ui_with_layout(
-                    egui::vec2(ui.available_width(), resource_height),
+                    egui::vec2(resource_width, resource_height),
                     egui::Layout::top_down(egui::Align::Min),
                     |ui| {
                         ui.heading("Resources");
@@ -266,6 +274,16 @@ impl ProjectPanel {
                         }
                     },
                 );
+                if selected {
+                    ui.separator();
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(ui.available_width(), resource_height),
+                        egui::Layout::top_down(egui::Align::Min),
+                        |ui| self.render_details(ui, &snapshot),
+                    );
+                } else {
+                    self.preview.select(None);
+                }
             },
         );
         pending_open

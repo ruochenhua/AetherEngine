@@ -26,7 +26,7 @@ impl Default for Limits {
             image_pixels: 16 * 1024 * 1024,
             vertices: 100_000,
             triangles: 20_000,
-            thumbnail_edge: 192,
+            thumbnail_edge: 384,
         }
     }
 }

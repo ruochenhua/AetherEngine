@@ -31,8 +31,8 @@ fn projection_centers_negative_asymmetric_bounds_and_is_deterministic() {
     let positions = [[-8., -3., -4.], [-2., -3., -4.], [-8., 1., -2.]];
     let result = mesh::project(&positions, &[[0, 1, 2]], Limits::default()).unwrap();
     assert_eq!(result.dimensions, "AABB: 6.000 × 4.000 × 2.000");
-    assert_eq!(result.size, [192, 192]);
-    assert_eq!(result.rgba.len(), 192 * 192 * 4);
+    assert_eq!(result.size, [384, 384]);
+    assert_eq!(result.rgba.len(), 384 * 384 * 4);
     assert!(result
         .rgba
         .chunks_exact(4)
@@ -74,8 +74,8 @@ fn image_reports_original_dimensions_and_fits_thumbnail() {
         .load("assets/wide.png", ResourceKind::Image)
         .unwrap();
     assert_eq!(result.dimensions, "Image: 800 × 200 px");
-    assert_eq!(result.size, [192, 48]);
-    assert_eq!(result.rgba.len(), 192 * 48 * 4);
+    assert_eq!(result.size, [384, 96]);
+    assert_eq!(result.rgba.len(), 384 * 96 * 4);
     assert_eq!(&result.rgba[..4], &[30, 80, 160, 255]);
 }
 

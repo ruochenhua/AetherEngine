@@ -20,7 +20,7 @@ pub(super) fn project(
     if indices.iter().flatten().any(|&i| i >= positions.len()) {
         return Err("Malformed mesh index".into());
     }
-    let edge = limits.thumbnail_edge.min(192) as usize;
+    let edge = limits.thumbnail_edge.min(384) as usize;
     if edge < 8 {
         return Err("Thumbnail size is too small".into());
     }
