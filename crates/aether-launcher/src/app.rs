@@ -22,6 +22,8 @@ mod workspace_drop_tests;
 #[cfg(test)]
 mod workspace_layout_tests;
 #[cfg(test)]
+mod workspace_preview_tests;
+#[cfg(test)]
 mod workspace_project_tests;
 #[cfg(test)]
 mod workspace_tests;

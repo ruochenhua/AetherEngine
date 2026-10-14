@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
 
 mod helpers;
+mod preview;
 use helpers::{
     child_directories, current_prefix, file_name, kind_name, normalize_path, resource_icon,
     sort_name, ui_state_empty, validity_name,
@@ -20,11 +21,13 @@ pub(super) struct ProjectPanel {
     history: PathHistory,
     selected_resource: Option<String>,
     scan_result: Option<Receiver<(u64, Result<IndexSnapshot, crate::project_index::IndexError>)>>,
+    preview: preview::ResourcePreview,
 }
 
 impl ProjectPanel {
     pub(super) fn new(root: PathBuf) -> Self {
         let mut panel = Self {
+            preview: preview::ResourcePreview::new(root.clone()),
             root,
             index: ProjectIndex::default(),
             search: String::new(),
@@ -61,6 +64,7 @@ impl ProjectPanel {
     }
 
     fn schedule_refresh(&mut self) {
+        self.preview.invalidate();
         let generation = self.index.begin_scan();
         let root = self.root.clone();
         let (sender, receiver) = mpsc::channel();
@@ -98,6 +102,7 @@ impl ProjectPanel {
 
     pub(super) fn render(&mut self, ui: &mut egui::Ui) -> Option<PathBuf> {
         self.poll_refresh();
+        self.preview.poll();
         let mut pending_open = None;
         ui.horizontal(|ui| {
             ui.heading("Project resources");
@@ -152,9 +157,9 @@ impl ProjectPanel {
                 });
         });
 
-        self.render_details(ui, self.index.snapshot());
-
         let snapshot = self.index.snapshot().clone();
+        self.render_details(ui, &snapshot);
+
         let current = self.current_directory().to_owned();
         let browser_size = ui.available_size_before_wrap();
         ui.allocate_ui_with_layout(
@@ -342,11 +347,13 @@ impl ProjectPanel {
         }
     }
 
-    fn render_details(&self, ui: &mut egui::Ui, snapshot: &IndexSnapshot) {
+    fn render_details(&mut self, ui: &mut egui::Ui, snapshot: &IndexSnapshot) {
         let Some(path) = self.selected_resource.as_deref() else {
+            self.preview.select(None);
             return;
         };
         let Some(entry) = snapshot.entries.iter().find(|entry| entry.path == path) else {
+            self.preview.select(None);
             ui.separator();
             ui.label("Resource details");
             ui.label(path);
@@ -354,12 +361,16 @@ impl ProjectPanel {
             return;
         };
         ui.horizontal_wrapped(|ui| {
+            let (icon, color) = resource_icon(entry.kind, ui);
+            ui.colored_label(color, icon);
             ui.label("Resource details");
             ui.label(format!("Path: {}", entry.path));
             ui.label(format!("Type: {}", kind_name(entry.kind)));
             ui.label(format!("Size: {} bytes", entry.size));
             ui.label(format!("Status: {}", validity_name(entry.validity)));
         });
+        self.preview.select(Some((&entry.path, entry.kind)));
+        self.preview.render(ui, entry.kind);
     }
 
     fn visit_directory(&mut self, path: &str) {
