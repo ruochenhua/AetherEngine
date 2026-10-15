@@ -388,7 +388,10 @@ impl ProjectPanel {
             ui.label(format!("Status: {}", validity_name(entry.validity)));
         });
         self.preview.select(Some((&entry.path, entry.kind)));
-        self.preview.render(ui, entry.kind);
+        egui::ScrollArea::vertical()
+            .id_salt("project_resource_preview")
+            .auto_shrink([false, false])
+            .show(ui, |ui| self.preview.render(ui, entry.kind));
     }
 
     fn visit_directory(&mut self, path: &str) {

@@ -84,7 +84,7 @@
 
 任务包：[EW3 拖放实施简报](ew3-drag-drop-brief.md)
 
-状态（2026-10-13）：EW3 首个切片已实现并通过自动验证，范围为 Project 单实体 OBJ 拖入视口、y=0 地面放置、场景/操作日志持久化、Undo/Redo、保存重开和基线日志 replay 解析。文件资源浏览器的 Folders/Resources 分割条已改用 egui 原生可调整面板，并在 Release Launcher 中确认可拖动。MaterialAsset 与 inline texture 拖放、缩略图仍是后续切片。
+状态（2026-10-15）：EW3 首个切片已实现并通过自动验证，范围为 Project 单实体 OBJ 拖入视口、y=0 地面放置、场景/操作日志持久化、Undo/Redo、保存重开和基线日志 replay 解析。文件资源浏览器的 Folders/Resources 分割条已改用 egui 原生可调整面板，并在 Release Launcher 中确认可拖动。选中图片和模型的异步预览已实现；预览放在资源列表右侧，并限制在固定滚动视口中，避免图片尺寸反向撑大底部工作区。回归测试覆盖方形预览加载、缩小面板后图片边界稳定及右侧布局。MaterialAsset 与 inline texture 拖放仍是后续切片。
 
 - 规划审阅结论：先交付 Project 到视口的单实体 OBJ 地面放置，再扩充材质/纹理属性拖放；现有 renderer 用全窗投影，egui rect 只负责限定 drop 命中区。
 - 实现顺序固定为 EW3-A 放置数学、EW3-B 拖放路由、EW3-C1 Engine operation/history、EW3-C2 Launcher host resolver、EW3-C3 Project/viewport 集成，每个切片先 RED 再 GREEN。
@@ -93,7 +93,7 @@
 - EW3 分阶段交付：第一切片做单实体 OBJ 地面放置、保存/重开与 Undo/Redo；后续切片加入 MaterialAsset 和 inline texture 槽赋值。模型拖入视口以全窗 render viewport rect 建射线、egui viewport rect 限定 drop 区，并使用 y=0 地面放置规则；无有效落点时拒绝且无副作用。
 - 后续 EW3 切片再交付 MaterialAsset 拖入 Mesh 的 `material_asset` 链接字段和纹理拖到 inline Material 的 Albedo/Normal/ORM/Emissive 对应字段。字段不兼容或场景对象仍链接只读材质时显示可读拒绝原因。
 - 资源赋值作为 EditorOperation，支持撤销/重做和加载失败回滚。禁止通过拖放隐式 detach linked MaterialAsset。
-- 第一切片显示 Project 当前支持的类型/路径等资源摘要；模型缩略图、纹理缩略图和尺寸属于后续 EW3，当前不阻挡单实体放置。RON 资源显示类型化摘要；不支持预览的资源显示清晰状态。
+- 第一切片显示 Project 当前支持的类型/路径等资源摘要；模型和纹理缩略图、尺寸已由后续预览切片实现，不阻挡单实体放置。RON 资源显示类型化摘要；不支持预览的资源显示清晰状态。
 - 拖放前校验资源类型、真实路径 containment 和目标字段；拒绝时给出可读反馈，不留下半成品实体或引用。
 
 ### EW4 · 导入与安全文件操作

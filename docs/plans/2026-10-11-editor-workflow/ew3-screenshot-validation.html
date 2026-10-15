@@ -20,35 +20,29 @@
 </style>
 <body>
   <header>
-    <span class="status">实际窗口已核验</span>
-    <h1>EW3 · 编辑器面板界面验证</h1>
-    <p>这张是 release launcher 的真实桌面窗口截图，展示 Project 文件资源管理器与编辑器主要面板。先前报告里的场景渲染图不包含编辑器 UI，现已纠正。</p>
+    <span class="status">Release 窗口与回归测试已核验</span>
+    <h1>EW3 · Project 预览尺寸回归验证</h1>
+    <p>2026-10-15 更新。下方截图来自运行中的 Release Launcher，展示 <code>18_file_mesh.ron</code> 场景和底部 Project 资源浏览器。截图时没有选中资源，因此不把它作为预览图尺寸的证据；预览边界由自动化 UI 测试直接检查。</p>
   </header>
   <section>
-    <h2>实际编辑器窗口</h2>
-    <p class="caveat">本页展示的是 PNG 静态截图，不能在截图上拖动分割条。请在正在运行的 Aether Engine Launcher 窗口中操作。</p>
+    <h2>Release Launcher 实际窗口</h2>
+    <p class="caveat">这是一张静态窗口截图，不能在图上拖动分割条。它记录 Project 浏览器当前布局；下方自动测试覆盖了选中资源后的预览位置和尺寸。</p>
     <figure>
-      <img src="../../../tests/output/ew3-editor-workspace.png" alt="Aether Engine Launcher 实际编辑器窗口，显示 Project 面板">
-      <figcaption>实际桌面截图 · <code>tests/output/ew3-editor-workspace.png</code> · release launcher · 已打开 <code>18_file_mesh.ron</code></figcaption>
+      <img src="ew3-editor-workspace-2026-10-15.png" alt="Release Launcher 窗口显示场景视口和底部 Project 资源浏览器">
+      <figcaption>Release Launcher 实际窗口截图 · 2026-10-15 · 已打开 <code>18_file_mesh.ron</code> · 当前未选中资源</figcaption>
     </figure>
   </section>
   <section>
-    <h2>面板核验结果</h2>
+    <h2>预览尺寸回归结果</h2>
     <table>
-      <tr><th>左侧</th><td>Scene 层级，列出 Camera、DirectionalLight 和 OBJ 网格。</td></tr>
-      <tr><th>中间</th><td>场景渲染视口，OBJ 与棋盘纹理显示。</td></tr>
-      <tr><th>右侧</th><td>Physics、Scene Info、Render Features 和 Input Debug 设置面板。</td></tr>
-      <tr><th>底部</th><td>Project 资源管理器，显示 Assets / Scenes 目录树、资源列表、搜索与类型筛选。</td></tr>
-      <tr><th>日志入口</th><td>窗口顶部和底部面板栏均显示 Project / Log 切换入口；本张截图停留在 Project 标签，因此没有展示 Log 内容区。</td></tr>
-      <tr><th>运行结果</th><td>Release launcher 实际窗口可见；场景模型与编辑器控件均已绘制。</td></tr>
-      <tr><th>自动化回归</th><td><code>./scripts/verify-ci.sh</code> 全通过；Engine 410 项、Launcher 122 项测试通过；模块健康 349 个 Rust 文件、0 个超限。</td></tr>
+      <tr><th>复现条件</th><td>选中 384 × 384 方形图片，在异步预览加载期间向下缩小底部 Project 面板。</td></tr>
+      <tr><th>修复方式</th><td>把资源预览放进固定视口的垂直滚动区域，避免精确图片高度进入父面板的最小高度计算。</td></tr>
+      <tr><th>图片位置</th><td>自动化测试从 egui 绘制形状读取实际图片矩形，确认它位于 Resources 列表右侧。</td></tr>
+      <tr><th>尺寸稳定</th><td>图片加载后连续渲染 20 帧，图片矩形高度保持在 1 point 误差内；Project 面板高度没有回弹。</td></tr>
+      <tr><th>代码位置</th><td><code>crates/aether-launcher/src/app/workspace/project_panel.rs</code> 与 <code>workspace_preview_tests.rs</code>。</td></tr>
+      <tr><th>验证结果</th><td><code>./scripts/verify-ci.sh</code> 全通过；Engine 424 项、Launcher 169 项测试通过；模块健康检查 382 个 Rust 文件、0 个超限。</td></tr>
     </table>
-    <p class="caveat"><strong>后续确认：</strong>Log 面板实现和相关测试已通过，但本次实际截图没有切换到 Log 标签；Project → Viewport 的真实鼠标拖放也仍需手动验收。</p>
-  </section>
-  <section>
-    <h2>纯场景渲染图</h2>
-    <p>这是先前生成的 2560 × 1440 离屏场景图。它用于确认场景渲染，不是编辑器 UI 截图。</p>
-    <figure><img src="../../../tests/output/ew3-file-mesh.png" alt="18_file_mesh 离屏渲染画面"></figure>
+    <p class="caveat"><strong>截图范围：</strong>截图展示的是 Release 窗口中的场景和未选择资源时的 Project 列表。它不是拖拽操作录像；尺寸回归由真实 egui 输入事件和绘制几何断言覆盖。</p>
   </section>
 </body>
 </html>
