@@ -82,6 +82,12 @@ fn references_details_affordance_sections_and_escape_respect_text_focus() {
     escape(&mut panel, &ctx);
     assert_eq!(panel.references.target(), Some("assets/t.png"));
     let output = frame(&mut panel, &ctx, vec![]);
+    click(&mut panel, &ctx, text(&output, "New Folder").unwrap());
+    let output = frame(&mut panel, &ctx, vec![]);
+    click(&mut panel, &ctx, text(&output, "New folder").unwrap());
+    escape(&mut panel, &ctx);
+    assert_eq!(panel.references.target(), Some("assets/t.png"));
+    let output = frame(&mut panel, &ctx, vec![]);
     click(&mut panel, &ctx, text(&output, "Back to target").unwrap());
     escape(&mut panel, &ctx);
     assert_eq!(panel.references.target(), None);
@@ -98,4 +104,72 @@ fn references_show_action_gives_preview_focus_for_escape() {
     assert_eq!(panel.references.target(), Some("assets/t.png"));
     escape(&mut panel, &ctx);
     assert_eq!(panel.references.target(), None);
+}
+
+fn tab_to_preview_control_and_escape(steps: usize, label: &str) {
+    let f = Fixture::new();
+    f.write("assets/m.ron", r#"(normal_texture:Some("t.png"))"#);
+    let mut panel = f.panel("assets/t.png");
+    let ctx = egui::Context::default();
+    let output = frame(&mut panel, &ctx, vec![]);
+    click(&mut panel, &ctx, text(&output, "Show References").unwrap());
+    super::references_tests::finish(&mut panel);
+    frame(&mut panel, &ctx, vec![]);
+    let header = ctx.memory(|memory| memory.focused()).unwrap();
+    let mut output = egui::FullOutput::default();
+    for _ in 0..steps {
+        for pressed in [true, false] {
+            output = frame(
+                &mut panel,
+                &ctx,
+                vec![Event::Key {
+                    key: egui::Key::Tab,
+                    physical_key: None,
+                    pressed,
+                    repeat: false,
+                    modifiers: Modifiers::NONE,
+                }],
+            );
+        }
+    }
+    let focused = ctx.memory(|memory| memory.focused()).unwrap();
+    assert_ne!(
+        focused, header,
+        "Tab must move from header to a preview control"
+    );
+    let control = ctx.read_response(focused).unwrap();
+    assert!(
+        control
+            .rect
+            .contains(text(&output, label).unwrap().center()),
+        "Tab did not focus {label}"
+    );
+    escape(&mut panel, &ctx);
+    assert_eq!(
+        panel.references.target(),
+        None,
+        "Escape with {label} focused must close preview"
+    );
+    assert_eq!(panel.selected_resource(), Some("assets/t.png"));
+}
+
+#[test]
+fn references_tab_focused_back_closes_on_escape() {
+    tab_to_preview_control_and_escape(1, "Back to target");
+}
+#[test]
+fn references_tab_focused_reanalyze_closes_on_escape() {
+    tab_to_preview_control_and_escape(2, "Reanalyze");
+}
+#[test]
+fn references_tab_focused_recheck_closes_on_escape() {
+    tab_to_preview_control_and_escape(3, "Check for changes");
+}
+#[test]
+fn references_tab_focused_close_closes_on_escape() {
+    tab_to_preview_control_and_escape(4, "Close references");
+}
+#[test]
+fn references_tab_focused_source_closes_on_escape() {
+    tab_to_preview_control_and_escape(5, "assets/m.ron");
 }
