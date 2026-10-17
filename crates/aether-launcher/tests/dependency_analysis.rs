@@ -397,3 +397,26 @@ fn terrain_and_water_follow_asset_manager_slash_normalization() {
     assert_eq!(r.edges.len(), 7);
     assert!(r.edges.iter().all(|e| e.candidate == "assets/t.png"));
 }
+
+#[test]
+fn optional_gltf_extensions_with_external_uris_block_completeness() {
+    let f = Fixture::new();
+    f.write("assets/payload.bin", b"external resource");
+    let source = r#"{
+        "asset":{"version":"2.0"},
+        "extensionsUsed":["VENDOR_external_resource"],
+        "extensions":{"VENDOR_external_resource":{"uri":"payload.bin"}}
+    }"#;
+    let parsed = gltf::Gltf::from_slice(source.as_bytes()).unwrap();
+    assert_eq!(parsed.extensions_required().count(), 0);
+    assert_eq!(parsed.extensions_used().count(), 1);
+    f.write("assets/mesh.gltf", source);
+
+    let report = f.report("assets/payload.bin");
+    assert!(!report.is_complete());
+    assert!(report.diagnostics.iter().any(|diagnostic| {
+        diagnostic.path == "assets/mesh.gltf"
+            && diagnostic.message.contains("VENDOR_external_resource")
+            && diagnostic.message.contains("extension")
+    }));
+}

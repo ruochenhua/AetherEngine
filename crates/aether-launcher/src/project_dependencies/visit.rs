@@ -240,6 +240,16 @@ pub(super) fn endpoint_diagnostic(extension: &str, bytes: Option<&[u8]>) -> Opti
             match gltf::Gltf::from_slice(bytes) {
                 Err(error) => Some(format!("Unvisited or malformed glTF document: {error}")),
                 Ok(document) => {
+                    // Core buffer/image visitation does not cover extension-owned references.
+                    let mut extensions = document.extensions_used().collect::<Vec<_>>();
+                    extensions.sort_unstable();
+                    extensions.dedup();
+                    if !extensions.is_empty() {
+                        return Some(format!(
+                            "Unvisited glTF extensions: {}",
+                            extensions.join(", ")
+                        ));
+                    }
                     let external_buffers = document.buffers().any(|buffer| matches!(buffer.source(), gltf::buffer::Source::Uri(uri) if !uri.starts_with("data:")));
                     let external_images = document.images().any(|image| matches!(image.source(), gltf::image::Source::Uri {uri,..} if !uri.starts_with("data:")));
                     (external_buffers || external_images)
