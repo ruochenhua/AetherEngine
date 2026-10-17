@@ -39,7 +39,9 @@ pub use handle::Handle;
 pub use id::{AssetId, AssetIdError, AssetIdParseError, AssetKind, CanonicalPath};
 pub use manager::{AssetManager, TextureSnapshotLimits};
 pub use store::{
-    canonicalize, ApplyOutcome, AssetError, AssetError as StoreError, AssetPayload, AssetResult,
-    AssetStore, AssetStoreConfig, CancellationToken, FrameBoundary, GpuAssetKey, GpuCommitCache,
-    GpuCommitContext, LoadRequest, LoadStateView, LoadTicket, ReloadTicket,
+    canonicalize, ApplyOutcome, AssetError, AssetError as StoreError, AssetPayload,
+    AssetRequestUsage, AssetResult, AssetStore, AssetStoreConfig, AssetUsageSnapshot,
+    CancellationToken, DeferredAssetState, DeferredAssetUsage, FrameBoundary, GpuAssetKey,
+    GpuCommitCache, GpuCommitContext, LoadRequest, LoadStateView, LoadTicket, ReloadTicket,
+    RetainedAssetUsage,
 };

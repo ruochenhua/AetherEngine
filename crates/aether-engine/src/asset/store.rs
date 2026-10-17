@@ -4,6 +4,7 @@ mod gpu;
 mod handles;
 mod lifecycle;
 mod sync_batch;
+mod usage_snapshot;
 mod worker;
 
 #[cfg(test)]
@@ -14,6 +15,8 @@ mod frame_boundary_tests;
 mod hot_reload_acceptance;
 #[cfg(test)]
 mod store_tests;
+#[cfg(test)]
+mod usage_snapshot_tests;
 
 use super::store_types::{AssetEntry, TicketRecord};
 use super::{Asset, AssetId, Handle};
@@ -27,6 +30,10 @@ pub use super::store_types::{
     ApplyOutcome, AssetError, AssetPayload, AssetResult, AssetStoreConfig, CancellationToken,
     FrameBoundary, GpuAssetKey, GpuCommitCache, GpuCommitContext, LoadRequest, LoadStateView,
     LoadTicket, ReloadTicket,
+};
+pub use usage_snapshot::{
+    AssetRequestUsage, AssetUsageSnapshot, DeferredAssetState, DeferredAssetUsage,
+    RetainedAssetUsage,
 };
 
 type DecodeFn = Box<dyn FnOnce(&Path) -> Result<Arc<dyn AssetPayload>, AssetError> + Send>;

@@ -68,6 +68,14 @@ impl AssetManager {
         self.store.project_root()
     }
 
+    /// Observe CPU store ownership in typed identity order without polling results.
+    ///
+    /// World, history/replay, watchers, GPU caches, and payload dependencies need
+    /// separate inspection. This inventory cannot authorize file mutations.
+    pub fn resource_usage_snapshot(&self) -> Vec<super::AssetUsageSnapshot> {
+        self.store.resource_usage_snapshot()
+    }
+
     /// Queue a versioned reload for a currently loaded asset.
     pub fn reload<T: Asset>(&mut self, handle: Handle<T>) -> Result<ReloadTicket, AssetError> {
         self.store.reload(handle)
