@@ -5,14 +5,18 @@ use crate::project_index::{
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
 
+mod details;
 mod helpers;
 mod preview;
+mod references;
+mod references_ui;
 use helpers::{
     child_directories, current_prefix, file_name, kind_name, normalize_path, resource_icon,
     sort_name, ui_state_empty, validity_name,
 };
 
 pub(super) struct ProjectPanel {
+    references: references::ReferencePreview,
     root: PathBuf,
     index: ProjectIndex,
     search: String,
@@ -29,6 +33,7 @@ pub(super) struct ProjectPanel {
 impl ProjectPanel {
     pub(super) fn new(root: PathBuf) -> Self {
         let mut panel = Self {
+            references: references::ReferencePreview::new(root.clone()),
             preview: preview::ResourcePreview::new(root.clone()),
             root,
             index: ProjectIndex::default(),
@@ -114,6 +119,7 @@ impl ProjectPanel {
     ) -> (Option<PathBuf>, Option<super::ProjectFileAction>) {
         self.poll_refresh();
         self.preview.poll();
+        self.references.poll();
         let mut pending_open = None;
         let mut project_file = None;
         ui.horizontal(|ui| {
@@ -244,7 +250,8 @@ impl ProjectPanel {
                 // radius so the Resources scroll area cannot steal the drag.
                 ui.add_space(12.0);
                 let resource_height = browser_size.y.max(80.0);
-                let selected = self.selected_resource.is_some();
+                let selected =
+                    self.selected_resource.is_some() || self.references.target().is_some();
                 let available_width = ui.available_width();
                 let resource_width = if selected {
                     (available_width * 0.43)
@@ -425,35 +432,6 @@ impl ProjectPanel {
         }
     }
 
-    fn render_details(&mut self, ui: &mut egui::Ui, snapshot: &IndexSnapshot) {
-        let Some(path) = self.selected_resource.as_deref() else {
-            self.preview.select(None);
-            return;
-        };
-        let Some(entry) = snapshot.entries.iter().find(|entry| entry.path == path) else {
-            self.preview.select(None);
-            ui.separator();
-            ui.label("Resource details");
-            ui.label(path);
-            ui.label("Status: Missing from current index");
-            return;
-        };
-        ui.horizontal_wrapped(|ui| {
-            let (icon, color) = resource_icon(entry.kind, ui);
-            ui.colored_label(color, icon);
-            ui.label("Resource details");
-            ui.label(format!("Path: {}", entry.path));
-            ui.label(format!("Type: {}", kind_name(entry.kind)));
-            ui.label(format!("Size: {} bytes", entry.size));
-            ui.label(format!("Status: {}", validity_name(entry.validity)));
-        });
-        self.preview.select(Some((&entry.path, entry.kind)));
-        egui::ScrollArea::vertical()
-            .id_salt("project_resource_preview")
-            .auto_shrink([false, false])
-            .show(ui, |ui| self.preview.render(ui, entry.kind));
-    }
-
     fn visit_directory(&mut self, path: &str) {
         if self.history.current() != Some(path) {
             self.history.visit(path);
@@ -472,3 +450,9 @@ impl ProjectPanel {
         }
     }
 }
+
+#[cfg(test)]
+mod references_tests;
+
+#[cfg(test)]
+mod references_ui_tests;
