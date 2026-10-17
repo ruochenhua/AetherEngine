@@ -35,6 +35,8 @@
 
 ### EW5 · 移动、重命名与删除
 
+- 首个 EW5 切片只提供“显示引用”只读影响预览：显示引用文档、精确字段和缺失状态。扫描不完整或有损坏/未知引用文档时明确显示“分析不完整”，不允许把“没有发现”解释成“未被引用”。
+- 目前缺少通用脏场景标记，运行时 World、AssetManager 和 watcher 也仍保留路径键；在保存状态和 live-path 更新合同落地前，Move/Rename/Delete 保持禁用。
 - 重命名使用 F2 或上下文菜单，名称原位编辑；Enter 提交，Escape 取消。路径碰撞、非法名称或无法解析引用时，保留原资源并显示原因。
 - 资源拖到目标目录时高亮目录；释放后先展示来源、目标路径及将更新的引用，再由用户确认提交。重命名使用同样的影响预览。
 - 删除使用 Delete 或上下文菜单打开引用感知确认；列出资源和已知引用者，支持跳到引用位置。发现引用未覆盖、脏场景未保存或依赖文档损坏时阻止删除并给出下一步，不提供默认的强制删除绕过。
@@ -64,6 +66,7 @@
 | [Godot Inspector Dock](https://docs.godotengine.org/en/stable/tutorials/editor/inspector_dock.html)：拖动时兼容属性高亮，资源放到属性值上完成赋值。 | 纹理只高亮兼容槽；linked MaterialAsset 在赋值前要求显式 detach。 |
 | [Unreal Working with Assets](https://dev.epicgames.com/documentation/en-us/unreal-engine/working-with-assets-in-unreal-engine)：移动/复制松手后呈现目标操作选项，删除会确认并检查引用。 | 展示将改变的路径和引用；未知引用或脏场景时阻止破坏性操作。 |
 | [Godot Import Process](https://docs.godotengine.org/en/stable/tutorials/assets_pipeline/import_process.html)：支持的资源可拖入 FileSystem dock，并由编辑器导入。 | 同时提供明确 Import 入口；所有入口共用预检、依赖摘要、原子发布和失败反馈。 |
+| [Blender Outliner Editing](https://docs.blender.org/manual/en/dev/editors/outliner/editing.html)：Outliner 提供 F2 重命名、Delete、Remap Users 和 Select Linked。 | 在实施资源改名或删除前先展示引用者与依赖边；首个 EW5 切片先只读列出引用，随后再开放安全写操作。 |
 | [Unreal Content Browser](https://dev.epicgames.com/documentation/en-us/unreal-engine/content-browser-in-unreal-engine)：Content Browser 可多实例使用并可停靠或浮动。 | Aether 先做 EW6 主窗口页签；独立原生窗口留待渲染与事件路由专项设计。 |
 | [Godot Script Editor](https://docs.godotengine.org/en/stable/tutorials/editor/script_editor.html)：脚本编辑器支持多个文件页签及关闭/切换操作。 | 多资源预览页签采用可预测的打开、复用、切换、关闭与失效状态合同。 |
 

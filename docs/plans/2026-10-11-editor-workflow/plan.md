@@ -106,6 +106,8 @@
 
 ### EW5 · 依赖感知的移动、重命名与删除
 
+状态（2026-10-17）：三方交互/架构/失败审阅收敛为先实现 EW5-A 类型化只读依赖索引与影响预览。当前没有通用场景脏状态，也没有运行中路径迁移合同；Move/Rename/Delete 暂时禁用，待依赖图、保存状态和 runtime 路径状态可安全更新后分片开放。详见[EW5-A 依赖预览合同](ew5-dependency-preview-contract.md)。
+
 - 建立类型化依赖 visitor，覆盖 Scene 中 MeshRef/MaterialAsset/Prefab、Prefab 中 Mesh/Material 与 override、MaterialAsset 中所有纹理槽、Terrain heightmap/layer textures。
 - 禁止字符串全局替换。移动/重命名仅对已支持 schema 执行；无法解析文件、未知引用或真实路径检查失败时拒绝操作并列明原因。
 - 检查脏场景和运行时引用：要求先保存或取消；提交文件操作后同步更新索引、热重载 watcher 与当前 World 引用。
