@@ -420,3 +420,6 @@ fn optional_gltf_extensions_with_external_uris_block_completeness() {
             && diagnostic.message.contains("extension")
     }));
 }
+
+#[path = "dependency_analysis/extensions.rs"]
+mod extensions;

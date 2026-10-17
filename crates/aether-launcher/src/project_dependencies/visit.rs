@@ -241,7 +241,18 @@ pub(super) fn endpoint_diagnostic(extension: &str, bytes: Option<&[u8]>) -> Opti
                 Err(error) => Some(format!("Unvisited or malformed glTF document: {error}")),
                 Ok(document) => {
                     // Core buffer/image visitation does not cover extension-owned references.
-                    let mut extensions = document.extensions_used().collect::<Vec<_>>();
+                    let mut extensions = document
+                        .extensions_used()
+                        .map(str::to_owned)
+                        .collect::<Vec<_>>();
+                    match extension_payload_names(bytes) {
+                        Ok(names) => extensions.extend(names),
+                        Err(error) => {
+                            return Some(format!(
+                                "Cannot inspect glTF extension payloads: {error}"
+                            ));
+                        }
+                    }
                     extensions.sort_unstable();
                     extensions.dedup();
                     if !extensions.is_empty() {
@@ -259,6 +270,32 @@ pub(super) fn endpoint_diagnostic(extension: &str, bytes: Option<&[u8]>) -> Opti
         }
         _ => None,
     }
+}
+
+// gltf's typed model may discard unknown extension payloads and does not require
+// their names to appear in extensionsUsed. Inspect JSON objects, never URI strings.
+fn extension_payload_names(bytes: &[u8]) -> Result<Vec<String>, String> {
+    let json: serde_json::Value = if bytes.starts_with(b"glTF") {
+        let binary = gltf::binary::Glb::from_slice(bytes).map_err(|error| error.to_string())?;
+        serde_json::from_slice(&binary.json).map_err(|error| error.to_string())?
+    } else {
+        serde_json::from_slice(bytes).map_err(|error| error.to_string())?
+    };
+    let mut names = Vec::new();
+    let mut pending = vec![&json];
+    while let Some(value) = pending.pop() {
+        match value {
+            serde_json::Value::Object(object) => {
+                if let Some(serde_json::Value::Object(extensions)) = object.get("extensions") {
+                    names.extend(extensions.keys().cloned());
+                }
+                pending.extend(object.values());
+            }
+            serde_json::Value::Array(values) => pending.extend(values),
+            _ => (),
+        }
+    }
+    Ok(names)
 }
 
 // Shape-only mirror for ignored-field detection after the real v1 migration validator.
