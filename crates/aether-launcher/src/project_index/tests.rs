@@ -90,6 +90,18 @@ fn reports_missing_allowlisted_roots_without_scanning_project_fallbacks() {
 }
 
 #[test]
+fn indexes_empty_directories_for_project_tree_navigation() {
+    let fixture = Fixture::new();
+    fs::create_dir_all(fixture.0.join("assets/empty/nested")).unwrap();
+    let snapshot = scan_project(&fixture.0).unwrap();
+    assert!(snapshot.entries.is_empty());
+    assert_eq!(
+        &*snapshot.directories,
+        &["assets", "assets/empty", "assets/empty/nested"]
+    );
+}
+
+#[test]
 fn classifies_typed_ron_and_rejects_defaultable_or_ambiguous_materials() {
     let fixture = Fixture::new();
     fixture.write("scenes/showcase.ron", scene_ron("Showcase"));

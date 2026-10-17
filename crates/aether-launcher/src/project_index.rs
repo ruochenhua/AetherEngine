@@ -38,6 +38,8 @@ pub struct ResourceEntry {
 pub struct IndexSnapshot {
     pub generation: u64,
     pub entries: Arc<[ResourceEntry]>,
+    /// Slash-separated allowlisted directories, including empty folders.
+    pub directories: Arc<[String]>,
     /// Names of explicitly allowlisted roots absent from this project.
     pub missing_roots: Arc<[String]>,
 }
@@ -88,6 +90,7 @@ pub fn scan_project(root: &Path) -> Result<IndexSnapshot, IndexError> {
     }
     let canonical_root = root.canonicalize().map_err(scan_io)?;
     let mut entries = Vec::new();
+    let mut directories = Vec::new();
     let mut missing_roots = Vec::new();
     for name in CONTENT_ROOTS {
         let content_root = root.join(name);
@@ -115,6 +118,7 @@ pub fn scan_project(root: &Path) -> Result<IndexSnapshot, IndexError> {
                 content_root.display()
             )));
         }
+        directories.push(name.to_owned());
         walk_content(
             root,
             &canonical_root,
@@ -122,13 +126,17 @@ pub fn scan_project(root: &Path) -> Result<IndexSnapshot, IndexError> {
             &content_root,
             name,
             &mut entries,
+            &mut directories,
         )?;
     }
     entries.sort_by(|left, right| left.path.cmp(&right.path));
+    directories.sort();
+    directories.dedup();
     missing_roots.sort();
     Ok(IndexSnapshot {
         generation: 0,
         entries: entries.into(),
+        directories: directories.into(),
         missing_roots: missing_roots.into(),
     })
 }
@@ -144,6 +152,7 @@ fn walk_content(
     directory: &Path,
     root_name: &str,
     entries: &mut Vec<ResourceEntry>,
+    directories: &mut Vec<String>,
 ) -> Result<(), IndexError> {
     let mut children = fs::read_dir(directory)
         .map_err(scan_io)?
@@ -176,6 +185,18 @@ fn walk_content(
             if !is_lexically_beneath(project_root, &path) {
                 continue;
             }
+            let relative = path
+                .strip_prefix(project_root)
+                .map_err(|error| IndexError::Scan(error.to_string()))?;
+            let normalized = relative
+                .components()
+                .filter_map(|part| match part {
+                    Component::Normal(value) => value.to_str(),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join("/");
+            directories.push(normalized);
             walk_content(
                 project_root,
                 canonical_project,
@@ -183,6 +204,7 @@ fn walk_content(
                 &path,
                 root_name,
                 entries,
+                directories,
             )?;
         } else if metadata.is_file() {
             let canonical = path.canonicalize().map_err(scan_io)?;

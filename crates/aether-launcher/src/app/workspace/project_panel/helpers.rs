@@ -23,18 +23,11 @@ pub(super) fn current_prefix(path: &str) -> String {
 pub(super) fn child_directories(snapshot: &IndexSnapshot, parent: &str) -> Vec<String> {
     let prefix = current_prefix(parent);
     let mut children = snapshot
-        .entries
+        .directories
         .iter()
-        .filter_map(|entry| {
-            let rest = entry.path.strip_prefix(&prefix)?;
-            let segment = rest.split('/').next()?;
-            (rest.contains('/')).then(|| {
-                if prefix.is_empty() {
-                    segment.to_owned()
-                } else {
-                    format!("{prefix}{segment}")
-                }
-            })
+        .filter_map(|directory| {
+            let rest = directory.strip_prefix(&prefix)?;
+            (!rest.is_empty() && !rest.contains('/')).then(|| directory.to_owned())
         })
         .collect::<Vec<_>>();
     if parent.is_empty() {

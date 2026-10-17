@@ -41,6 +41,20 @@ pub(crate) struct MaterialDropRequest {
     pub(crate) resource: AssetDragPayload,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum ProjectFileAction {
+    CreateFolder { destination: String, name: String },
+    ImportAsset { destination: String },
+}
+
+#[derive(Default)]
+pub(crate) struct WorkspaceRequests {
+    pub(crate) open_scene: Option<PathBuf>,
+    pub(crate) project_file: Option<ProjectFileAction>,
+    pub(crate) confirm_import: bool,
+    pub(crate) cancel_import: bool,
+}
+
 pub(crate) struct Workspace {
     pub(crate) tab: WorkspaceTab,
     pub(crate) visible: bool,
@@ -89,12 +103,18 @@ impl Workspace {
         self.project.select_resource(path);
     }
 
+    pub(crate) fn refresh_project(&mut self) {
+        self.project.refresh();
+    }
+
     pub(crate) fn render(
         &mut self,
         ui: &mut egui::Ui,
         message: Option<&str>,
         logs: &mut crate::logging::LogPanel,
-    ) -> Option<PathBuf> {
+        pending_import: Option<(&str, &std::path::Path)>,
+    ) -> WorkspaceRequests {
+        let mut requests = WorkspaceRequests::default();
         egui::Panel::top("workspace_controls").show_inside(ui, |ui| {
             ui.horizontal(|ui| {
                 if self.visible {
@@ -110,15 +130,37 @@ impl Workspace {
             });
         });
         if !self.visible {
-            return None;
+            return requests;
         }
         let maximum = (ui.available_height() * 0.6).max(100.0);
-        let mut pending_open = None;
         let panel = egui::Panel::bottom("editor_workspace")
             .default_size(self.height)
             .size_range(100.0..=maximum)
             .resizable(true)
             .show_inside(ui, |ui| {
+                if let Some((destination, source)) = pending_import {
+                    egui::Frame::popup(ui.style()).show(ui, |ui| {
+                        ui.heading("Confirm Asset Import");
+                        ui.label(format!("File: {}", source.display()));
+                        ui.label(format!(
+                            "Target: {}",
+                            if destination.is_empty() {
+                                "."
+                            } else {
+                                destination
+                            }
+                        ));
+                        ui.label("Supported formats: PNG, JPEG, self-contained GLB");
+                        ui.horizontal(|ui| {
+                            if ui.button("Import").clicked() {
+                                requests.confirm_import = true;
+                            }
+                            if ui.button("Cancel").clicked() {
+                                requests.cancel_import = true;
+                            }
+                        });
+                    });
+                }
                 ui.take_available_space();
                 ui.horizontal(|ui| {
                     if ui
@@ -150,11 +192,13 @@ impl Workspace {
                     if let Some(message) = message {
                         ui.label(message);
                     }
-                    pending_open = self.project.render(ui);
+                    let (pending_open, project_file) = self.project.render(ui);
+                    requests.open_scene = pending_open;
+                    requests.project_file = project_file;
                     self.selected_resource = self.project.selected_resource().map(PathBuf::from);
                 }
             });
         self.height = panel.response.rect.height();
-        pending_open
+        requests
     }
 }

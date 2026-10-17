@@ -2,11 +2,14 @@
 
 #[path = "playback.rs"]
 mod playback;
+#[path = "project_files_ops.rs"]
+mod project_files_ops;
 
 use super::*;
 
 pub(crate) fn process_post_ui_ops(app: &mut App) {
     playback::process_pending(app);
+    project_files_ops::process(app);
     process_project_browser_open(app);
 
     // New scene

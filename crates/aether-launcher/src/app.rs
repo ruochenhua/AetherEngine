@@ -20,6 +20,8 @@ pub(crate) mod workspace;
 #[cfg(test)]
 mod workspace_drop_tests;
 #[cfg(test)]
+mod workspace_file_ops_tests;
+#[cfg(test)]
 mod workspace_layout_tests;
 #[cfg(test)]
 mod workspace_preview_tests;
@@ -66,6 +68,11 @@ pub(crate) struct SceneEntry {
     pub(crate) path: std::path::PathBuf,
 }
 
+pub(crate) struct PendingAssetImport {
+    pub(crate) destination: String,
+    pub(crate) source: PathBuf,
+}
+
 // ── App ─────────────────────────────────────────────────────────────
 
 pub(crate) struct App {
@@ -94,6 +101,9 @@ pub(crate) struct App {
     pub(crate) state: LauncherState,
     pub(crate) pending_load: Option<usize>,
     pub(crate) pending_project_open: Option<PathBuf>,
+    pub(crate) pending_project_file: Option<workspace::ProjectFileAction>,
+    pub(crate) pending_asset_import: Option<PendingAssetImport>,
+    pub(crate) pending_asset_import_confirm: bool,
     pub(crate) show_overlay: bool,
     pub(crate) fullscreen_3d: bool,
     pub(crate) workspace: workspace::Workspace,
@@ -209,6 +219,9 @@ impl App {
             state: LauncherState::Menu,
             pending_load: None,
             pending_project_open: None,
+            pending_project_file: None,
+            pending_asset_import: None,
+            pending_asset_import_confirm: false,
             show_overlay: false,
             fullscreen_3d: false,
             workspace: workspace::Workspace::default(),

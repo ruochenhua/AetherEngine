@@ -20,6 +20,8 @@ pub(super) struct ProjectPanel {
     sort: ProjectSort,
     history: PathHistory,
     selected_resource: Option<String>,
+    new_folder_name: String,
+    creating_folder: bool,
     scan_result: Option<Receiver<(u64, Result<IndexSnapshot, crate::project_index::IndexError>)>>,
     preview: preview::ResourcePreview,
 }
@@ -35,6 +37,8 @@ impl ProjectPanel {
             sort: ProjectSort::Name,
             history: PathHistory::default(),
             selected_resource: None,
+            new_folder_name: String::new(),
+            creating_folder: false,
             scan_result: None,
         };
         panel.history.visit("");
@@ -74,6 +78,10 @@ impl ProjectPanel {
         });
     }
 
+    pub(super) fn refresh(&mut self) {
+        self.schedule_refresh();
+    }
+
     fn poll_refresh(&mut self) {
         let Some(receiver) = self.scan_result.as_ref() else {
             return;
@@ -100,20 +108,72 @@ impl ProjectPanel {
         }
     }
 
-    pub(super) fn render(&mut self, ui: &mut egui::Ui) -> Option<PathBuf> {
+    pub(super) fn render(
+        &mut self,
+        ui: &mut egui::Ui,
+    ) -> (Option<PathBuf>, Option<super::ProjectFileAction>) {
         self.poll_refresh();
         self.preview.poll();
         let mut pending_open = None;
+        let mut project_file = None;
         ui.horizontal(|ui| {
             ui.heading("Project resources");
             ui.add_space(8.0);
             if ui.button("Refresh").clicked() {
                 self.schedule_refresh();
             }
+            let destination = self.operation_destination();
+            ui.label(format!(
+                "Destination: {}",
+                if destination.is_empty() {
+                    "."
+                } else {
+                    &destination
+                }
+            ));
+            if ui.button("New Folder").clicked() {
+                self.creating_folder = true;
+                self.new_folder_name.clear();
+            }
+            if ui
+                .add_enabled(
+                    destination == "assets" || destination.starts_with("assets/"),
+                    egui::Button::new("Import Asset…"),
+                )
+                .clicked()
+            {
+                project_file = Some(super::ProjectFileAction::ImportAsset { destination });
+            }
             if self.selected_resource.is_some() && ui.button("Close resource details").clicked() {
                 self.selected_resource = None;
             }
         });
+        if self.creating_folder {
+            ui.horizontal(|ui| {
+                ui.label("Folder name:");
+                let input = ui.add(
+                    egui::TextEdit::singleline(&mut self.new_folder_name)
+                        .hint_text("New folder")
+                        .desired_width(180.0),
+                );
+                let enter =
+                    input.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter));
+                let cancel = ui.input(|input| input.key_pressed(egui::Key::Escape));
+                if ui.button("Create").clicked() || enter {
+                    let name = self.new_folder_name.trim().to_owned();
+                    if !name.is_empty() {
+                        project_file = Some(super::ProjectFileAction::CreateFolder {
+                            destination: self.operation_destination(),
+                            name,
+                        });
+                    }
+                    self.creating_folder = false;
+                }
+                if ui.button("Cancel").clicked() || cancel {
+                    self.creating_folder = false;
+                }
+            });
+        }
         self.render_status(ui);
 
         ui.horizontal(|ui| {
@@ -286,7 +346,7 @@ impl ProjectPanel {
                 }
             },
         );
-        pending_open
+        (pending_open, project_file)
     }
 
     fn render_status(&mut self, ui: &mut egui::Ui) {
@@ -402,5 +462,13 @@ impl ProjectPanel {
 
     pub(super) fn current_directory(&self) -> &str {
         self.history.current().unwrap_or("")
+    }
+
+    fn operation_destination(&self) -> String {
+        if self.current_directory().is_empty() {
+            "assets".to_owned()
+        } else {
+            self.current_directory().to_owned()
+        }
     }
 }

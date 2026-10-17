@@ -93,7 +93,14 @@ pub(crate) fn draw(app: &mut App, dt: f32, raw_input: egui::RawInput) -> egui::F
     let fullscreen_3d = &mut app.fullscreen_3d;
     let workspace = &mut app.workspace;
     let logs = &mut app.logs;
+    let pending_asset_import = app
+        .pending_asset_import
+        .as_ref()
+        .map(|pending| (pending.destination.as_str(), pending.source.as_path()));
     let mut project_open_request = None;
+    let mut project_file_request = None;
+    let mut confirm_asset_import = false;
+    let mut cancel_asset_import = false;
     let mut viewport_drop_request = None;
     let mut material_drop_request = None;
     let debug_mode = app.debug_mode;
@@ -153,7 +160,16 @@ pub(crate) fn draw(app: &mut App, dt: f32, raw_input: egui::RawInput) -> egui::F
         *scroll_input += ui.ctx().input(|i| i.smooth_scroll_delta.y * 0.01);
 
         if (matches!(state, LauncherState::Menu) || *show_overlay) && !*fullscreen_3d {
-            project_open_request = workspace.render(ui, editor_operation_message.as_deref(), logs);
+            let requests = workspace.render(
+                ui,
+                editor_operation_message.as_deref(),
+                logs,
+                pending_asset_import,
+            );
+            project_open_request = requests.open_scene;
+            project_file_request = requests.project_file;
+            confirm_asset_import = requests.confirm_import;
+            cancel_asset_import = requests.cancel_import;
         }
 
         match state {
@@ -399,6 +415,16 @@ pub(crate) fn draw(app: &mut App, dt: f32, raw_input: egui::RawInput) -> egui::F
 
     if project_open_request.is_some() {
         app.pending_project_open = project_open_request;
+    }
+    if project_file_request.is_some() {
+        app.pending_project_file = project_file_request;
+    }
+    if confirm_asset_import {
+        app.pending_asset_import_confirm = true;
+    }
+    if cancel_asset_import {
+        app.pending_asset_import = None;
+        app.pending_asset_import_confirm = false;
     }
     *pending_asset_drop = viewport_drop_request;
     app.pending_material_drop = material_drop_request;
