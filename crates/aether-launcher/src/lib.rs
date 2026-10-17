@@ -2,6 +2,7 @@ mod app;
 mod inspector;
 mod logging;
 mod pipeline;
+pub mod project_dependencies;
 pub mod project_files;
 pub mod project_index;
 mod project_preview;

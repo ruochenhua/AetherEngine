@@ -32,3 +32,6 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 ron = { workspace = true }
 rfd = "0.14"
+
+sha2 = { workspace = true }
+serde_ignored = "0.1"
