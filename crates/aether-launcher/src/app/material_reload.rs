@@ -14,8 +14,8 @@ use std::time::SystemTime;
 
 #[derive(Default)]
 pub(crate) struct MaterialAssetWatcher {
-    modified: HashMap<String, SystemTime>,
-    pending: HashSet<String>,
+    pub(super) modified: HashMap<String, SystemTime>,
+    pub(super) pending: HashSet<String>,
     boundary: u64,
 }
 

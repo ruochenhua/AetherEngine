@@ -15,6 +15,7 @@ mod ready;
 mod render;
 pub(crate) mod scene;
 pub(crate) mod ui;
+mod watcher_usage;
 pub(crate) mod workspace;
 
 #[cfg(test)]

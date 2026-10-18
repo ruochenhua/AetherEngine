@@ -19,10 +19,10 @@ mod tests;
 
 #[derive(Default)]
 pub(crate) struct AssetHotReloadWatcher {
-    prefab_modified: HashMap<String, SystemTime>,
-    pending_prefabs: HashSet<String>,
-    texture_modified: HashMap<String, SystemTime>,
-    pending_textures: HashSet<String>,
+    pub(super) prefab_modified: HashMap<String, SystemTime>,
+    pub(super) pending_prefabs: HashSet<String>,
+    pub(super) texture_modified: HashMap<String, SystemTime>,
+    pub(super) pending_textures: HashSet<String>,
     boundary: u64,
 }
 
