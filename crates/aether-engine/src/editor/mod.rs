@@ -5,6 +5,7 @@ mod history;
 mod operation;
 mod persist;
 mod snapshot;
+mod world_resource_usage;
 
 pub use error::{ComponentKind, EditorError};
 pub use history::EditorHistory;
@@ -14,6 +15,10 @@ pub use operation::{
 };
 pub use snapshot::{
     capture_snapshot, ComponentRecord, EditorEntitySnapshot, EDITOR_SCHEMA_VERSION,
+};
+pub use world_resource_usage::{
+    capture_world_resource_usage, WorldResourceDiagnostic, WorldResourceKind, WorldResourceLocator,
+    WorldResourceUse,
 };
 
 #[cfg(test)]
