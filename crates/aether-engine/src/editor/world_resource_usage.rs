@@ -185,7 +185,7 @@ struct Visitor<'a> {
     uses: &'a mut Vec<WorldResourceUse>,
 }
 
-enum MaterialBase {
+pub(super) enum MaterialBase {
     Inline(PathBuf),
     Linked(PathBuf),
 }
@@ -374,7 +374,10 @@ impl Visitor<'_> {
 
 // Same lexical identity policy as AssetStore::compatibility_path. Legacy external
 // files can be loaded by AssetManager, but cannot be project-relative candidates.
-fn store_candidate(root: &Path, raw: &str) -> Result<CanonicalPath, WorldResourceDiagnostic> {
+pub(super) fn store_candidate(
+    root: &Path,
+    raw: &str,
+) -> Result<CanonicalPath, WorldResourceDiagnostic> {
     if raw.contains('\0') {
         return Err(WorldResourceDiagnostic::InvalidPath);
     }
@@ -391,7 +394,7 @@ fn store_candidate(root: &Path, raw: &str) -> Result<CanonicalPath, WorldResourc
     })
 }
 
-fn material_candidate(
+pub(super) fn material_candidate(
     root: &Path,
     base: &Result<MaterialBase, WorldResourceDiagnostic>,
     raw: &str,

@@ -491,3 +491,9 @@ fn rollback_operation(world: &mut World, inverse: Inverse) -> Result<(), String>
         .map(|_| ())
         .map_err(|error| error.to_string())
 }
+
+#[path = "history/resource_usage.rs"]
+pub(super) mod resource_usage;
+#[cfg(test)]
+#[path = "history/resource_usage_tests.rs"]
+mod resource_usage_tests;

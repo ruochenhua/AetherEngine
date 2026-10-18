@@ -8,6 +8,9 @@ mod snapshot;
 mod world_resource_usage;
 
 pub use error::{ComponentKind, EditorError};
+pub use history::resource_usage::{
+    HistoryResourceLocator, HistoryResourceOwner, HistoryResourceUse,
+};
 pub use history::EditorHistory;
 pub use operation::{
     EditorContext, EditorOperation, MaterialAssignment, OperationLog, OperationLogEntry,
