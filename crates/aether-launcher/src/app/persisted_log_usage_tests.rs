@@ -132,36 +132,58 @@ fn unreadable_log_target_is_unavailable() {
 #[cfg(unix)]
 #[test]
 fn fifo_log_target_is_unavailable_without_blocking_on_open() {
-    use std::{ffi::CString, io::Write, os::unix::fs::OpenOptionsExt, thread, time::Duration};
-    let f = Fixture::new();
-    let path = CString::new(f.log().as_os_str().as_encoded_bytes()).unwrap();
-    assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+    use std::{
+        ffi::CString,
+        process::{Command, Stdio},
+        thread,
+        time::{Duration, Instant},
+    };
 
-    let writer_path = f.log();
-    let writer = thread::spawn(move || {
-        for _ in 0..50 {
-            match fs::OpenOptions::new()
-                .write(true)
-                .custom_flags(libc::O_NONBLOCK)
-                .open(writer_path.as_path())
-            {
-                Ok(mut fifo) => {
-                    fifo.write_all(operation_line(0).as_bytes()).unwrap();
-                    return;
-                }
-                Err(error) if error.kind() == std::io::ErrorKind::NotConnected => {
-                    thread::sleep(Duration::from_millis(10));
-                }
-                Err(error) if error.raw_os_error() == Some(libc::ENXIO) => {
-                    thread::sleep(Duration::from_millis(10));
-                }
-                Err(error) => panic!("could not open FIFO writer: {error}"),
-            }
+    const CHILD_ENV: &str = "AETHER_B6_FIFO_CHILD";
+    if std::env::var_os(CHILD_ENV).is_some() {
+        let f = Fixture::new();
+        let path = CString::new(f.log().as_os_str().as_encoded_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+        assert!(open_rooted_regular_file(&f.0, Path::new("active.editor.jsonl")).is_err());
+        return;
+    }
+
+    let mut child = Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "app::persisted_log_usage::tests::fifo_log_target_is_unavailable_without_blocking_on_open",
+        ])
+        .env(CHILD_ENV, "1")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            assert!(status.success(), "FIFO child failed: {status}");
+            break;
         }
-    });
-    let snapshot = capture(Some(&f.scene()), &f.0);
-    writer.join().unwrap();
-    assert!(matches!(snapshot.state, PersistedLogState::Unavailable(_)));
+        if Instant::now() >= deadline {
+            child.kill().unwrap();
+            let _ = child.wait();
+            panic!("FIFO open child exceeded its timeout and was killed");
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn rooted_open_rejects_parent_symlink_that_resolves_outside_root() {
+    use std::os::unix::fs::symlink;
+    let f = Fixture::new();
+    let outside = f.0.with_extension("outside");
+    fs::create_dir_all(&outside).unwrap();
+    fs::write(outside.join("log.jsonl"), operation_line(0)).unwrap();
+    symlink(&outside, f.0.join("linked")).unwrap();
+    assert!(open_rooted_regular_file(&f.0, Path::new("linked/log.jsonl")).is_err());
+    fs::remove_dir_all(outside).unwrap();
 }
 
 #[test]

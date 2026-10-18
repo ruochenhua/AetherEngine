@@ -84,26 +84,10 @@ pub(crate) fn capture_persisted_log_resource_usage(
         }
         Err(error) => return unavailable(source_path, "operation log metadata", error),
     };
-    let prevalidated_file = match open_log_file(&canonical_log) {
+    let file = match open_contained_file(&root, &canonical_log, &prevalidated_metadata) {
         Ok(file) => file,
-        Err(error) => return unavailable(source_path, "operation log open", error),
+        Err(error) => return unavailable(source_path, "operation log secure open", error),
     };
-    let prevalidated_handle_metadata = match regular_file_metadata(&prevalidated_file) {
-        Ok(metadata) => metadata,
-        Err(error) => return unavailable(source_path, "operation log handle", error),
-    };
-    if let Err(error) =
-        validate_path_metadata_identity(&prevalidated_metadata, &prevalidated_handle_metadata)
-    {
-        return unavailable(source_path, "operation log changed while opening", error);
-    }
-    let file = match open_log_file(&canonical_log) {
-        Ok(file) => file,
-        Err(error) => return unavailable(source_path, "operation log open", error),
-    };
-    if let Err(error) = validate_opened_file_identity(&prevalidated_file, &file) {
-        return unavailable(source_path, "operation log changed while opening", error);
-    }
     let mut content = String::new();
     if let Err(error) = (&file).read_to_string(&mut content) {
         return unavailable(source_path, "operation log read", error);
@@ -162,14 +146,160 @@ fn unavailable_message(path: PathBuf, reason: &str) -> PersistedLogResourceSnaps
     )
 }
 
+#[cfg(unix)]
+fn open_rooted_regular_file(root: &Path, relative: &Path) -> io::Result<File> {
+    use std::{
+        ffi::CString,
+        os::fd::{AsRawFd, FromRawFd},
+        os::unix::ffi::OsStrExt,
+    };
+
+    let mut directory = open_root_directory(root)?;
+    let mut components = relative.components().peekable();
+    while let Some(component) = components.next() {
+        let std::path::Component::Normal(name) = component else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "canonical log path is not a normal relative path",
+            ));
+        };
+        let name = CString::new(name.as_bytes()).map_err(|_| {
+            io::Error::new(io::ErrorKind::InvalidInput, "path component contains NUL")
+        })?;
+        let is_final = components.peek().is_none();
+        let flags = if is_final {
+            libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC
+        } else {
+            libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC
+        };
+        // SAFETY: current directory descriptor is valid; `name` is a single
+        // NUL-terminated component, and openat returns a new descriptor.
+        let next_fd = unsafe { libc::openat(directory.as_raw_fd(), name.as_ptr(), flags) };
+        if next_fd < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        // SAFETY: `next_fd` ownership transfers to this File exactly once.
+        let next = unsafe { File::from_raw_fd(next_fd) };
+        if is_final {
+            regular_file_metadata(&next)?;
+            return Ok(next);
+        }
+        directory = next;
+    }
+    Err(io::Error::new(
+        io::ErrorKind::InvalidInput,
+        "canonical log path is empty",
+    ))
+}
+
+#[cfg(unix)]
+fn open_root_directory(root: &Path) -> io::Result<File> {
+    use std::{
+        ffi::CString,
+        os::fd::{AsRawFd, FromRawFd},
+        os::unix::ffi::OsStrExt,
+    };
+
+    if !root.has_root() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "project root is not absolute",
+        ));
+    }
+    let slash = CString::new("/")
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid filesystem root"))?;
+    // SAFETY: opening the filesystem root returns an owned descriptor.
+    let fd = unsafe {
+        libc::open(
+            slash.as_ptr(),
+            libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC,
+        )
+    };
+    if fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: `fd` ownership transfers to this File exactly once.
+    let mut directory = unsafe { File::from_raw_fd(fd) };
+    for component in root.components() {
+        let name = match component {
+            std::path::Component::RootDir => continue,
+            std::path::Component::Normal(name) => name,
+            _ => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "project root is not canonical",
+                ));
+            }
+        };
+        let name = CString::new(name.as_bytes()).map_err(|_| {
+            io::Error::new(io::ErrorKind::InvalidInput, "root component contains NUL")
+        })?;
+        // SAFETY: descriptor and one-component name are valid; openat returns a new descriptor.
+        let next_fd = unsafe {
+            libc::openat(
+                directory.as_raw_fd(),
+                name.as_ptr(),
+                libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+            )
+        };
+        if next_fd < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        // SAFETY: `next_fd` ownership transfers to this File exactly once.
+        directory = unsafe { File::from_raw_fd(next_fd) };
+    }
+    Ok(directory)
+}
+
+#[cfg(unix)]
+fn open_contained_file(
+    root: &Path,
+    canonical_log: &Path,
+    expected: &fs::Metadata,
+) -> io::Result<File> {
+    let relative = canonical_log.strip_prefix(root).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "operation log is outside project root",
+        )
+    })?;
+    let file = open_rooted_regular_file(root, relative)?;
+    let opened = regular_file_metadata(&file)?;
+    validate_path_metadata_identity(expected, &opened)?;
+    Ok(file)
+}
+
+#[cfg(windows)]
+fn open_contained_file(
+    root: &Path,
+    canonical_log: &Path,
+    _expected: &fs::Metadata,
+) -> io::Result<File> {
+    let prevalidated = open_log_file(canonical_log)?;
+    regular_file_metadata(&prevalidated)?;
+    ensure_handle_contained(&prevalidated, root)?;
+    let opened = open_log_file(canonical_log)?;
+    regular_file_metadata(&opened)?;
+    validate_opened_file_identity(&prevalidated, &opened)?;
+    ensure_handle_contained(&opened, root)?;
+    Ok(opened)
+}
+
+#[cfg(not(any(unix, windows)))]
+fn open_contained_file(
+    _root: &Path,
+    _canonical_log: &Path,
+    _expected: &fs::Metadata,
+) -> io::Result<File> {
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "secure handle containment is unavailable on this platform",
+    ))
+}
+
 fn open_log_file(path: &Path) -> io::Result<File> {
     let mut options = OpenOptions::new();
     options.read(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
-    }
     #[cfg(windows)]
     {
         use std::os::windows::fs::OpenOptionsExt;
@@ -212,14 +342,6 @@ fn validate_path_metadata_identity(
         let _ = (path_metadata, handle_metadata);
         return Ok(());
     }
-    #[cfg(not(any(unix, windows)))]
-    {
-        if fallback_metadata_identity(path_metadata)?
-            == fallback_metadata_identity(handle_metadata)?
-        {
-            return Ok(());
-        }
-    }
     Err(io::Error::new(
         io::ErrorKind::InvalidData,
         "operation log target changed during open",
@@ -235,6 +357,57 @@ fn validate_opened_file_identity(prevalidated: &File, opened: &File) -> io::Resu
         Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "opened operation log identity differs from the prevalidated file",
+        ))
+    }
+}
+
+#[cfg(windows)]
+fn ensure_handle_contained(file: &File, canonical_root: &Path) -> io::Result<()> {
+    use std::os::windows::{ffi::OsStringExt, io::AsRawHandle};
+
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetFinalPathNameByHandleW(
+            handle: *mut std::ffi::c_void,
+            path: *mut u16,
+            path_length: u32,
+            flags: u32,
+        ) -> u32;
+    }
+
+    let handle = file.as_raw_handle();
+    // SAFETY: null buffer with zero length is the documented size query.
+    let required = unsafe { GetFinalPathNameByHandleW(handle, std::ptr::null_mut(), 0, 0) };
+    if required == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let mut buffer = vec![0_u16; required as usize + 1];
+    // SAFETY: buffer has more elements than the requested capacity and handle
+    // remains valid for the duration of the call.
+    let written =
+        unsafe { GetFinalPathNameByHandleW(handle, buffer.as_mut_ptr(), buffer.len() as u32, 0) }
+            as usize;
+    if written == 0 || written >= buffer.len() {
+        return Err(io::Error::last_os_error());
+    }
+    let final_path = PathBuf::from(std::ffi::OsString::from_wide(&buffer[..written]));
+    let normalize = |path: &Path| {
+        let path = path.to_string_lossy();
+        let path = path
+            .strip_prefix(r"\\?\UNC\")
+            .map(|rest| format!(r"\\{rest}"))
+            .or_else(|| path.strip_prefix(r"\\?\").map(str::to_owned))
+            .unwrap_or_else(|| path.into_owned());
+        path.to_lowercase()
+    };
+    let final_path = normalize(&final_path);
+    let root = normalize(canonical_root);
+    if Path::new(&final_path).starts_with(Path::new(&root)) {
+        Ok(())
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "opened operation log handle resolves outside project root",
         ))
     }
 }
