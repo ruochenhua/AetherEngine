@@ -166,7 +166,9 @@ fn drop_kind(path: &str) -> Option<AppRequestResourceKind> {
         .extension()
         .and_then(|extension| extension.to_str())
     {
-        Some("obj") => Some(AppRequestResourceKind::Mesh),
+        Some(extension) if extension.eq_ignore_ascii_case("obj") => {
+            Some(AppRequestResourceKind::Mesh)
+        }
         _ => None,
     }
 }
@@ -311,6 +313,9 @@ impl Visitor<'_> {
 }
 
 fn resolve_path(root: &Path, path: &Path) -> Result<CanonicalPath, AppRequestDiagnostic> {
+    if path.to_string_lossy().contains('\0') {
+        return Err(AppRequestDiagnostic::InvalidPath);
+    }
     if path.is_absolute() {
         let normalized_root = normalize_absolute(root).ok_or(AppRequestDiagnostic::InvalidPath)?;
         let normalized_path = normalize_absolute(path).ok_or(AppRequestDiagnostic::InvalidPath)?;

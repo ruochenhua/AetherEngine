@@ -195,3 +195,41 @@ fn app_request_snapshot_visits_folder_destinations_and_other_operation_variants(
             && row.authored_path.as_deref() == Some(Path::new("assets/component.obj"))
     ));
 }
+
+#[test]
+fn app_request_snapshot_marks_embedded_nul_paths_invalid() {
+    let mut app = fixture();
+    app.pending_editor_operation = Some(EditorOperation::SetMaterial {
+        entity_name: "Mesh".into(),
+        assignment: aether_engine::editor::MaterialAssignment::Asset {
+            path: "assets/bad\0name.mat.ron".into(),
+        },
+    });
+
+    let snapshot = capture_app_request_resource_usage(&app);
+    assert_eq!(snapshot.len(), 1);
+    assert_eq!(
+        snapshot[0].authored_path.as_deref(),
+        Some(Path::new("assets/bad\0name.mat.ron"))
+    );
+    assert_eq!(
+        snapshot[0].project_relative,
+        Err(AppRequestDiagnostic::InvalidPath)
+    );
+}
+
+#[test]
+fn app_request_snapshot_classifies_uppercase_obj_drop_as_mesh() {
+    let mut app = fixture();
+    app.pending_asset_drop = Some(crate::app::workspace::ViewportDropRequest {
+        relative_path: "assets/models/ship.OBJ".into(),
+        pointer_physical: [0.0; 2],
+        viewport_points_min: [0.0; 2],
+        viewport_points_max: [1.0; 2],
+        pixels_per_point: 1.0,
+    });
+
+    let snapshot = capture_app_request_resource_usage(&app);
+    assert_eq!(snapshot.len(), 1);
+    assert_eq!(snapshot[0].kind, Some(AppRequestResourceKind::Mesh));
+}
