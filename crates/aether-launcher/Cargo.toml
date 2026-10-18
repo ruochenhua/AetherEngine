@@ -35,3 +35,4 @@ rfd = "0.14"
 
 sha2 = { workspace = true }
 serde_ignored = "0.1"
+libc = "0.2"

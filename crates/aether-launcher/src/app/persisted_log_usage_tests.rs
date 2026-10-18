@@ -129,6 +129,53 @@ fn unreadable_log_target_is_unavailable() {
     assert!(matches!(snapshot.state, PersistedLogState::Unavailable(_)));
 }
 
+#[cfg(unix)]
+#[test]
+fn fifo_log_target_is_unavailable_without_blocking_on_open() {
+    use std::{ffi::CString, io::Write, os::unix::fs::OpenOptionsExt, thread, time::Duration};
+    let f = Fixture::new();
+    let path = CString::new(f.log().as_os_str().as_encoded_bytes()).unwrap();
+    assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+
+    let writer_path = f.log();
+    let writer = thread::spawn(move || {
+        for _ in 0..50 {
+            match fs::OpenOptions::new()
+                .write(true)
+                .custom_flags(libc::O_NONBLOCK)
+                .open(writer_path.as_path())
+            {
+                Ok(mut fifo) => {
+                    fifo.write_all(operation_line(0).as_bytes()).unwrap();
+                    return;
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotConnected => {
+                    thread::sleep(Duration::from_millis(10));
+                }
+                Err(error) if error.raw_os_error() == Some(libc::ENXIO) => {
+                    thread::sleep(Duration::from_millis(10));
+                }
+                Err(error) => panic!("could not open FIFO writer: {error}"),
+            }
+        }
+    });
+    let snapshot = capture(Some(&f.scene()), &f.0);
+    writer.join().unwrap();
+    assert!(matches!(snapshot.state, PersistedLogState::Unavailable(_)));
+}
+
+#[test]
+fn opened_file_identity_mismatch_is_rejected_deterministically() {
+    let f = Fixture::new();
+    let first = f.0.join("first");
+    let second = f.0.join("second");
+    fs::write(&first, "first").unwrap();
+    fs::write(&second, "second").unwrap();
+    let expected = fs::File::open(first).unwrap();
+    let opened = fs::File::open(second).unwrap();
+    assert!(validate_opened_file_identity(&expected, &opened).is_err());
+}
+
 #[test]
 fn scene_outside_project_root_is_unavailable_without_reading_adjacent_log() {
     let f = Fixture::new();
