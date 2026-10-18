@@ -1,6 +1,6 @@
 //! Observational inventory of authored resource fields retained by one live World.
 
-use crate::asset::{prefab::ComponentPatch, AssetIdError, CanonicalPath};
+use crate::asset::{prefab::ComponentPatch, AssetId, AssetIdError, AssetKind, CanonicalPath};
 use crate::ecs::components::{
     MaterialAssetRef, MeshHandle, MeshSource, Name, PrefabInstanceRoot, Terrain, Water,
 };
@@ -150,14 +150,15 @@ pub fn capture_world_resource_usage(world: &World, project_root: &Path) -> Vec<W
             // SceneLoader and live linked assignments keep the document's raw config.
             // Its texture fields retain the MaterialAsset loader's document-relative base.
             let base = linked.map_or_else(
-                || Ok(project_root.to_path_buf()),
+                || Ok(MaterialBase::Inline(project_root.to_path_buf())),
                 |linked| {
                     store_candidate(project_root, &linked.0)
                         .map(|path| {
-                            project_root.join(
+                            MaterialBase::Linked(
                                 Path::new(path.as_str())
                                     .parent()
-                                    .unwrap_or_else(|| Path::new("")),
+                                    .unwrap_or_else(|| Path::new(""))
+                                    .to_path_buf(),
                             )
                         })
                         .map_err(|_| WorldResourceDiagnostic::InvalidMaterialBase)
@@ -182,6 +183,11 @@ struct Visitor<'a> {
     name: Option<&'a Name>,
     project_root: &'a Path,
     uses: &'a mut Vec<WorldResourceUse>,
+}
+
+enum MaterialBase {
+    Inline(PathBuf),
+    Linked(PathBuf),
 }
 
 impl Visitor<'_> {
@@ -227,7 +233,7 @@ impl Visitor<'_> {
         material: &MaterialConfig,
         component: &'static str,
         prefix: &str,
-        base: &Result<PathBuf, WorldResourceDiagnostic>,
+        base: &Result<MaterialBase, WorldResourceDiagnostic>,
     ) {
         for (field, kind, path) in [
             (
@@ -298,7 +304,7 @@ impl Visitor<'_> {
                     config,
                     "PrefabInstanceRoot",
                     &format!("overrides.patches[{index}].node[{instance_id}].config."),
-                    &Ok(self.project_root.to_path_buf()),
+                    &Ok(MaterialBase::Inline(self.project_root.to_path_buf())),
                 ),
                 // Other typed patches contain no authored resource paths.
                 ComponentPatch::MeshSource {
@@ -387,13 +393,27 @@ fn store_candidate(root: &Path, raw: &str) -> Result<CanonicalPath, WorldResourc
 
 fn material_candidate(
     root: &Path,
-    base: &Result<PathBuf, WorldResourceDiagnostic>,
+    base: &Result<MaterialBase, WorldResourceDiagnostic>,
     raw: &str,
 ) -> Result<CanonicalPath, WorldResourceDiagnostic> {
     let base = base.as_ref().map_err(Clone::clone)?;
     if raw.is_empty() {
         return Err(WorldResourceDiagnostic::InvalidPath);
     }
+    let directory = match base {
+        MaterialBase::Inline(directory) => directory.clone(),
+        MaterialBase::Linked(relative_root) => {
+            // MaterialAsset::resolve validates the project-relative dependency
+            // identity before MaterialResolver can collapse the host path.
+            AssetId::from_path(AssetKind::CpuTexture, root, &relative_root.join(raw)).map_err(
+                |error| match error {
+                    AssetIdError::InvalidPath => WorldResourceDiagnostic::InvalidPath,
+                    AssetIdError::PathEscape => WorldResourceDiagnostic::OutsideProjectRoot,
+                },
+            )?;
+            root.join(relative_root)
+        }
+    };
     // MaterialResolver checks the host path before passing it to AssetManager.
     // On Unix a backslash is a literal filename character there, but a separator
     // in CanonicalPath. A single candidate would conceal this loader disagreement.
@@ -401,7 +421,7 @@ fn material_candidate(
         return Err(WorldResourceDiagnostic::AmbiguousTextureSeparators);
     }
     let root = normalize_material_path(root);
-    let resolved = normalize_material_path(&base.join(raw));
+    let resolved = normalize_material_path(&directory.join(raw));
     store_candidate(
         &root,
         resolved

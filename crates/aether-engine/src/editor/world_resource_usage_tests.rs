@@ -221,6 +221,66 @@ fn world_resource_usage_uses_material_document_parent_for_live_linked_config() {
     assert_eq!(candidate(source), "materials/paint.ron");
 }
 
+fn assert_linked_identity_validation(raw: &str, diagnostic: WorldResourceDiagnostic) {
+    let mut config = material();
+    config.albedo_texture = Some(raw.into());
+    config.normal_texture = Some(raw.into());
+    config.orm_texture = Some(raw.into());
+    config.emissive_texture = Some(raw.into());
+    config.transparent.as_mut().unwrap().texture = Some(raw.into());
+    let mut world = World::new();
+    let linked = world.spawn((
+        MaterialAssetRef("materials/paint.ron".into()),
+        config.clone(),
+    ));
+    let inline = world.spawn((config,));
+    let report = capture_world_resource_usage(&world, root());
+    let linked_slots: Vec<_> = report
+        .iter()
+        .filter(|entry| entry.source.entity == linked && entry.source.component == "MaterialConfig")
+        .collect();
+    assert_eq!(linked_slots.len(), 5);
+    assert!(linked_slots.iter().all(|entry| entry.authored_path == raw));
+    assert!(
+        linked_slots
+            .iter()
+            .all(|entry| entry.project_relative == Err(diagnostic.clone())),
+        "linked slots: {linked_slots:?}"
+    );
+    let inline_slots: Vec<_> = report
+        .iter()
+        .filter(|entry| entry.source.entity == inline)
+        .collect();
+    assert_eq!(inline_slots.len(), 5);
+    assert!(inline_slots
+        .iter()
+        .all(|entry| candidate(entry) == "paint.png"));
+}
+
+#[test]
+fn world_resource_usage_linked_reentry_is_rejected_before_host_normalization() {
+    let raw = "../../project/paint.png";
+    assert!(crate::asset::AssetId::from_path(
+        crate::asset::AssetKind::CpuTexture,
+        root(),
+        &Path::new("materials").join(raw)
+    )
+    .is_err());
+    assert_linked_identity_validation(raw, WorldResourceDiagnostic::OutsideProjectRoot);
+}
+
+#[test]
+fn world_resource_usage_linked_absolute_is_rejected_before_host_normalization() {
+    let raw = root().join("paint.png").to_str().unwrap().to_owned();
+    assert!(crate::asset::AssetId::from_path(
+        crate::asset::AssetKind::CpuTexture,
+        root(),
+        &Path::new("materials").join(&raw)
+    )
+    .is_err());
+    assert_linked_identity_validation(&raw, WorldResourceDiagnostic::InvalidPath);
+}
+
 #[test]
 fn world_resource_usage_retains_invalid_and_escaping_fields_with_diagnostics() {
     let mut world = World::new();
