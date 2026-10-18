@@ -59,6 +59,17 @@ fn project_open_requested_in_menu_is_retained_until_running() {
 }
 
 #[test]
+fn project_async_work_snapshot_exposes_unpolled_project_scan() {
+    let app = app();
+
+    let work = app.workspace.project_async_work();
+
+    assert!(work.scan_in_flight);
+    assert!(work.preview_requests.is_empty());
+    assert!(work.reference_target_in_flight.is_none());
+}
+
+#[test]
 fn selecting_log_resource_reveals_its_parent_directory() {
     let mut app = app();
     let root = fixture_root();

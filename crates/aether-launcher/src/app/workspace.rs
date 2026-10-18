@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 
 mod project_panel;
+pub(crate) use project_panel::AsyncWorkSnapshot;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum WorkspaceTab {
@@ -81,6 +82,9 @@ impl Default for Workspace {
 impl Workspace {
     pub(crate) fn project_root(&self) -> &std::path::Path {
         self.project.root()
+    }
+    pub(crate) fn project_async_work(&self) -> project_panel::AsyncWorkSnapshot {
+        self.project.async_work_snapshot()
     }
     #[cfg(test)]
     pub(crate) fn set_project_root(&mut self, root: PathBuf) {

@@ -280,6 +280,18 @@ fn prepared_material(
 }
 
 pub(super) fn apply_pending_drop(app: &mut App) {
+    if !app.document_state.can_transition() {
+        app.pending_material_drop = None;
+        app.editor_operation_message = Some("当前场景状态未知或需要恢复，暂不能分配材质。".into());
+        return;
+    }
+    if app.particle_runtime.playback
+        != super::super::particle_runtime::physics_runtime::PlaybackState::Stopped
+    {
+        app.pending_material_drop = None;
+        app.editor_operation_message = Some("请先停止模拟，再分配材质。".into());
+        return;
+    }
     let Some(request) = app.pending_material_drop.take() else {
         return;
     };
@@ -292,6 +304,7 @@ pub(super) fn apply_pending_drop(app: &mut App) {
         Ok(()) => {
             app.undo_action_order.push(super::UndoActionKind::Operation);
             app.redo_action_order.clear();
+            super::checkpoint_auto_saved_edit(app);
             app.editor_operation_message =
                 Some("Material assignment saved to scene and editor log".into());
             tracing::info!(resource = %request.resource.relative_path, "material drop saved");

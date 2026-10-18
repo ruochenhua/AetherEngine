@@ -5,120 +5,31 @@ mod playback;
 #[path = "project_files_ops.rs"]
 mod project_files_ops;
 
+use super::transition::{process_scene_transition, request_scene_transition, save_scene};
 use super::*;
+use crate::app::scene_transition::SceneTransitionTarget;
 
 pub(crate) fn process_post_ui_ops(app: &mut App) {
     playback::process_pending(app);
     project_files_ops::process(app);
-    process_project_browser_open(app);
-
-    // New scene
     if app.pending_new_scene {
         app.pending_new_scene = false;
-        super::super::editor::start_unsaved_scene(app);
-        if let LauncherState::Running {
-            ref mut world,
-            ref mut lighting,
-        } = app.state
-        {
-            let ctx = app.ctx.as_ref().unwrap();
-            world.clear();
-            *lighting = SceneLoader::new_empty(world);
-            super::super::particle_runtime::physics_runtime::scene_switched(
-                &mut app.particle_runtime,
-            );
-            // Spawn a default cube so there's something to pick right away
-            if let Some(cpu_mesh) = app.mesh_registry.get("cube") {
-                let gpu_mesh = Arc::new(GpuMesh::from_cpu(&ctx.device, &cpu_mesh));
-                let _entity = world.spawn((
-                    Transform::default(),
-                    MeshHandle::new(gpu_mesh, MeshSource::Builtin("cube".into()), "cube"),
-                    aether_engine::renderer::renderable::MaterialUniform {
-                        albedo: [0.8, 0.3, 0.2, 1.0],
-                        roughness: 0.5,
-                        metallic: 0.0,
-                        unlit: 0,
-                        _pad: 0,
-                        albedo_texture_id: 0,
-                        ..Default::default()
-                    },
-                    aether_engine::renderer::extracted_material::ExtractedMaterial::from_legacy_uniform(
-                        aether_engine::renderer::renderable::MaterialUniform {
-                            albedo: [0.8, 0.3, 0.2, 1.0],
-                            roughness: 0.5,
-                            metallic: 0.0,
-                            unlit: 0,
-                            _pad: 0,
-                            albedo_texture_id: 0,
-                            ..Default::default()
-                        },
-                    ),
-                    Visibility::default(),
-                    Name("DefaultCube".into()),
-                    Selected,
-                ));
-            }
-            app.camera = FlyCamera::default();
-            if let Err(error) = super::super::particle_runtime::load_scene(
-                &mut app.particle_runtime.particles,
-                world,
-                &mut app.cli.time,
-            ) {
-                error!("Particle runtime reset for new scene failed: {error}");
-            }
-            info!("New scene created");
-        }
+        request_scene_transition(app, SceneTransitionTarget::NewScene);
     }
-
-    // Open scene
     if app.pending_open_dialog {
         app.pending_open_dialog = false;
-        if let Some(path) = rfd::FileDialog::new()
-            .set_directory("./scenes")
-            .add_filter("RON", &["ron"])
-            .pick_file()
-        {
-            if let LauncherState::Running {
-                ref mut world,
-                ref mut lighting,
-            } = app.state
-            {
-                let ctx = app.ctx.as_ref().unwrap();
-                match SceneLoader::open_scene(
-                    &path,
-                    &ctx.device,
-                    &app.mesh_registry,
-                    &mut app.asset_manager,
-                    world,
-                ) {
-                    Ok(new_lighting) => {
-                        *lighting = new_lighting;
-                        super::super::particle_runtime::physics_runtime::scene_switched(
-                            &mut app.particle_runtime,
-                        );
-                        if let Err(error) = super::super::particle_runtime::load_scene(
-                            &mut app.particle_runtime.particles,
-                            world,
-                            &mut app.cli.time,
-                        ) {
-                            error!("Particle runtime scene initialization failed: {error}");
-                        }
-                        update_camera_from_world(&mut app.camera, world);
-                        info!("Opened scene from {:?}", path);
-                        app.pending_terrain_pipeline_rebuild = true;
-                        super::super::editor::activate_scene(app, path.clone());
-                    }
-                    Err(e) => {
-                        error!("Open scene error: {:?}", e);
-                    }
-                }
-            }
-        }
+        request_scene_transition(app, SceneTransitionTarget::OpenDialog);
+    }
+    process_project_browser_open(app);
+    process_scene_transition(app);
+    if app.exit_requested {
+        return;
     }
 
     // Import scene
     if app.pending_import_dialog {
         app.pending_import_dialog = false;
+        let mut import_succeeded = false;
         if let Some(reason) = import_scene_block_reason(app) {
             app.editor_operation_message = Some(reason);
         } else if let Some(path) = rfd::FileDialog::new()
@@ -138,6 +49,7 @@ pub(crate) fn process_post_ui_ops(app: &mut App) {
                     Ok(()) => {
                         info!("Imported scene from {:?}", path);
                         app.pending_terrain_pipeline_rebuild = true;
+                        import_succeeded = true;
                     }
                     Err(e) => {
                         error!("Import scene error: {:?}", e);
@@ -145,61 +57,33 @@ pub(crate) fn process_post_ui_ops(app: &mut App) {
                 }
             }
         }
+        if import_succeeded {
+            super::super::editor::refresh_document_state(app);
+        }
     }
 
-    // Save scene
     if app.pending_save_dialog {
         app.pending_save_dialog = false;
-        if let Some(reason) = app.editor_write_degraded.as_ref() {
-            app.editor_operation_message = Some(format!(
-                "场景写入已停止：{reason}。请重新打开场景或恢复磁盘文件。"
-            ));
-        } else if let LauncherState::Running {
-            ref mut world,
-            ref lighting,
-        } = app.state
-        {
-            if let Some(path) = rfd::FileDialog::new()
-                .set_directory("./scenes")
-                .set_file_name("scene.ron")
-                .add_filter("RON scenes", &["ron"])
-                .save_file()
-            {
-                let path = if !path.extension().is_some_and(|ext| ext == "ron") {
-                    path.with_extension("ron")
-                } else {
-                    path
-                };
-                write_camera_to_world(&app.camera, world);
-                let desc =
-                    aether_engine::scene::serializer::serialize_world(world, lighting, "Untitled");
-                info!(
-                    "Saving scene: {} objects, {} lights, camera at {:?}",
-                    desc.objects.len(),
-                    desc.lights.len(),
-                    desc.camera.position
-                );
-                match aether_engine::scene::serializer::to_ron_string(&desc) {
-                    Ok(ron) => {
-                        if let Err(e) = super::save::write_scene_atomic(&path, &ron) {
-                            error!("Save scene error: {:?}", e);
-                        } else {
-                            super::super::editor::update_save_path(app, path.clone());
-                            info!("Saved scene to {:?}", path);
-                        }
-                    }
-                    Err(e) => {
-                        error!("Serialize scene error: {:?}", e);
-                    }
-                }
-            }
-        }
+        save_scene(app, false);
+    }
+    if app.pending_save_as_dialog {
+        app.pending_save_as_dialog = false;
+        save_scene(app, true);
     }
 
     // Handle add object actions
     let mut added_entity: Option<Entity> = None;
 
-    if app.editor_write_degraded.is_some() {
+    let play_blocks_scene_edits = app.particle_runtime.playback
+        != super::super::particle_runtime::physics_runtime::PlaybackState::Stopped;
+    if play_blocks_scene_edits {
+        app.pending_add_cube = false;
+        app.pending_add_sphere = false;
+        app.pending_add_terrain = false;
+        app.pending_add_water = false;
+        app.pending_despawn_entity = None;
+        app.editor_operation_message = Some("请先停止模拟，再编辑场景。".into());
+    } else if app.editor_write_degraded.is_some() {
         app.pending_add_cube = false;
         app.pending_add_sphere = false;
         app.pending_add_terrain = false;
@@ -363,6 +247,7 @@ pub(crate) fn process_post_ui_ops(app: &mut App) {
             // Select new entity
             let _ = world.insert(entity, (Selected,));
         }
+        super::super::editor::refresh_document_state(app);
     }
 
     // Handle hierarchy panel selection
@@ -384,17 +269,32 @@ pub(crate) fn process_post_ui_ops(app: &mut App) {
 
     // Handle despawn (delete entity)
     if let Some(entity) = app.pending_despawn_entity.take() {
+        let mut despawned = false;
         if let LauncherState::Running { ref mut world, .. } = app.state {
-            let _ = world.despawn(entity);
+            despawned = world.despawn(entity).is_ok();
         }
         app.pending_terrain_pipeline_rebuild = true;
+        if despawned {
+            super::super::editor::refresh_document_state(app);
+        }
     }
 }
 
 fn import_scene_block_reason(app: &App) -> Option<String> {
-    app.editor_write_degraded
-        .as_ref()
-        .map(|reason| format!("场景导入已停止：{reason}。请重新打开场景或恢复磁盘文件。"))
+    if let Some(reason) = app.editor_write_degraded.as_ref() {
+        return Some(format!(
+            "场景导入已停止：{reason}。请重新打开场景或恢复磁盘文件。"
+        ));
+    }
+    if !app.document_state.can_transition() {
+        return Some("当前场景状态未知或需要恢复，暂不能导入场景。".into());
+    }
+    if app.particle_runtime.playback
+        != super::super::particle_runtime::physics_runtime::PlaybackState::Stopped
+    {
+        return Some("请先停止模拟，再导入场景。".into());
+    }
+    None
 }
 
 fn process_project_browser_open(app: &mut App) {
@@ -403,12 +303,16 @@ fn process_project_browser_open(app: &mut App) {
     if matches!(app.state, LauncherState::Menu) {
         return;
     }
-    let Some(device) = app.ctx.as_ref().map(|ctx| ctx.device.clone()) else {
+    if app.ctx.is_none() {
+        return;
+    }
+    let Some(path) = app.pending_project_open.take() else {
         return;
     };
-    process_project_browser_open_with_device(app, &device);
+    request_scene_transition(app, SceneTransitionTarget::OpenPath(path));
 }
 
+#[cfg(test)]
 pub(crate) fn process_project_browser_open_with_device(app: &mut App, device: &wgpu::Device) {
     if matches!(app.state, LauncherState::Menu) {
         return;

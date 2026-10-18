@@ -32,19 +32,26 @@ fn pick_at_screen_position(
 
 /// Update camera, picking, and gizmo interaction for the current frame.
 pub(crate) fn update_camera_and_picking(app: &mut App, dt: f32, egui_consumed: bool) {
+    let mut viewport_camera_changed = false;
     if !egui_consumed
         && !app.egui_ctx.egui_wants_keyboard_input()
         && matches!(app.state, LauncherState::Running { .. })
     {
+        let previous_camera = app.camera.clone();
         let (dx, dy) = app.input.mouse_delta();
         app.camera.update(dt, dx, dy, app.scroll_input, &app.input);
         app.scroll_input = 0.0;
+        viewport_camera_changed = camera_document_state_changed(&previous_camera, &app.camera);
     }
 
     super::process_scene_shortcuts(app, app.input.key_pressed(winit::keyboard::KeyCode::Delete));
 
     let mut legacy_edit_recorded = false;
-    if !egui_consumed && app.editor_write_degraded.is_none() {
+    if !egui_consumed
+        && app.editor_write_degraded.is_none()
+        && app.particle_runtime.playback
+            == super::super::particle_runtime::physics_runtime::PlaybackState::Stopped
+    {
         if let LauncherState::Running { ref mut world, .. } = app.state {
             let ctx = app.ctx.as_ref().unwrap();
             let width = ctx.config.width as f32;
@@ -130,7 +137,22 @@ pub(crate) fn update_camera_and_picking(app: &mut App, dt: f32, egui_consumed: b
     }
     if legacy_edit_recorded {
         super::super::editor::mark_legacy_edit(app);
+    } else if viewport_camera_changed {
+        super::super::editor::refresh_document_state(app);
     }
+}
+
+fn camera_document_state_changed(
+    previous: &aether_engine::renderer::camera::FlyCamera,
+    current: &aether_engine::renderer::camera::FlyCamera,
+) -> bool {
+    previous.position != current.position
+        || previous.yaw != current.yaw
+        || previous.pitch != current.pitch
+        || previous.speed != current.speed
+        || previous.fov != current.fov
+        || previous.near != current.near
+        || previous.far != current.far
 }
 
 #[cfg(test)]

@@ -40,6 +40,7 @@ fn host_queued_drop_persists_undo_redo_and_replay_runtime_exactly() {
     let scene = f.root.join("scenes/host.ron");
     let log = scene.with_extension("editor.jsonl");
     app.cli.scene = Some(scene.to_string_lossy().into_owned());
+    super::activate_scene(&mut app, scene.clone());
     app.pending_material_drop = Some(f.request(MaterialDropTarget::Asset));
     apply_pending_asset_drop(&mut app);
     assert_eq!(app.editor_history.operation_log().apply_count(), 1);
@@ -286,6 +287,7 @@ fn host_failed_validation_and_persistence_keep_files_selection_and_history() {
         lighting: Default::default(),
     };
     app.cli.scene = Some(scene.to_string_lossy().into_owned());
+    super::activate_scene(&mut app, scene.clone());
     let mut request = f.request(MaterialDropTarget::Texture(TextureUsage::Normal));
     request.resource.kind = ResourceKind::Material;
     app.pending_material_drop = Some(request);

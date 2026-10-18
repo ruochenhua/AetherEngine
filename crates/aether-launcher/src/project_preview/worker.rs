@@ -10,6 +10,7 @@ pub(crate) struct PreviewWorker {
     sender: SyncSender<Request>,
     receiver: Receiver<(Request, Result<Thumbnail, String>)>,
     pending: Option<Request>,
+    active: Option<Request>,
     busy: bool,
 }
 impl PreviewWorker {
@@ -31,6 +32,7 @@ impl PreviewWorker {
             sender,
             receiver,
             pending: None,
+            active: None,
             busy: false,
         }
     }
@@ -46,6 +48,7 @@ impl PreviewWorker {
     pub fn poll(&mut self) {
         if let Ok((request, result)) = self.receiver.try_recv() {
             self.busy = false;
+            self.active = None;
             self.cache.publish(&request, result);
         }
         self.dispatch();
@@ -57,6 +60,13 @@ impl PreviewWorker {
     pub fn state(&self) -> &PreviewState {
         &self.cache.state
     }
+    pub fn retained_requests(&self) -> Vec<(String, ResourceKind)> {
+        self.active
+            .iter()
+            .chain(self.pending.iter())
+            .map(|request| (request.path.clone(), request.kind))
+            .collect()
+    }
     fn dispatch(&mut self) {
         if self.busy {
             return;
@@ -64,8 +74,11 @@ impl PreviewWorker {
         let Some(request) = self.pending.take() else {
             return;
         };
-        match self.sender.try_send(request) {
-            Ok(()) => self.busy = true,
+        match self.sender.try_send(request.clone()) {
+            Ok(()) => {
+                self.busy = true;
+                self.active = Some(request);
+            }
             Err(TrySendError::Full(request)) => self.pending = Some(request),
             Err(TrySendError::Disconnected(request)) => {
                 self.cache
@@ -107,6 +120,39 @@ mod tests {
         worker.invalidate();
         assert!(matches!(worker.state(), PreviewState::Idle));
         worker.select(None);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn retained_preview_requests_include_active_stale_and_latest_pending_paths() {
+        let root = std::env::temp_dir()
+            .canonicalize()
+            .unwrap()
+            .join(format!("aether-worker-owners-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("assets")).unwrap();
+        let mut worker = PreviewWorker::new(root.clone());
+        worker.select(Some(("assets/first.png", ResourceKind::Image)));
+        worker.select(Some(("assets/second.png", ResourceKind::Image)));
+
+        let owners = worker.retained_requests();
+
+        assert_eq!(
+            owners
+                .iter()
+                .map(|(path, _)| path.as_str())
+                .collect::<Vec<_>>(),
+            vec!["assets/first.png", "assets/second.png"]
+        );
+        worker.invalidate();
+        assert_eq!(
+            worker
+                .retained_requests()
+                .iter()
+                .map(|(path, _)| path.as_str())
+                .collect::<Vec<_>>(),
+            vec!["assets/first.png"]
+        );
+        drop(worker);
         std::fs::remove_dir_all(root).unwrap();
     }
 }

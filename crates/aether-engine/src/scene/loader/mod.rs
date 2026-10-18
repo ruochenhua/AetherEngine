@@ -54,7 +54,19 @@ impl SceneLoader {
         world: &mut World,
     ) -> anyhow::Result<()> {
         let desc = Self::from_file(path)?;
-        objects::build_objects(&desc, device, registry, assets, world)?;
+        let existing: std::collections::HashSet<_> =
+            world.query::<crate::ecs::Entity>().iter().collect();
+        if let Err(error) = objects::build_objects(&desc, device, registry, assets, world) {
+            let created: Vec<_> = world
+                .query::<crate::ecs::Entity>()
+                .iter()
+                .filter(|entity| !existing.contains(entity))
+                .collect();
+            for entity in created {
+                let _ = world.despawn(entity);
+            }
+            return Err(error);
+        }
         Ok(())
     }
 

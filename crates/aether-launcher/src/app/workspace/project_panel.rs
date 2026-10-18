@@ -30,6 +30,13 @@ pub(super) struct ProjectPanel {
     preview: preview::ResourcePreview,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct AsyncWorkSnapshot {
+    pub(crate) scan_in_flight: bool,
+    pub(crate) preview_requests: Vec<(String, ResourceKind)>,
+    pub(crate) reference_target_in_flight: Option<String>,
+}
+
 impl ProjectPanel {
     pub(super) fn new(root: PathBuf) -> Self {
         let mut panel = Self {
@@ -70,6 +77,14 @@ impl ProjectPanel {
 
     pub(super) fn selected_resource(&self) -> Option<&str> {
         self.selected_resource.as_deref()
+    }
+
+    pub(super) fn async_work_snapshot(&self) -> AsyncWorkSnapshot {
+        AsyncWorkSnapshot {
+            scan_in_flight: self.scan_result.is_some(),
+            preview_requests: self.preview.retained_requests(),
+            reference_target_in_flight: self.references.busy_target().map(str::to_owned),
+        }
     }
 
     fn schedule_refresh(&mut self) {

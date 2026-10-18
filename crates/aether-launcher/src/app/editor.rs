@@ -12,7 +12,7 @@ pub(crate) fn apply_pending_asset_drop(app: &mut App) {
     material_drop::apply_pending_drop(app);
 }
 
-use super::{App, LauncherState};
+use super::{document_state::SceneDocumentState, App, LauncherState};
 use aether_engine::editor::{EditorContext, EditorError, EditorOperation};
 use std::path::{Path, PathBuf};
 
@@ -25,6 +25,15 @@ pub(crate) enum UndoActionKind {
 pub(crate) fn activate_scene(app: &mut App, path: PathBuf) {
     reset_history(app);
     app.cli.scene = Some(path.to_string_lossy().into_owned());
+    match capture_document_snapshot(app) {
+        Ok(snapshot) => {
+            app.document_state = SceneDocumentState::opened(path, snapshot);
+        }
+        Err(error) => {
+            app.document_state.mark_unknown();
+            tracing::error!(%error, "could not establish scene document checkpoint");
+        }
+    }
 }
 
 pub(crate) fn start_unsaved_scene(app: &mut App) {
@@ -32,8 +41,29 @@ pub(crate) fn start_unsaved_scene(app: &mut App) {
     app.cli.scene = None;
 }
 
-pub(crate) fn update_save_path(app: &mut App, path: PathBuf) {
-    app.cli.scene = Some(path.to_string_lossy().into_owned());
+pub(crate) fn checkpoint_untitled_scene(app: &mut App) {
+    match capture_document_snapshot(app) {
+        Ok(snapshot) => app.document_state = SceneDocumentState::new_untitled(snapshot),
+        Err(error) => {
+            app.document_state.mark_unknown();
+            tracing::error!(%error, "could not establish new scene checkpoint");
+        }
+    }
+}
+
+pub(crate) fn update_save_path(app: &mut App, path: PathBuf) -> bool {
+    match capture_document_snapshot(app) {
+        Ok(snapshot) => {
+            app.document_state.checkpoint(path.clone(), snapshot);
+            app.cli.scene = Some(path.to_string_lossy().into_owned());
+            true
+        }
+        Err(error) => {
+            app.document_state.mark_unknown();
+            tracing::error!(%error, "could not establish saved scene checkpoint");
+            false
+        }
+    }
 }
 
 fn reset_history(app: &mut App) {
@@ -52,6 +82,76 @@ fn reset_history(app: &mut App) {
 pub(crate) fn mark_legacy_edit(app: &mut App) {
     app.undo_action_order.push(UndoActionKind::Legacy);
     app.redo_action_order.clear();
+    refresh_document_state(app);
+}
+
+pub(crate) fn refresh_document_state(app: &mut App) {
+    match capture_document_snapshot(app) {
+        Ok(snapshot) => app.document_state.refresh(snapshot),
+        Err(error) => {
+            app.document_state.mark_unknown();
+            tracing::error!(%error, "could not determine active scene dirty state");
+        }
+    }
+}
+
+pub(crate) fn checkpoint_auto_saved_edit(app: &mut App) {
+    match capture_document_snapshot(app) {
+        Ok(snapshot) => {
+            if let Some(path) = app.cli.scene.as_deref().map(PathBuf::from) {
+                app.document_state.checkpoint(path, snapshot);
+            } else {
+                app.document_state = SceneDocumentState::new_untitled(snapshot);
+            }
+        }
+        Err(error) => {
+            app.document_state.mark_unknown();
+            tracing::error!(%error, "could not establish persisted scene checkpoint");
+        }
+    }
+}
+
+pub(crate) fn serialize_active_scene(app: &mut App, scene_name: &str) -> anyhow::Result<String> {
+    serialized_scene(app, scene_name)
+}
+
+fn capture_document_snapshot(app: &mut App) -> anyhow::Result<String> {
+    serialized_scene(app, "AetherDocumentSnapshot")
+}
+
+fn serialized_scene(app: &mut App, scene_name: &str) -> anyhow::Result<String> {
+    use aether_engine::scene::CameraConfig;
+
+    let playing = app.particle_runtime.playback
+        != super::particle_runtime::physics_runtime::PlaybackState::Stopped;
+    let simulation_snapshot = if playing {
+        app.particle_runtime.scene_snapshot.as_ref()
+    } else {
+        None
+    };
+    let super::LauncherState::Running { world, lighting } = &mut app.state else {
+        anyhow::bail!("no active scene World");
+    };
+    let simulated_world = playing
+        .then(|| super::particle_runtime::physics_runtime::SceneSimulationSnapshot::capture(world));
+    if let Some(snapshot) = simulation_snapshot {
+        snapshot.restore(world);
+    }
+    let mut description =
+        aether_engine::scene::serializer::serialize_world(world, lighting, scene_name);
+    description.camera = CameraConfig {
+        position: app.camera.position.to_array(),
+        yaw: app.camera.yaw,
+        pitch: app.camera.pitch,
+        speed: app.camera.speed,
+        fov: app.camera.fov.to_degrees(),
+        near: app.camera.near,
+        far: app.camera.far,
+    };
+    if let Some(simulated) = simulated_world {
+        simulated.restore(world);
+    }
+    aether_engine::scene::serializer::to_ron_string(&description)
 }
 
 pub(crate) fn apply_pending_operation(app: &mut App) {
@@ -60,6 +160,18 @@ pub(crate) fn apply_pending_operation(app: &mut App) {
         app.editor_operation_message = Some(format!(
             "编辑器写入已停止：{reason}。请重新打开场景或先修复磁盘文件。"
         ));
+        return;
+    }
+    if !app.document_state.can_transition() {
+        app.pending_editor_operation = None;
+        app.editor_operation_message = Some("当前场景状态未知或需要恢复，暂不能编辑。".into());
+        return;
+    }
+    if app.particle_runtime.playback
+        != super::particle_runtime::physics_runtime::PlaybackState::Stopped
+    {
+        app.pending_editor_operation = None;
+        app.editor_operation_message = Some("请先停止模拟，再修改场景。".into());
         return;
     }
     if let Some(operation) = app.pending_editor_operation.take() {
@@ -96,6 +208,7 @@ fn apply_operation(app: &mut App, operation: EditorOperation) {
         Some(Ok(())) => {
             app.undo_action_order.push(UndoActionKind::Operation);
             app.redo_action_order.clear();
+            checkpoint_auto_saved_edit(app);
             app.editor_operation_message = Some(format!(
                 "已保存编辑操作；replay 日志：{}",
                 log_path.display()
@@ -132,9 +245,13 @@ pub(crate) fn apply_undo(app: &mut App) {
                 app.undo_stack.push(command);
                 app.undo_action_order.push(UndoActionKind::Legacy);
             }
+            refresh_document_state(app);
         }
         UndoActionKind::Operation => match apply_history_action(app, false) {
-            Ok(()) => app.redo_action_order.push(UndoActionKind::Operation),
+            Ok(()) => {
+                app.redo_action_order.push(UndoActionKind::Operation);
+                checkpoint_auto_saved_edit(app);
+            }
             Err(error) => {
                 mark_degraded(app, &error);
                 app.undo_action_order.push(UndoActionKind::Operation);
@@ -167,9 +284,13 @@ pub(crate) fn apply_redo(app: &mut App) {
                 app.redo_stack.push(command);
                 app.redo_action_order.push(UndoActionKind::Legacy);
             }
+            refresh_document_state(app);
         }
         UndoActionKind::Operation => match apply_history_action(app, true) {
-            Ok(()) => app.undo_action_order.push(UndoActionKind::Operation),
+            Ok(()) => {
+                app.undo_action_order.push(UndoActionKind::Operation);
+                checkpoint_auto_saved_edit(app);
+            }
             Err(error) => {
                 mark_degraded(app, &error);
                 app.redo_action_order.push(UndoActionKind::Operation);
@@ -184,6 +305,7 @@ pub(crate) fn mark_degraded(app: &mut App, error: &EditorError) {
     if matches!(error, EditorError::PersistenceRollbackFailed { .. }) {
         let reason = error.to_string();
         app.editor_write_degraded = Some(reason.clone());
+        app.document_state.mark_recovery_required();
         app.editor_operation_message = Some(format!(
             "编辑器进入只读保护：{reason}。请重新打开场景或恢复磁盘文件。"
         ));
@@ -227,147 +349,4 @@ pub(super) fn operation_log_path(scene_path: &Path) -> PathBuf {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::app::cli::parse_args;
-    use aether_engine::ecs::components::{Light, Name, Transform};
-    use aether_engine::ecs::World;
-    use aether_engine::editor::{ComponentRecord, OperationLog};
-    use aether_engine::renderer::light::LightType;
-    use aether_engine::scene::LightConfig;
-    use serde_json::json;
-    use std::fs;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    static NEXT_FIXTURE: AtomicUsize = AtomicUsize::new(1);
-
-    #[test]
-    fn queued_ui_operation_persists_and_undo_redo_updates_replay_log() {
-        let sequence = NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed);
-        let root = std::env::temp_dir().join(format!(
-            "aether_launcher_t1_editor_{}_{}",
-            std::process::id(),
-            sequence
-        ));
-        fs::create_dir_all(&root).unwrap();
-        let scene_path = root.join("editor.ron");
-        let log_path = operation_log_path(&scene_path);
-        let cli = parse_args(&["aether-launcher".into()]).unwrap();
-        let mut app = App::new(cli);
-        let mut world = World::new();
-        let entity = world.spawn((Transform::default(), Name("Selected".into())));
-        app.state = LauncherState::Running {
-            world,
-            lighting: aether_engine::renderer::light::LightingUniforms::default(),
-        };
-        app.cli.scene = Some(scene_path.to_string_lossy().into_owned());
-        app.pending_editor_operation = Some(EditorOperation::AddComponent {
-            entity_name: "Selected".into(),
-            component: ComponentRecord::Light {
-                config: LightConfig {
-                    light_type: LightType::Point,
-                    ..LightConfig::default()
-                },
-            },
-        });
-        apply_pending_operation(&mut app);
-        let applied = matches!(app.state, LauncherState::Running { ref world, .. }
-            if world.query_one::<&Light>(entity).get().is_ok())
-            && scene_path.is_file()
-            && OperationLog::from_jsonl(&fs::read_to_string(&log_path).unwrap())
-                .unwrap()
-                .apply_count()
-                == 1;
-
-        apply_undo(&mut app);
-        let undone = matches!(app.state, LauncherState::Running { ref world, .. }
-            if world.query_one::<&Light>(entity).get().is_err())
-            && OperationLog::from_jsonl(&fs::read_to_string(&log_path).unwrap())
-                .unwrap()
-                .apply_count()
-                == 0;
-
-        apply_redo(&mut app);
-        let redone = matches!(app.state, LauncherState::Running { ref world, .. }
-            if world.query_one::<&Light>(entity).get().is_ok())
-            && OperationLog::from_jsonl(&fs::read_to_string(&log_path).unwrap())
-                .unwrap()
-                .apply_count()
-                == 1;
-        assert!(applied && undone && redone);
-
-        if let Some(path) = std::env::var_os("AETHER_T1_EDITOR_APPLY_EVENTS") {
-            fs::write(
-                path,
-                serde_json::to_vec_pretty(&json!({
-                    "case_id": "t1_editor_command_replay",
-                    "kind": "Fixture",
-                    "probes": [
-                        { "name": "queued_operation_persisted", "value": { "kind": "Bool", "value": applied } },
-                        { "name": "undo_updates_replay_log", "value": { "kind": "Bool", "value": undone } },
-                        { "name": "redo_updates_replay_log", "value": { "kind": "Bool", "value": redone } }
-                    ]
-                }))
-                .unwrap(),
-            )
-            .unwrap();
-        }
-        let _ = fs::remove_dir_all(root);
-    }
-
-    #[test]
-    fn degraded_editor_rejects_followup_history_writes() {
-        let cli = parse_args(&["aether-launcher".into()]).unwrap();
-        let mut app = App::new(cli);
-        let mut world = World::new();
-        world.spawn((Transform::default(), Name("Original".into())));
-        app.state = LauncherState::Running {
-            world,
-            lighting: aether_engine::renderer::light::LightingUniforms::default(),
-        };
-        let failure = EditorError::PersistenceRollbackFailed {
-            original: "operation log write failed".into(),
-            rollback: "scene restore failed".into(),
-        };
-        mark_degraded(&mut app, &failure);
-        app.pending_editor_operation = Some(EditorOperation::Rename {
-            entity_name: "Original".into(),
-            new_name: "Changed".into(),
-        });
-
-        apply_pending_operation(&mut app);
-
-        assert!(app.pending_editor_operation.is_none());
-        assert!(app
-            .editor_operation_message
-            .as_deref()
-            .unwrap()
-            .contains("写入已停止"));
-        let LauncherState::Running { world, .. } = &app.state else {
-            panic!("running")
-        };
-        assert!(world
-            .query::<&Name>()
-            .iter()
-            .any(|name| name.0 == "Original"));
-        assert!(!world
-            .query::<&Name>()
-            .iter()
-            .any(|name| name.0 == "Changed"));
-    }
-}
-
-#[cfg(test)]
-mod material_drop_tests;
-
-#[cfg(test)]
-mod material_transaction_tests;
-
-#[cfg(test)]
-mod stale_texture_tests;
-
-#[cfg(test)]
-mod snapshot_budget_tests;
-
-#[cfg(test)]
-mod snapshot_source_cache_tests;
+mod tests;

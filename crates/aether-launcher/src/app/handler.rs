@@ -155,10 +155,10 @@ impl ApplicationHandler for App {
 
         match event {
             WindowEvent::CloseRequested => {
-                if let Err(error) = self.asset_manager.shutdown() {
-                    tracing::error!(%error, "asset worker shutdown failed");
-                }
-                event_loop.exit();
+                scene::request_scene_transition(
+                    self,
+                    super::scene_transition::SceneTransitionTarget::CloseApplication,
+                );
             }
             WindowEvent::Resized(size) if size.width > 0 && size.height > 0 => {
                 let ctx = self.ctx.as_mut().unwrap();
@@ -224,6 +224,14 @@ impl ApplicationHandler for App {
                 let (paint_jobs, textures_delta, screen_descriptor) = ui::render(self, dt);
 
                 scene::process_post_ui_ops(self);
+
+                if self.exit_requested {
+                    if let Err(error) = self.asset_manager.shutdown() {
+                        tracing::error!(%error, "asset worker shutdown failed");
+                    }
+                    event_loop.exit();
+                    return;
+                }
 
                 render::frame(
                     self,

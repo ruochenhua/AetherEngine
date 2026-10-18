@@ -10,6 +10,7 @@ use crate::scene::{
     AtmosphereConfig, CameraConfig, LightConfig, MeshRef, ObjectConfig, TerrainConfig,
     TerrainGeometry, TerrainLayerConfig, TerrainSource, WaterConfig,
 };
+mod import_transaction;
 fn headless_device() -> wgpu::Device {
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
     let adapter =

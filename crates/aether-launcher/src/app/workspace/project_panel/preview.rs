@@ -21,6 +21,9 @@ impl ResourcePreview {
         self.worker.invalidate();
         self.texture = None;
     }
+    pub fn retained_requests(&self) -> Vec<(String, ResourceKind)> {
+        self.worker.retained_requests()
+    }
     pub fn poll(&mut self) {
         self.worker.poll();
     }

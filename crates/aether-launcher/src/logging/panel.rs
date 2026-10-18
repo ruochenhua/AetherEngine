@@ -5,6 +5,13 @@ use std::{
     sync::{mpsc::Receiver, Arc},
 };
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct LogPanelResourceSnapshot {
+    pub buffered_event_resources: Vec<PathBuf>,
+    pub selected_event_resource: Option<PathBuf>,
+    pub receiver_queue_unobserved: bool,
+}
+
 pub(crate) struct LogPanel {
     pub store: LogStore,
     pub view: LogView,
@@ -84,6 +91,21 @@ impl LogPanel {
             Some(path.to_path_buf())
         } else {
             None
+        }
+    }
+    pub fn resource_usage_snapshot(&self) -> LogPanelResourceSnapshot {
+        LogPanelResourceSnapshot {
+            buffered_event_resources: self
+                .store
+                .events
+                .iter()
+                .filter_map(|event| event.resource.clone())
+                .collect(),
+            selected_event_resource: self
+                .selected
+                .as_ref()
+                .and_then(|event| event.resource.clone()),
+            receiver_queue_unobserved: self.receiver.is_some(),
         }
     }
     pub fn render(&mut self, ui: &mut egui::Ui) -> Option<PathBuf> {
@@ -169,5 +191,44 @@ impl LogPanel {
                 }
             });
         resource
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn resource_snapshot_lists_retained_links_and_marks_the_unobserved_receiver() {
+        let (_sender, receiver) = super::super::capture(4);
+        let mut panel = LogPanel::new(
+            Some(receiver),
+            Arc::default(),
+            Arc::default(),
+            std::env::current_dir().unwrap(),
+        );
+        let event = CapturedEvent {
+            timestamp_ms: 1,
+            level: "INFO".into(),
+            target: "test".into(),
+            message: "asset loaded".into(),
+            fields: BTreeMap::new(),
+            resource: Some(PathBuf::from("assets/model.obj")),
+        };
+        panel.store.push(event.clone());
+        panel.selected = Some(event);
+
+        let snapshot = panel.resource_usage_snapshot();
+
+        assert_eq!(
+            snapshot.buffered_event_resources,
+            vec![PathBuf::from("assets/model.obj")]
+        );
+        assert_eq!(
+            snapshot.selected_event_resource,
+            Some(PathBuf::from("assets/model.obj"))
+        );
+        assert!(snapshot.receiver_queue_unobserved);
     }
 }

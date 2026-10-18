@@ -41,6 +41,9 @@ impl ReferencePreview {
     pub fn busy(&self) -> bool {
         self.result.is_some()
     }
+    pub fn busy_target(&self) -> Option<&str> {
+        self.result.as_ref().and(self.target.as_deref())
+    }
     pub fn poll(&mut self) {
         let Some(receiver) = &self.result else {
             return;

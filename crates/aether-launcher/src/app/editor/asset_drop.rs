@@ -166,6 +166,18 @@ pub(super) fn validate_obj_asset(
 }
 
 pub(super) fn apply_pending_drop(app: &mut super::App) {
+    if !app.document_state.can_transition() {
+        app.pending_asset_drop = None;
+        app.editor_operation_message = Some("当前场景状态未知或需要恢复，暂不能放置模型。".into());
+        return;
+    }
+    if app.particle_runtime.playback
+        != super::super::particle_runtime::physics_runtime::PlaybackState::Stopped
+    {
+        app.pending_asset_drop = None;
+        app.editor_operation_message = Some("请先停止模拟，再放置模型。".into());
+        return;
+    }
     let Some(request) = app.pending_asset_drop.take() else {
         return;
     };
@@ -271,6 +283,7 @@ pub(super) fn apply_pending_drop(app: &mut super::App) {
         Ok(()) => {
             app.undo_action_order.push(super::UndoActionKind::Operation);
             app.redo_action_order.clear();
+            super::checkpoint_auto_saved_edit(app);
             app.editor_operation_message = Some(format!(
                 "已放置并保存模型；编辑日志：{}",
                 log_path.display()

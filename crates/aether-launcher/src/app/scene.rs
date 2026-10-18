@@ -78,41 +78,9 @@ pub(crate) fn update_camera_from_world(camera: &mut FlyCamera, world: &World) {
     }
 }
 
-/// Write camera state to the first `(Transform, Camera)` entity.
-pub(crate) fn write_camera_to_world(camera: &FlyCamera, world: &mut World) {
-    let target = world
-        .query::<(Entity, (&Transform, &Camera))>()
-        .iter()
-        .next()
-        .map(|(entity, _)| entity);
-    if let Some(entity) = target {
-        let _ = world.insert(
-            entity,
-            (
-                Transform {
-                    translation: camera.position,
-                    rotation: glam::Quat::from_euler(
-                        glam::EulerRot::YXZ,
-                        camera.yaw,
-                        camera.pitch,
-                        0.0,
-                    ),
-                    scale: glam::Vec3::ONE,
-                },
-                Camera {
-                    fov: camera.fov,
-                    near: camera.near,
-                    far: camera.far,
-                    speed: camera.speed,
-                },
-            ),
-        );
-    }
-}
-
 /// Auto-open the scene provided via `--scene` on the command line.
 pub(crate) fn open_cli_scene(app: &mut App, ctx: &RenderContext) {
-    if let Some(scene_path) = &app.cli.scene {
+    if let Some(scene_path) = app.cli.scene.clone() {
         let path = PathBuf::from(scene_path);
         if let LauncherState::Running {
             ref mut world,
@@ -139,14 +107,19 @@ pub(crate) fn open_cli_scene(app: &mut App, ctx: &RenderContext) {
                     // Queue a pipeline rebuild so the first frame after
                     // `resumed()` uses a scheduler that includes TerrainPass.
                     app.pending_terrain_pipeline_rebuild = true;
+                    super::editor::activate_scene(app, path.clone());
                 }
                 Err(e) => {
                     report_load_error(&path, &e);
                     // Keep the default empty scene alive so the launcher can
                     // still be used for manual scene discovery/editing.
+                    super::editor::start_unsaved_scene(app);
+                    super::editor::checkpoint_untitled_scene(app);
                 }
             }
         }
+    } else {
+        super::editor::checkpoint_untitled_scene(app);
     }
 }
 
@@ -154,49 +127,21 @@ pub(crate) fn open_cli_scene(app: &mut App, ctx: &RenderContext) {
 pub(crate) fn process_pending_load(app: &mut App) {
     if let Some(idx) = app.pending_load.take() {
         let path = app.scene_entries[idx].path.clone();
-        if let LauncherState::Running {
-            ref mut world,
-            ref mut lighting,
-        } = app.state
-        {
-            let ctx = app.ctx.as_ref().unwrap();
-            match SceneLoader::open_scene(
-                &path,
-                &ctx.device,
-                &app.mesh_registry,
-                &mut app.asset_manager,
-                world,
-            ) {
-                Ok(new_lighting) => {
-                    *lighting = new_lighting;
-                    super::particle_runtime::physics_runtime::scene_switched(
-                        &mut app.particle_runtime,
-                    );
-                    if let Err(error) = super::particle_runtime::load_scene(
-                        &mut app.particle_runtime.particles,
-                        world,
-                        &mut app.cli.time,
-                    ) {
-                        error!("Particle runtime scene initialization failed: {error}");
-                    }
-                    update_camera_from_world(&mut app.camera, world);
-                    app.pending_terrain_pipeline_rebuild = true;
-                    super::editor::activate_scene(app, path.clone());
-                }
-                Err(e) => {
-                    report_load_error(&path, &e);
-                }
-            }
-        }
+        transition::request_scene_transition(
+            app,
+            crate::app::scene_transition::SceneTransitionTarget::OpenPath(path),
+        );
     }
 }
 
 /// Process pending scene operations triggered by the editor UI.
 mod ops;
 mod save;
+mod transition;
 pub(crate) use ops::process_post_ui_ops;
 #[cfg(test)]
 pub(crate) use ops::process_project_browser_open_with_device;
+pub(crate) use transition::request_scene_transition;
 
 pub(crate) fn report_load_error(path: &std::path::Path, error: &anyhow::Error) {
     tracing::error!(path = %path.display(), %error, "Open scene error");

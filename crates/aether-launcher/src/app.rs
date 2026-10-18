@@ -6,6 +6,7 @@
 mod animation_fixture;
 mod asset_hot_reload;
 pub(crate) mod cli;
+mod document_state;
 mod editor;
 mod handler;
 mod input;
@@ -16,6 +17,8 @@ mod ready;
 mod render;
 mod request_usage;
 pub(crate) mod scene;
+mod scene_mutation_inventory;
+mod scene_transition;
 pub(crate) mod ui;
 mod watcher_usage;
 pub(crate) mod workspace;
@@ -136,6 +139,7 @@ pub(crate) struct App {
     pub(crate) pending_open_dialog: bool,
     pub(crate) pending_import_dialog: bool,
     pub(crate) pending_save_dialog: bool,
+    pub(crate) pending_save_as_dialog: bool,
     pub(crate) pending_add_cube: bool,
     pub(crate) pending_add_sphere: bool,
     pub(crate) pending_add_terrain: bool,
@@ -144,6 +148,12 @@ pub(crate) struct App {
     pub(crate) pending_asset_drop: Option<workspace::ViewportDropRequest>,
     pub(crate) pending_material_drop: Option<workspace::MaterialDropRequest>,
     pub(crate) editor_history: aether_engine::editor::EditorHistory,
+    pub(crate) document_state: document_state::SceneDocumentState,
+    pub(crate) pending_scene_transition: Option<scene_transition::PendingSceneTransition>,
+    pub(crate) pending_transition_choice: Option<scene_transition::SceneTransitionChoice>,
+    pub(crate) transition_cancel_focus_pending: bool,
+    pub(crate) exit_requested: bool,
+    pub(crate) scene_mutation_inventory: Option<scene_mutation_inventory::SceneMutationInventory>,
     pub(crate) editor_operation_message: Option<String>,
     pub(crate) editor_write_degraded: Option<String>,
     pub(crate) undo_action_order: Vec<editor::UndoActionKind>,
@@ -252,6 +262,7 @@ impl App {
             pending_open_dialog: false,
             pending_import_dialog: false,
             pending_save_dialog: false,
+            pending_save_as_dialog: false,
             pending_add_cube: false,
             pending_add_sphere: false,
             pending_add_terrain: false,
@@ -260,6 +271,12 @@ impl App {
             pending_asset_drop: None,
             pending_material_drop: None,
             editor_history: aether_engine::editor::EditorHistory::default(),
+            document_state: document_state::SceneDocumentState::uninitialized(),
+            pending_scene_transition: None,
+            pending_transition_choice: None,
+            transition_cancel_focus_pending: false,
+            exit_requested: false,
+            scene_mutation_inventory: None,
             editor_operation_message: None,
             editor_write_degraded: None,
             undo_action_order: Vec::new(),

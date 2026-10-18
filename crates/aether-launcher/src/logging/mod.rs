@@ -191,7 +191,7 @@ pub(crate) use store::{LogStore, LogView};
 mod file;
 
 mod panel;
-pub(crate) use panel::LogPanel;
+pub(crate) use panel::{LogPanel, LogPanelResourceSnapshot};
 
 impl CaptureLayer {
     pub fn with_file(mut self, file: file::FileSink) -> Self {

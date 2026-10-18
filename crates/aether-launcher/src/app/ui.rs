@@ -6,8 +6,13 @@ mod editor_operations;
 mod hierarchy;
 mod physics_panel;
 mod renderer_controls;
+mod scene_info;
+mod scene_transition_dialog;
 
-use super::{App, LauncherState};
+use super::{
+    document_state::{DocumentIdentity, DocumentStatus},
+    App, LauncherState,
+};
 use crate::inspector::{self, InspectorTarget};
 use aether_engine::ecs::components::Camera;
 use aether_engine::ecs::Entity;
@@ -101,6 +106,8 @@ pub(crate) fn draw(app: &mut App, dt: f32, raw_input: egui::RawInput) -> egui::F
     let mut project_file_request = None;
     let mut confirm_asset_import = false;
     let mut cancel_asset_import = false;
+    let mut capture_scene_inventory = false;
+    let mut close_scene_inventory = false;
     let mut viewport_drop_request = None;
     let mut material_drop_request = None;
     let debug_mode = app.debug_mode;
@@ -108,6 +115,22 @@ pub(crate) fn draw(app: &mut App, dt: f32, raw_input: egui::RawInput) -> egui::F
     let pending_editor_operation = &mut app.pending_editor_operation;
     let pending_asset_drop = &mut app.pending_asset_drop;
     let has_saved_scene = app.cli.scene.is_some();
+    let document_label = match app.document_state.identity() {
+        DocumentIdentity::Untitled => "Untitled".to_string(),
+        DocumentIdentity::Saved(path) => path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned(),
+    };
+    let document_status_label = match app.document_state.status() {
+        DocumentStatus::Clean => "Saved",
+        DocumentStatus::Dirty => "Unsaved changes",
+        DocumentStatus::Unknown => "State unknown",
+        DocumentStatus::RecoveryRequired => "Recovery required",
+    };
+    let mut transition_cancel_focus_applied = false;
+    let mut transition_choice = None;
     let editor_operation_message = app.editor_operation_message.clone();
     let playback_state = app.particle_runtime.playback;
     let playback_action = &mut app.particle_runtime.pending_action;
@@ -214,10 +237,16 @@ pub(crate) fn draw(app: &mut App, dt: f32, raw_input: egui::RawInput) -> egui::F
                                     app.pending_import_dialog = true;
                                     ui.close();
                                 }
-                                if ui.button("Save Scene...").clicked() {
+                                if ui.button("Save").clicked() {
                                     app.pending_save_dialog = true;
                                     ui.close();
                                 }
+                                if ui.button("Save As...").clicked() {
+                                    app.pending_save_as_dialog = true;
+                                    ui.close();
+                                }
+                                capture_scene_inventory |=
+                                    super::scene_mutation_inventory::menu_button(ui);
                             });
                             ui.menu_button("Create", |ui| {
                                 let (response, operation) = editor_operations::add_light_button(
@@ -261,6 +290,7 @@ pub(crate) fn draw(app: &mut App, dt: f32, raw_input: egui::RawInput) -> egui::F
                             ui.with_layout(
                                 egui::Layout::right_to_left(egui::Align::Center),
                                 |ui| {
+                                    ui.weak(format!("{document_label} · {document_status_label}"));
                                     let label = if *fullscreen_3d {
                                         "⛶ Exit Full Screen"
                                     } else {
@@ -328,75 +358,26 @@ pub(crate) fn draw(app: &mut App, dt: f32, raw_input: egui::RawInput) -> egui::F
                                         material_drop_request = inspector::render(ui, target);
                                     }
 
-                                    egui::CollapsingHeader::new("Scene Info")
-                                        .default_open(false)
-                                        .show(ui, |ui| {
-                                            ui.label(format!("GPU: {}", gpu_info));
-                                            ui.label(format!(
-                                                "GPU Timer: {}",
-                                                if gpu_timer_supported {
-                                                    "supported"
-                                                } else {
-                                                    "unsupported"
-                                                }
-                                            ));
-                                            ui.label(format!("Scenes: {}", scene_entries.len()));
-                                            ui.separator();
-                                            ui.label(format!("FPS: {:.1}", fps));
-                                            ui.label(format!("Frame: {:.2} ms", dt * 1000.0));
-                                            ui.label(format!("Entities: {}", world.len()));
-                                            let p = camera.position;
-                                            ui.label(format!(
-                                                "Camera: ({:.1}, {:.1}, {:.1})",
-                                                p.x, p.y, p.z
-                                            ));
-                                            ui.label(format!("Speed: {:.1}", camera.speed));
-                                            let mode_names = [
-                                                "Full",
-                                                "Ambient",
-                                                "Diffuse",
-                                                "Specular",
-                                                "Normals",
-                                                "NdotL",
-                                                "Shadow",
-                                                "Direct",
-                                                "IBL",
-                                                "Alpha(P)",
-                                                "Alpha(N)",
-                                                "NDC(F2)",
-                                                "EnvFix(F3)",
-                                                "VDir(F4)",
-                                                "SSAO(F5)",
-                                                "CSM(F7)",
-                                            ];
-                                            let mode_idx = debug_mode.clamp(0, 15) as usize;
-                                            ui.label(format!(
-                                                "Debug: [{}] {}",
-                                                mode_idx, mode_names[mode_idx]
-                                            ));
-                                            ui.label(format!("SSR Debug: {} (F6)", ssr_debug_mode));
-                                        });
+                                    scene_info::render(
+                                        ui,
+                                        scene_info::SceneInfo {
+                                            gpu_info,
+                                            gpu_timer_supported,
+                                            scene_count: scene_entries.len(),
+                                            fps,
+                                            frame_time_seconds: dt,
+                                            entity_count: world.len(),
+                                            camera,
+                                            input: &app.input,
+                                            debug_mode,
+                                            ssr_debug_mode,
+                                        },
+                                    );
 
                                     egui::CollapsingHeader::new("Render Features")
                                         .default_open(true)
                                         .show(ui, |ui| {
                                             renderer_controls::render(ui, &mut render_options);
-                                        });
-
-                                    egui::CollapsingHeader::new("Input Debug")
-                                        .default_open(false)
-                                        .show(ui, |ui| {
-                                            let (mdx, mdy) = app.input.mouse_delta();
-                                            ui.label(format!(
-                                                "Mouse delta: ({:.1}, {:.1})",
-                                                mdx, mdy
-                                            ));
-                                            ui.label(format!("Alt held: {}", app.input.alt_held()));
-                                            ui.label(format!(
-                                                "Left held: {}",
-                                                app.input
-                                                    .mouse_held(winit::event::MouseButton::Left)
-                                            ));
                                         });
                                 });
                             });
@@ -411,14 +392,29 @@ pub(crate) fn draw(app: &mut App, dt: f32, raw_input: egui::RawInput) -> egui::F
                     });
             }
         }
+
+        let dialog = scene_transition_dialog::render(
+            ui,
+            &app.document_state,
+            app.pending_scene_transition.as_ref(),
+            app.transition_cancel_focus_pending,
+        );
+        transition_choice = dialog.choice;
+        transition_cancel_focus_applied = dialog.cancel_has_focus;
+
+        close_scene_inventory = super::scene_mutation_inventory::render_window(
+            ui.ctx(),
+            app.scene_mutation_inventory.as_ref(),
+        );
     });
 
-    if project_open_request.is_some() {
-        app.pending_project_open = project_open_request;
+    if let Some(choice) = transition_choice {
+        app.pending_transition_choice = Some(choice);
     }
-    if project_file_request.is_some() {
-        app.pending_project_file = project_file_request;
+    if transition_cancel_focus_applied {
+        app.transition_cancel_focus_pending = false;
     }
+
     if confirm_asset_import {
         app.pending_asset_import_confirm = true;
     }
@@ -428,9 +424,19 @@ pub(crate) fn draw(app: &mut App, dt: f32, raw_input: egui::RawInput) -> egui::F
     }
     *pending_asset_drop = viewport_drop_request;
     app.pending_material_drop = material_drop_request;
+    super::scene_mutation_inventory::apply_ui_requests(
+        app,
+        capture_scene_inventory,
+        close_scene_inventory,
+        project_open_request,
+        project_file_request,
+    );
 
     // Write back inspector changes
-    if app.editor_write_degraded.is_none() {
+    if app.editor_write_degraded.is_none()
+        && app.particle_runtime.playback
+            == super::particle_runtime::physics_runtime::PlaybackState::Stopped
+    {
         if let Some(ref target) = inspector_target {
             let undo_count = app.undo_stack.len();
             if let LauncherState::Running { ref mut world, .. } = app.state {
@@ -470,9 +476,7 @@ pub(crate) fn draw(app: &mut App, dt: f32, raw_input: egui::RawInput) -> egui::F
                 }
             }
             if app.undo_stack.len() > undo_count {
-                app.undo_action_order
-                    .push(super::editor::UndoActionKind::Legacy);
-                app.redo_action_order.clear();
+                super::editor::mark_legacy_edit(app);
             }
         }
     }
