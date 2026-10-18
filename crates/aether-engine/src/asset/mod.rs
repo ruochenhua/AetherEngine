@@ -4,6 +4,8 @@
 
 /// Asynchronous asset loading adapter.
 pub mod async_loader;
+/// Read-only summaries of retained GPU cache generations.
+pub mod gpu_usage;
 /// Stable identities for typed assets.
 pub mod id;
 /// External model file loaders.
@@ -35,6 +37,9 @@ mod manager;
 mod store_types;
 
 pub use asset_trait::Asset;
+pub use gpu_usage::{
+    GpuCacheInventoryState, GpuResourceOwner, GpuResourceUsage, GpuResourceUsageSnapshot,
+};
 pub use handle::Handle;
 pub use id::{AssetId, AssetIdError, AssetIdParseError, AssetKind, CanonicalPath};
 pub use manager::{AssetManager, TextureSnapshotLimits};

@@ -71,3 +71,54 @@ fn old_gpu_material_lives_until_consumers_release_it() {
     cache.collect_retired();
     assert!(cache.get_versioned(&generation_one).is_none());
 }
+
+#[test]
+fn resource_usage_snapshot_lists_current_and_retained_retired_materials() {
+    let device = device();
+    let root = std::env::current_dir().unwrap();
+    let mut cache = GpuMaterialCache::new(&device);
+    let id =
+        AssetId::from_path(AssetKind::Material, &root, Path::new("materials/paint.ron")).unwrap();
+    let old = GpuAssetKey {
+        asset: id.clone(),
+        generation: 1,
+    };
+    let current = GpuAssetKey {
+        asset: id,
+        generation: 2,
+    };
+    cache
+        .commit_asset(
+            old.clone(),
+            payload([1.0, 0.0, 0.0, 1.0], &root),
+            FrameBoundary::new(5),
+        )
+        .unwrap();
+    let retained = cache.get_versioned(&old).unwrap();
+    cache
+        .commit_asset(
+            current,
+            payload([0.0, 1.0, 0.0, 1.0], &root),
+            FrameBoundary::new(6),
+        )
+        .unwrap();
+
+    let snapshot = cache.resource_usage_snapshot();
+    assert_eq!(
+        snapshot.state,
+        crate::asset::GpuCacheInventoryState::Available
+    );
+    assert_eq!(snapshot.unidentified_legacy_texture_entries, None);
+    assert_eq!(snapshot.resources.len(), 2);
+    assert!(snapshot
+        .resources
+        .iter()
+        .all(|entry| entry.owner == crate::asset::GpuResourceOwner::Material));
+    assert!(snapshot.resources.iter().all(|entry| entry.srgb.is_none()));
+    assert!(!snapshot.resources[0].current);
+    assert!(snapshot.resources[1].current);
+    assert_eq!(snapshot.resources[0].external_arc_owners, 1);
+    assert_eq!(cache.resource_usage_snapshot(), snapshot);
+    assert_eq!(Arc::strong_count(&retained), 2);
+    drop(retained);
+}

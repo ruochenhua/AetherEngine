@@ -36,6 +36,37 @@ pub struct GpuMaterialCache {
 }
 
 impl GpuMaterialCache {
+    /// Return a read-only inventory of path-addressable cached generations.
+    pub fn resource_usage_snapshot(&self) -> crate::asset::GpuResourceUsageSnapshot {
+        let mut resources = self
+            .state
+            .assets
+            .iter()
+            .map(|(key, material)| {
+                let internal_refs = self
+                    .state
+                    .assets
+                    .values()
+                    .filter(|candidate| Arc::ptr_eq(candidate, material))
+                    .count();
+                crate::asset::GpuResourceUsage {
+                    owner: crate::asset::GpuResourceOwner::Material,
+                    asset: key.asset.clone(),
+                    generation: key.generation,
+                    current: self.state.current.get(&key.asset) == Some(&key.generation),
+                    srgb: None,
+                    external_arc_owners: Arc::strong_count(material).saturating_sub(internal_refs),
+                }
+            })
+            .collect::<Vec<_>>();
+        crate::asset::gpu_usage::sort_resources(&mut resources);
+        crate::asset::GpuResourceUsageSnapshot {
+            state: crate::asset::GpuCacheInventoryState::Available,
+            resources,
+            unidentified_legacy_texture_entries: None,
+        }
+    }
+
     /// Create an empty material cache for a device.
     pub fn new(device: &wgpu::Device) -> Self {
         Self {

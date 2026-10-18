@@ -6,6 +6,10 @@ use crate::asset::{
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
+#[cfg(test)]
+#[path = "usage_tests.rs"]
+mod usage_tests;
+
 /// Cache mapping CPU texture handles and generations to GPU textures.
 #[derive(Debug)]
 pub struct GpuTextureCache {
@@ -24,6 +28,45 @@ struct VersionedCache {
 }
 
 impl GpuTextureCache {
+    /// Return a read-only inventory of path-addressable cached generations.
+    pub fn resource_usage_snapshot(&self) -> crate::asset::GpuResourceUsageSnapshot {
+        let Ok(legacy) = self.map.read() else {
+            return unavailable_texture_snapshot();
+        };
+        let Ok(versioned) = self.versioned.read() else {
+            return unavailable_texture_snapshot();
+        };
+        let mut resources = versioned
+            .assets
+            .iter()
+            .map(|((key, srgb), texture)| {
+                let internal_refs = versioned
+                    .assets
+                    .values()
+                    .filter(|candidate| Arc::ptr_eq(candidate, texture))
+                    .count()
+                    + legacy
+                        .values()
+                        .filter(|candidate| Arc::ptr_eq(candidate, texture))
+                        .count();
+                crate::asset::GpuResourceUsage {
+                    owner: crate::asset::GpuResourceOwner::Texture,
+                    asset: key.asset.clone(),
+                    generation: key.generation,
+                    current: versioned.current.get(&key.asset) == Some(&key.generation),
+                    srgb: Some(*srgb),
+                    external_arc_owners: Arc::strong_count(texture).saturating_sub(internal_refs),
+                }
+            })
+            .collect::<Vec<_>>();
+        crate::asset::gpu_usage::sort_resources(&mut resources);
+        crate::asset::GpuResourceUsageSnapshot {
+            state: crate::asset::GpuCacheInventoryState::Available,
+            resources,
+            unidentified_legacy_texture_entries: Some(legacy.len()),
+        }
+    }
+
     /// Create a new GPU texture cache with a built-in 1x1 white fallback texture.
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
         let fallback_white = Arc::new(GpuTexture::from_cpu(
@@ -144,6 +187,14 @@ impl GpuTextureCache {
             .assets
             .get(&(key.clone(), srgb))
             .cloned()
+    }
+}
+
+fn unavailable_texture_snapshot() -> crate::asset::GpuResourceUsageSnapshot {
+    crate::asset::GpuResourceUsageSnapshot {
+        state: crate::asset::GpuCacheInventoryState::Unavailable,
+        resources: Vec::new(),
+        unidentified_legacy_texture_entries: None,
     }
 }
 
