@@ -13,6 +13,7 @@ mod material_reload;
 mod particle_runtime;
 mod ready;
 mod render;
+mod request_usage;
 pub(crate) mod scene;
 pub(crate) mod ui;
 mod watcher_usage;
