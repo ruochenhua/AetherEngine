@@ -32,8 +32,8 @@ Do not claim byte-identical inode replacement detection from content hashes alon
 
 ## Recommended next implementation sequence
 
-1. Design a read-only runtime mutation-eligibility snapshot and an explicit editor/project lifecycle. Unknown dirty state remains a blocker; do not infer cleanliness.
-2. Add owner APIs and tests for World, histories/replay, asset jobs/dependencies/caches, watchers and pending requests. Decide whether safe writes require a truly unloaded project or a supported live migration path.
+1. **Completed:** read-only AssetStore usage snapshot and live-World typed reference snapshot; details in [EW5-B ownership report](ew5-b-ownership-report.md).
+2. Add owner APIs and tests for in-memory undo/redo, persisted replay logs, GPU caches, watchers and pending editor requests. Design an explicit editor/project lifecycle. Unknown dirty state remains a blocker; do not infer cleanliness.
 3. Only after the eligibility report can prove safety, implement one narrow Move/Rename slice with typed rewrites, transaction journal/rollback and focused failure-injection tests.
 4. Keep Delete after the move transaction is proven; keep EW6 preview tabs after EW5 path identity updates are defined.
 
