@@ -11,6 +11,7 @@ mod handler;
 mod input;
 mod material_reload;
 mod particle_runtime;
+mod persisted_log_usage;
 mod ready;
 mod render;
 mod request_usage;

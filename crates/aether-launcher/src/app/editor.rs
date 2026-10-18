@@ -222,7 +222,7 @@ fn apply_history_action(app: &mut App, redo: bool) -> Result<(), EditorError> {
     }
 }
 
-fn operation_log_path(scene_path: &Path) -> PathBuf {
+pub(super) fn operation_log_path(scene_path: &Path) -> PathBuf {
     scene_path.with_extension("editor.jsonl")
 }
 
