@@ -143,7 +143,8 @@ impl ApplicationHandler for App {
         match &event {
             WindowEvent::CursorMoved { .. }
             | WindowEvent::MouseInput { .. }
-            | WindowEvent::MouseWheel { .. } => {
+            | WindowEvent::MouseWheel { .. }
+            | WindowEvent::PinchGesture { .. } => {
                 self.egui_consumed_pointer = egui_response.consumed;
             }
             _ => {}
@@ -152,6 +153,44 @@ impl ApplicationHandler for App {
         // We guard against egui interactions at the usage site (picking / camera)
         // by checking egui_consumed_pointer during RedrawRequested.
         self.input.handle_window_event(&event);
+
+        match &event {
+            WindowEvent::Focused(false) => {
+                self.camera.active = false;
+                set_viewport_cursor_capture(self.window.as_ref(), false);
+            }
+            WindowEvent::MouseInput {
+                state: winit::event::ElementState::Pressed,
+                button: winit::event::MouseButton::Right,
+                ..
+            } if !egui_response.consumed
+                && set_viewport_cursor_capture(self.window.as_ref(), true) =>
+            {
+                self.camera.active = true;
+            }
+            WindowEvent::MouseInput {
+                state: winit::event::ElementState::Released,
+                button: winit::event::MouseButton::Right,
+                ..
+            } => {
+                self.camera.active = false;
+                set_viewport_cursor_capture(self.window.as_ref(), false);
+            }
+            WindowEvent::KeyboardInput {
+                event:
+                    winit::event::KeyEvent {
+                        state: winit::event::ElementState::Pressed,
+                        physical_key: winit::keyboard::PhysicalKey::Code(KeyCode::Escape),
+                        ..
+                    },
+                ..
+            } if self.camera.active => {
+                self.input.clear_held_state();
+                self.camera.active = false;
+                set_viewport_cursor_capture(self.window.as_ref(), false);
+            }
+            _ => {}
+        }
 
         match event {
             WindowEvent::CloseRequested => {
@@ -272,5 +311,23 @@ impl ApplicationHandler for App {
         if let Some(window) = &self.window {
             window.request_redraw();
         }
+    }
+}
+
+fn set_viewport_cursor_capture(window: Option<&Arc<winit::window::Window>>, capture: bool) -> bool {
+    let Some(window) = window else {
+        return false;
+    };
+    if capture {
+        let captured = window
+            .set_cursor_grab(winit::window::CursorGrabMode::Locked)
+            .or_else(|_| window.set_cursor_grab(winit::window::CursorGrabMode::Confined))
+            .is_ok();
+        window.set_cursor_visible(!captured);
+        captured
+    } else {
+        window.set_cursor_visible(true);
+        let _ = window.set_cursor_grab(winit::window::CursorGrabMode::None);
+        false
     }
 }

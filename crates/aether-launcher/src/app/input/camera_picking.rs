@@ -39,10 +39,30 @@ pub(crate) fn update_camera_and_picking(app: &mut App, dt: f32, egui_consumed: b
     {
         let previous_camera = app.camera.clone();
         let (dx, dy) = app.input.mouse_delta();
-        app.camera.update(dt, dx, dy, app.scroll_input, &app.input);
+        let zoom_delta = app.scroll_input + app.input.magnification_delta();
+        app.camera.update(dt, dx, dy, zoom_delta, &app.input);
         app.scroll_input = 0.0;
+        if app.input.alt_held() && app.input.mouse_held(MouseButton::Left) {
+            if let LauncherState::Running { world, .. } = &app.state {
+                if let Some((_, transform)) = selected_entity_transform(world) {
+                    orbit_camera_around(&mut app.camera, transform.translation, dx, dy);
+                }
+            }
+        }
+        if app.input.key_pressed(winit::keyboard::KeyCode::KeyF)
+            && !egui_consumed
+            && !app.egui_ctx.egui_wants_keyboard_input()
+        {
+            if let LauncherState::Running { world, .. } = &app.state {
+                if let Some((_, transform)) = selected_entity_transform(world) {
+                    let scale = transform.scale.abs().max_element().max(1.0);
+                    frame_camera_on(&mut app.camera, transform.translation, scale * 3.5);
+                }
+            }
+        }
         viewport_camera_changed = camera_document_state_changed(&previous_camera, &app.camera);
     }
+    app.scroll_input = 0.0;
 
     super::process_scene_shortcuts(app, app.input.key_pressed(winit::keyboard::KeyCode::Delete));
 
@@ -142,6 +162,39 @@ pub(crate) fn update_camera_and_picking(app: &mut App, dt: f32, egui_consumed: b
     }
 }
 
+fn orbit_camera_around(
+    camera: &mut aether_engine::renderer::camera::FlyCamera,
+    target: glam::Vec3,
+    mouse_dx: f32,
+    mouse_dy: f32,
+) {
+    let radius = camera.position.distance(target);
+    if !radius.is_finite() || radius <= f32::EPSILON {
+        return;
+    }
+    camera.yaw -= mouse_dx * camera.sensitivity;
+    camera.pitch = (camera.pitch + mouse_dy * camera.sensitivity).clamp(
+        -std::f32::consts::FRAC_PI_2 + 0.01,
+        std::f32::consts::FRAC_PI_2 - 0.01,
+    );
+    camera.position = target - camera.forward() * radius;
+}
+
+fn frame_camera_on(
+    camera: &mut aether_engine::renderer::camera::FlyCamera,
+    target: glam::Vec3,
+    distance: f32,
+) {
+    let direction = (target - camera.position).normalize_or_zero();
+    if direction == glam::Vec3::ZERO {
+        camera.position = target - camera.forward() * distance;
+        return;
+    }
+    camera.yaw = direction.z.atan2(direction.x);
+    camera.pitch = direction.y.clamp(-1.0, 1.0).asin();
+    camera.position = target - camera.forward() * distance.max(0.5);
+}
+
 fn camera_document_state_changed(
     previous: &aether_engine::renderer::camera::FlyCamera,
     current: &aether_engine::renderer::camera::FlyCamera,
@@ -169,6 +222,90 @@ mod tests {
     };
     use glam::{Vec2, Vec3};
     use std::sync::Arc;
+    use winit::event::{DeviceId, ElementState, WindowEvent};
+
+    fn app_with_selected_transform(transform: Transform) -> App {
+        let mut app =
+            App::new(super::super::super::cli::parse_args(&["aether-launcher".into()]).unwrap());
+        let mut world = World::new();
+        world.spawn((transform, Selected));
+        app.state = LauncherState::Running {
+            world,
+            lighting: Default::default(),
+        };
+        app.particle_runtime.playback =
+            super::super::super::particle_runtime::physics_runtime::PlaybackState::Playing;
+        app
+    }
+
+    fn update_navigation(app: &mut App) {
+        update_camera_and_picking(app, 1.0 / 60.0, false);
+    }
+
+    #[test]
+    fn framing_target_aims_camera_and_uses_requested_distance() {
+        let target = Vec3::new(1.0, 2.0, -3.0);
+        let mut camera = FlyCamera::default();
+
+        frame_camera_on(&mut camera, target, 4.0);
+
+        let toward_target = (target - camera.position).normalize();
+        assert!(camera.forward().dot(toward_target) > 0.999);
+        assert!((camera.position.distance(target) - 4.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn option_left_drag_orbits_around_the_selected_transform() {
+        let mut app = app_with_selected_transform(Transform::default());
+        app.camera.position = Vec3::new(0.0, 0.0, 10.0);
+        app.camera.yaw = -std::f32::consts::FRAC_PI_2;
+        app.camera.pitch = 0.0;
+        app.input
+            .handle_window_event(&WindowEvent::ModifiersChanged(
+                winit::keyboard::ModifiersState::ALT.into(),
+            ));
+        app.input.handle_window_event(&WindowEvent::MouseInput {
+            device_id: DeviceId::dummy(),
+            state: ElementState::Pressed,
+            button: MouseButton::Left,
+        });
+        app.input.handle_window_event(&WindowEvent::CursorMoved {
+            device_id: DeviceId::dummy(),
+            position: winit::dpi::PhysicalPosition::new(20.0, 0.0),
+        });
+
+        update_navigation(&mut app);
+
+        assert_ne!(app.camera.position, Vec3::new(0.0, 0.0, 10.0));
+        assert!((app.camera.position.length() - 10.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn mac_trackpad_pinch_changes_view_distance() {
+        let mut app = app_with_selected_transform(Transform::default());
+        let start = app.camera.position;
+        app.input.handle_window_event(&WindowEvent::PinchGesture {
+            device_id: DeviceId::dummy(),
+            delta: 0.5,
+            phase: winit::event::TouchPhase::Moved,
+        });
+
+        update_navigation(&mut app);
+
+        assert_ne!(app.camera.position, start);
+    }
+
+    #[test]
+    fn scroll_consumed_by_egui_does_not_leak_into_the_next_viewport_frame() {
+        let mut app = app_with_selected_transform(Transform::default());
+        app.scroll_input = 1.0;
+        let start = app.camera.position;
+
+        update_camera_and_picking(&mut app, 1.0 / 60.0, true);
+
+        assert_eq!(app.camera.position, start);
+        assert_eq!(app.scroll_input, 0.0);
+    }
 
     #[test]
     fn screen_pixel_ray_selects_the_physics_entity_under_the_cursor() {

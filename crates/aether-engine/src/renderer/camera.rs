@@ -2,9 +2,8 @@ use crate::math::*;
 
 /// UE-style fly camera.
 ///
-/// Right-click to activate: mouse controls pitch/yaw, WASD moves along
-/// camera-relative axes, Q/E moves up/down in world space, scroll wheel
-/// adjusts movement speed.
+/// Right-click drag looks around, right-click + WASD flies, and scroll moves
+/// along the view direction. Shift + scroll pans vertically.
 #[derive(Debug, Clone)]
 pub struct FlyCamera {
     /// World-space position.
@@ -23,7 +22,7 @@ pub struct FlyCamera {
     pub max_speed: f32,
     /// Mouse sensitivity for look rotation.
     pub sensitivity: f32,
-    /// Whether fly mode is active (right mouse button held).
+    /// Whether the viewport accepted and captured the active fly navigation gesture.
     pub active: bool,
     /// Vertical field of view in radians.
     pub fov: f32,
@@ -90,10 +89,7 @@ impl FlyCamera {
         Frustum::from_view_projection(proj * view)
     }
 
-    /// Update camera from input state.
-    ///
-    /// `dt` is frame delta time in seconds. `input` provides mouse/key state.
-    /// Hold Alt + left mouse + drag to rotate. WASD to move.
+    /// Update camera from input state. Right mouse activates look and fly controls.
     pub fn update(
         &mut self,
         dt: f32,
@@ -102,17 +98,9 @@ impl FlyCamera {
         scroll: f32,
         input: &crate::input::InputManager,
     ) {
-        // Speed adjustment via scroll wheel
-        if scroll != 0.0 {
-            self.speed =
-                (self.speed + scroll * self.base_speed * 0.5).clamp(self.min_speed, self.max_speed);
-        }
+        let navigating = self.active && input.mouse_held(winit::event::MouseButton::Right);
 
-        // Mouse look only when Alt + left mouse is held and mouse moved
-        if input.alt_held()
-            && input.mouse_held(winit::event::MouseButton::Left)
-            && (mouse_dx.abs() > 0.0 || mouse_dy.abs() > 0.0)
-        {
+        if navigating && (mouse_dx.abs() > 0.0 || mouse_dy.abs() > 0.0) {
             self.yaw -= mouse_dx * self.sensitivity;
             self.pitch = (self.pitch + mouse_dy * self.sensitivity).clamp(
                 -std::f32::consts::FRAC_PI_2 + 0.01,
@@ -120,7 +108,30 @@ impl FlyCamera {
             );
         }
 
-        // WASD movement along camera axes
+        if scroll != 0.0 {
+            if navigating {
+                self.speed = (self.speed + scroll * self.base_speed * 0.5)
+                    .clamp(self.min_speed, self.max_speed);
+            } else if input.shift_held() {
+                self.position += self.cam_up() * scroll * self.speed * 0.5;
+            } else {
+                self.position += self.forward() * scroll * self.speed * 0.5;
+            }
+        }
+
+        if input.mouse_held(winit::event::MouseButton::Middle)
+            && (mouse_dx.abs() > 0.0 || mouse_dy.abs() > 0.0)
+        {
+            let pan_scale = self.speed * 0.01;
+            self.position -= self.right() * mouse_dx * pan_scale;
+            self.position += self.cam_up() * mouse_dy * pan_scale;
+        }
+
+        // WASD movement is scoped to the active right-mouse navigation gesture.
+        if !navigating {
+            return;
+        }
+
         let fwd = self.forward();
         let right = self.right();
         let step = self.speed * dt;

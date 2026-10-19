@@ -8,6 +8,7 @@ mod physics_panel;
 mod renderer_controls;
 mod scene_info;
 mod scene_transition_dialog;
+pub(crate) mod viewport_tips;
 
 use super::{
     document_state::{DocumentIdentity, DocumentStatus},
@@ -389,6 +390,7 @@ pub(crate) fn draw(app: &mut App, dt: f32, raw_input: egui::RawInput) -> egui::F
                     .frame(egui::Frame::NONE)
                     .show_inside(ui, |ui| {
                         viewport_drop_request = asset_drop::capture_viewport_drop(ui);
+                        viewport_tips::render(ui, &mut app.viewport_tips);
                     });
             }
         }

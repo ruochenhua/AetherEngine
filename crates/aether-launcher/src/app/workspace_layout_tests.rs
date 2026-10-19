@@ -33,6 +33,33 @@ fn frame(app: &mut App, events: Vec<Event>) -> egui::FullOutput {
     )
 }
 
+fn click_at(app: &mut App, position: Pos2) -> egui::FullOutput {
+    frame(
+        app,
+        vec![
+            Event::PointerMoved(position),
+            Event::PointerButton {
+                pos: position,
+                button: PointerButton::Primary,
+                pressed: true,
+                modifiers: Modifiers::default(),
+            },
+        ],
+    );
+    frame(
+        app,
+        vec![
+            Event::PointerMoved(position),
+            Event::PointerButton {
+                pos: position,
+                button: PointerButton::Primary,
+                pressed: false,
+                modifiers: Modifiers::default(),
+            },
+        ],
+    )
+}
+
 fn text_rect(output: &egui::FullOutput, label: &str) -> Option<Rect> {
     fn find(shape: &Shape, label: &str) -> Option<Rect> {
         match shape {
@@ -82,6 +109,53 @@ fn ew3_project_browser_hides_close_details_when_nothing_is_selected() {
     let output = frame(&mut app, vec![]);
 
     assert!(text_rect(&output, "Close resource details").is_none());
+}
+
+#[test]
+fn viewport_shows_mouse_navigation_tips_by_default() {
+    let mut app = app();
+    running(&mut app);
+
+    let output = frame(&mut app, vec![]);
+
+    assert_eq!(text_count(&output, "Viewport Controls"), 1);
+    assert_eq!(text_count(&output, "Right drag"), 1);
+    assert_eq!(text_count(&output, "MMB drag"), 1);
+}
+
+#[test]
+fn viewport_tips_switch_to_mac_trackpad_gestures() {
+    let mut app = app();
+    running(&mut app);
+    let output = frame(&mut app, vec![]);
+    let device_button = text_rect(&output, "Mac Trackpad").unwrap().center();
+
+    let output = click_at(&mut app, device_button);
+
+    assert!(app.viewport_tips.trackpad);
+    assert_eq!(text_count(&output, "Two-finger press + drag"), 1);
+    assert_eq!(text_count(&output, "Pinch"), 1);
+    assert_eq!(text_count(&output, "Right drag"), 0);
+}
+
+#[test]
+fn viewport_tips_can_be_collapsed_and_reopened() {
+    let mut app = app();
+    running(&mut app);
+    let output = frame(&mut app, vec![]);
+    let close_button = text_rect(&output, "×").unwrap().center();
+
+    click_at(&mut app, close_button);
+    let collapsed = frame(&mut app, vec![]);
+    assert!(!app.viewport_tips.expanded);
+    assert_eq!(text_count(&collapsed, "Viewport Controls"), 0);
+    let reopen = text_rect(&collapsed, "? Viewport").unwrap().center();
+
+    click_at(&mut app, reopen);
+    let expanded = frame(&mut app, vec![]);
+
+    assert!(app.viewport_tips.expanded);
+    assert_eq!(text_count(&expanded, "Viewport Controls"), 1);
 }
 
 #[test]

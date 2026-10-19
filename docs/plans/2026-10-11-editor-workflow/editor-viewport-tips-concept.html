@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Aether Editor · Viewport Tips Concept</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #101419;
+      --panel: #171d24;
+      --panel-2: #1d252e;
+      --line: #2e3945;
+      --muted: #9aa8b5;
+      --text: #edf3f7;
+      --accent: #67d4ba;
+      --accent-soft: #19382f;
+      --blue: #8ab7ff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(ellipse at 50% 42%, #273747 0, #171e26 44%, #101419 100%);
+      color: var(--text);
+      font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .mock-warning {
+      position: fixed; z-index: 4; inset: 12px 12px auto auto;
+      padding: 7px 11px; border: 1px solid #8e6828; border-radius: 7px;
+      background: #3b2d16; color: #f4d99f; font-size: 11px; letter-spacing: .02em;
+    }
+    .editor {
+      min-height: 100vh; padding: 14px; display: grid; gap: 10px;
+      grid-template-rows: 38px minmax(440px, 1fr) 154px;
+    }
+    .toolbar, .bottom, .side {
+      background: color-mix(in srgb, var(--panel) 90%, transparent);
+      border: 1px solid var(--line); border-radius: 9px;
+    }
+    .toolbar { display: flex; align-items: center; gap: 9px; padding: 0 12px; }
+    .brand { font-weight: 700; letter-spacing: .04em; margin-right: 14px; }
+    .tool { color: #c6d1da; padding: 5px 9px; border-radius: 5px; }
+    .tool.active { color: var(--accent); background: var(--accent-soft); }
+    .spacer { flex: 1; }
+    .viewport {
+      position: relative; overflow: hidden; min-height: 440px;
+      border: 1px solid #354452; border-radius: 10px;
+      background:
+        linear-gradient(#293641aa 1px, transparent 1px),
+        linear-gradient(90deg, #293641aa 1px, transparent 1px),
+        radial-gradient(ellipse at 53% 58%, #3d5362 0, #1b252e 42%, #11171c 100%);
+      background-size: 48px 48px, 48px 48px, auto;
+    }
+    .viewport::before {
+      content: ""; position: absolute; width: 300px; height: 300px; left: 55%; top: 53%;
+      border: 1px solid #8ab7ff44; border-radius: 50%; transform: translate(-50%, -50%) rotateX(66deg);
+      box-shadow: 0 0 80px #4c92a722;
+    }
+    .viewport::after {
+      content: ""; position: absolute; left: 55%; top: 53%; width: 90px; height: 90px;
+      transform: translate(-50%, -50%); border-radius: 24px 24px 18px 18px;
+      background: linear-gradient(135deg, #85d9c4, #337f88 58%, #25414e);
+      box-shadow: 0 18px 60px #0008;
+    }
+    .axis { position: absolute; left: 55%; top: 53%; z-index: 1; color: white; font-size: 12px; }
+    .axis span { position: absolute; padding: 2px 5px; border-radius: 4px; background: #111b; }
+    .axis .x { left: 63px; top: 4px; color: #ff8279; }
+    .axis .y { left: 28px; top: -29px; color: #8bdfab; }
+    .axis .z { left: 27px; top: 39px; color: #83b7ff; }
+    .tips {
+      position: absolute; z-index: 2; left: 18px; top: 18px; width: min(380px, calc(100% - 36px));
+      border: 1px solid #495965; border-radius: 10px;
+      background: #131a20ee; box-shadow: 0 12px 34px #0006; backdrop-filter: blur(10px);
+    }
+    .tips-head { display: flex; align-items: center; gap: 9px; padding: 11px 13px 9px; }
+    .spark { width: 25px; height: 25px; display: grid; place-items: center; border-radius: 7px; color: var(--accent); background: var(--accent-soft); font-weight: 700; }
+    .title { font-weight: 650; }
+    .sub { display: block; color: var(--muted); font-size: 11px; margin-top: 1px; }
+    .close { margin-left: auto; color: var(--muted); border: 0; background: transparent; font-size: 19px; cursor: pointer; }
+    .selectors { display: flex; gap: 6px; padding: 0 13px 10px; }
+    button { font: inherit; }
+    .pill { cursor: pointer; border: 1px solid #394651; background: #1b242c; color: #b9c6d0; border-radius: 6px; padding: 5px 9px; font-size: 11px; }
+    .pill.active { color: #c8fff0; border-color: #418e7e; background: #18342e; }
+    .rows { border-top: 1px solid #2a353f; padding: 6px 13px 10px; }
+    .row { display: grid; grid-template-columns: 105px 1fr; gap: 10px; align-items: center; min-height: 29px; }
+    .gesture { color: #d9e2e8; font-size: 12px; }
+    kbd { display: inline-block; min-width: 21px; padding: 2px 5px; border: 1px solid #475561; border-bottom-width: 2px; border-radius: 5px; background: #222d36; color: #edf4f8; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; text-align: center; }
+    .meaning { color: #aab7c1; font-size: 12px; }
+    .foot { display: flex; align-items: center; gap: 7px; padding: 8px 13px; border-top: 1px solid #2a353f; color: var(--muted); font-size: 10px; }
+    .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+    .hint { margin-left: auto; color: #b6c5ce; }
+    .bottom { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; overflow: hidden; }
+    .pane { background: #141a20; padding: 10px 13px; }
+    .pane-title { color: #c3ced6; font-size: 11px; font-weight: 650; margin-bottom: 9px; }
+    .assets { display: flex; gap: 10px; }
+    .asset { color: #aebac4; border: 1px solid #303b46; border-radius: 6px; padding: 7px 10px; font-size: 11px; background: #192129; }
+    .logs { color: #91a0ab; font: 11px/1.8 ui-monospace, monospace; }
+    .collapsed {
+      display: none; position: absolute; z-index: 2; top: 18px; left: 18px;
+      width: 34px; height: 34px; border: 1px solid #53636e; border-radius: 9px;
+      color: var(--accent); background: #131a20ee; cursor: pointer; font-weight: 700;
+    }
+    @media (max-width: 650px) {
+      .editor { padding: 7px; grid-template-rows: 38px minmax(510px, 1fr) 154px; }
+      .bottom { grid-template-columns: 1fr; }
+      .bottom .pane:nth-child(2) { display: none; }
+      .mock-warning { inset: auto 10px 10px auto; }
+      .tips { top: 14px; left: 14px; width: min(360px, calc(100% - 28px)); }
+    }
+  </style>
+</head>
+<body>
+  <div class="mock-warning">概念稿 · 非编辑器实现 · 当前手势仅用于讨论</div>
+  <main class="editor">
+    <header class="toolbar">
+      <span class="brand">AETHER</span><span class="tool active">Select</span><span class="tool">Move</span><span class="tool">Rotate</span><span class="tool">Scale</span>
+      <span class="spacer"></span><span class="tool">▶ Play</span><span class="tool">⏹ Stop</span><span class="tool active">? Controls</span>
+    </header>
+    <section class="viewport" aria-label="Viewport concept">
+      <div class="axis"><span class="x">X</span><span class="y">Y</span><span class="z">Z</span></div>
+      <button class="collapsed" id="reopen" aria-label="Reopen viewport tips">?</button>
+      <aside class="tips" id="tips">
+        <div class="tips-head">
+          <span class="spark">✦</span><div><span class="title">视口操作</span><span class="sub" id="modeLabel">Edit 模式 · 快速提示</span></div>
+          <button class="close" id="dismiss" aria-label="Collapse tips">×</button>
+        </div>
+        <div class="selectors">
+          <button class="pill active" data-device="mouse">鼠标</button>
+          <button class="pill" data-device="trackpad">Mac 触控板</button>
+        </div>
+        <div class="rows" id="rows"></div>
+        <div class="foot"><span class="dot"></span><span>仅展示当前选择的设备与模式操作</span><span class="hint">从 ? 可重新打开</span></div>
+      </aside>
+    </section>
+    <section class="bottom">
+      <div class="pane"><div class="pane-title">Project</div><div class="assets"><span class="asset">▰ Models</span><span class="asset">◈ Materials</span><span class="asset">▧ Textures</span></div></div>
+      <div class="pane"><div class="pane-title">Log</div><div class="logs">[Info] Viewport interaction concept<br>[Info] No editor behavior is implemented by this mockup</div></div>
+    </section>
+  </main>
+  <script>
+    const content = {
+      mouse: [
+        ['<kbd>左键</kbd>', '选择 / 操纵器'],
+        ['<kbd>右键</kbd> 拖动', '观察视角'],
+        ['<kbd>右键</kbd> + <kbd>WASD/QE</kbd>', '飞行移动'],
+        ['<kbd>右键</kbd> + <kbd>滚轮</kbd>', '调整飞行速度'],
+        ['<kbd>中键</kbd> 拖动', '平移视口'],
+        ['<kbd>滚轮</kbd>', '推近 / 拉远'],
+        ['<kbd>F</kbd>', '聚焦所选对象'],
+        ['<kbd>⌥</kbd> + 左键拖动', '绕选中对象旋转'],
+      ],
+      trackpad: [
+        ['单指点击', '选择 / 操纵器'],
+        ['两指按压拖动', '观察视角'],
+        ['两指滚动', '推近 / 拉远'],
+        ['⇧ + 两指滚动', '平移视口'],
+        ['捏合', '连续缩放'],
+        ['<kbd>F</kbd>', '聚焦所选对象'],
+      ],
+    };
+    let device = 'mouse';
+    const rows = document.getElementById('rows');
+    function render() {
+      rows.innerHTML = content[device].map(([gesture, meaning]) => `<div class="row"><span class="gesture">${gesture}</span><span class="meaning">${meaning}</span></div>`).join('');
+      document.querySelectorAll('[data-device]').forEach(b => b.classList.toggle('active', b.dataset.device === device));
+    }
+    document.querySelectorAll('[data-device]').forEach(b => b.addEventListener('click', () => { device = b.dataset.device; render(); }));
+    document.getElementById('dismiss').addEventListener('click', () => { document.getElementById('tips').style.display = 'none'; document.getElementById('reopen').style.display = 'block'; });
+    document.getElementById('reopen').addEventListener('click', () => { document.getElementById('tips').style.display = 'block'; document.getElementById('reopen').style.display = 'none'; });
+    render();
+  </script>
+</body>
+</html>
