@@ -2,8 +2,8 @@ use crate::math::*;
 
 /// UE-style fly camera.
 ///
-/// Right-click drag looks around, right-click + WASD flies, and scroll moves
-/// along the view direction. Shift + scroll pans vertically.
+/// Left-click drag looks around; left-click + WASD flies. Scroll moves along
+/// the view direction. Shift + scroll pans vertically.
 #[derive(Debug, Clone)]
 pub struct FlyCamera {
     /// World-space position.
@@ -22,7 +22,7 @@ pub struct FlyCamera {
     pub max_speed: f32,
     /// Mouse sensitivity for look rotation.
     pub sensitivity: f32,
-    /// Whether the viewport accepted and captured the active fly navigation gesture.
+    /// Whether the viewport accepted the active left-button navigation gesture.
     pub active: bool,
     /// Vertical field of view in radians.
     pub fov: f32,
@@ -89,7 +89,7 @@ impl FlyCamera {
         Frustum::from_view_projection(proj * view)
     }
 
-    /// Update camera from input state. Right mouse activates look and fly controls.
+    /// Update camera from input state. Left mouse activates look and fly controls.
     pub fn update(
         &mut self,
         dt: f32,
@@ -98,9 +98,37 @@ impl FlyCamera {
         scroll: f32,
         input: &crate::input::InputManager,
     ) {
-        let navigating = self.active && input.mouse_held(winit::event::MouseButton::Right);
+        self.update_with_keyboard(dt, mouse_dx, mouse_dy, scroll, input, true);
+    }
 
-        if navigating && (mouse_dx.abs() > 0.0 || mouse_dy.abs() > 0.0) {
+    /// Update pointer navigation while optionally ignoring keyboard movement.
+    /// This keeps viewport gestures available when an egui text field owns keys.
+    pub fn update_with_keyboard(
+        &mut self,
+        dt: f32,
+        mouse_dx: f32,
+        mouse_dy: f32,
+        scroll: f32,
+        input: &crate::input::InputManager,
+        keyboard_enabled: bool,
+    ) {
+        let left_mouse_navigation =
+            self.active && input.mouse_held(winit::event::MouseButton::Left);
+        let left_mouse_keyboard_navigation = keyboard_enabled
+            && input.mouse_held(winit::event::MouseButton::Left)
+            && [
+                winit::keyboard::KeyCode::KeyW,
+                winit::keyboard::KeyCode::KeyA,
+                winit::keyboard::KeyCode::KeyS,
+                winit::keyboard::KeyCode::KeyD,
+                winit::keyboard::KeyCode::KeyQ,
+                winit::keyboard::KeyCode::KeyE,
+            ]
+            .into_iter()
+            .any(|key| input.key_held(key));
+        let navigating = left_mouse_navigation || left_mouse_keyboard_navigation;
+
+        if left_mouse_navigation && (mouse_dx.abs() > 0.0 || mouse_dy.abs() > 0.0) {
             self.yaw -= mouse_dx * self.sensitivity;
             self.pitch = (self.pitch + mouse_dy * self.sensitivity).clamp(
                 -std::f32::consts::FRAC_PI_2 + 0.01,
@@ -109,10 +137,7 @@ impl FlyCamera {
         }
 
         if scroll != 0.0 {
-            if navigating {
-                self.speed = (self.speed + scroll * self.base_speed * 0.5)
-                    .clamp(self.min_speed, self.max_speed);
-            } else if input.shift_held() {
+            if input.shift_held() {
                 self.position += self.cam_up() * scroll * self.speed * 0.5;
             } else {
                 self.position += self.forward() * scroll * self.speed * 0.5;
@@ -127,7 +152,7 @@ impl FlyCamera {
             self.position += self.cam_up() * mouse_dy * pan_scale;
         }
 
-        // WASD movement is scoped to the active right-mouse navigation gesture.
+        // WASD movement is scoped to an active viewport navigation gesture.
         if !navigating {
             return;
         }
@@ -136,24 +161,24 @@ impl FlyCamera {
         let right = self.right();
         let step = self.speed * dt;
 
-        if input.key_held(winit::keyboard::KeyCode::KeyW) {
+        if keyboard_enabled && input.key_held(winit::keyboard::KeyCode::KeyW) {
             self.position += fwd * step;
         }
-        if input.key_held(winit::keyboard::KeyCode::KeyS) {
+        if keyboard_enabled && input.key_held(winit::keyboard::KeyCode::KeyS) {
             self.position -= fwd * step;
         }
-        if input.key_held(winit::keyboard::KeyCode::KeyA) {
+        if keyboard_enabled && input.key_held(winit::keyboard::KeyCode::KeyA) {
             self.position -= right * step;
         }
-        if input.key_held(winit::keyboard::KeyCode::KeyD) {
+        if keyboard_enabled && input.key_held(winit::keyboard::KeyCode::KeyD) {
             self.position += right * step;
         }
 
         // Q/E world-space up/down
-        if input.key_held(winit::keyboard::KeyCode::KeyE) {
+        if keyboard_enabled && input.key_held(winit::keyboard::KeyCode::KeyE) {
             self.position.y += step;
         }
-        if input.key_held(winit::keyboard::KeyCode::KeyQ) {
+        if keyboard_enabled && input.key_held(winit::keyboard::KeyCode::KeyQ) {
             self.position.y -= step;
         }
     }

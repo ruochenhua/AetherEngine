@@ -13,11 +13,12 @@
 
 **Aether Engine is a Rust real-time 3D engine built around one idea: make the frame explain itself.** Explore a scene, inspect how its render passes depend on GPU resources, change it in the editor, and replay simulation at a fixed time.
 
-It is an actively developed engine project, not a production-ready general-purpose engine. The current scope focuses on a non-ray-traced renderer, a usable scene editor, deterministic simulation, and evidence that makes changes easier to review.
+It is an actively developed engine project, not a production-ready general-purpose engine. Recent work has made the editor workflow more complete: browse and preview project assets, inspect persistent runtime logs, safely import and place content, protect unsaved scenes, and navigate the viewport with discoverable controls.
 
 <p align="center">
   <a href="#see-it-run">Run a scene</a> ·
   <a href="#what-makes-aether-different">What makes it different</a> ·
+  <a href="#a-creator-workflow-inside-the-engine">Editor workflow</a> ·
   <a href="docs/engine/README.md">Engine docs</a> ·
   <a href="docs/plans/2026-09-17-non-raytracing-engine-roadmap/index.html">Live roadmap</a>
 </p>
@@ -61,6 +62,23 @@ Asset workers decode CPU data. The launcher commits GPU resources at a frame bou
 
 The current renderer covers deferred PBR, IBL, directional and local lights, shadows, transparency, post-processing, terrain, water, atmosphere, and volumetric clouds. SSAO and SSR are screen-space effects, so they only use information visible to the current camera; ray tracing is outside the project scope.
 
+## A creator workflow inside the engine
+
+The editor now connects project content, scene editing, and runtime feedback in one workspace:
+
+- **Browse and inspect:** the Project panel indexes `scenes/` and `assets/`, with folder navigation, search, type filters, and previews for supported images and models. Its folder and resource columns can be resized independently.
+- **Place and import:** drag supported OBJ meshes into the viewport, assign supported materials and textures, and undo or redo editor operations. Create project folders and import PNG, JPEG, and self-contained GLB assets through the Project panel.
+- **Keep scenes safe:** New, Open, Save, Save As, Project scene opening, and window close share a Save / Discard / Cancel flow. Scene loading is transactional, so a failed load leaves the current scene in place.
+- **Understand runtime behavior:** the Log panel captures structured diagnostics for in-editor search and review; clearing or filtering the visible list does not stop log collection.
+- **Navigate the viewport:** use right-drag to look, hold right mouse with WASD/QE to fly, middle-drag to pan, the wheel to dolly, `F` to frame the selection, and Option-drag with the left mouse button to orbit the selected object. The viewport Tips card also lists Mac trackpad gestures.
+
+<p align="center">
+  <img src="docs/plans/2026-10-11-editor-workflow/ew3-editor-workspace-2026-10-15.png" alt="Aether Engine editor showing the Project browser beneath the scene viewport" width="100%">
+  <br><sub>Project workspace capture (2026-10-15): folder tree, searchable resource list, and resizable workspace.</sub>
+</p>
+
+**Still in progress:** resource Move, Rename, and Delete remain disabled until runtime owners can be reconciled safely. Independent resource preview tabs are planned as EW6. Mac trackpad gestures still need hands-on validation on the target hardware.
+
 ## Current project status
 
 <!-- ROADMAP_STATUS:START -->
@@ -82,7 +100,7 @@ The current renderer covers deferred PBR, IBL, directional and local lights, sha
 
 See the [roadmap](docs/plans/2026-09-17-non-raytracing-engine-roadmap/index.html) for slice status, outstanding verification, and evidence links. The project CI entry point is `./scripts/verify-ci.sh`; a successful run is reported by that command rather than implied by roadmap acceptance.
 
-The editor workflow has also grown beyond scene selection: the **Project** workspace browses the project's folders and indexed resources, while **Log** exposes searchable runtime diagnostics. Both live beside the viewport; the workspace height and the Folders/Resources split can be resized. The first EW3 slice supports dragging a single OBJ into the viewport with undo/redo. Material and texture assignment by drag-and-drop remains planned. See the [editor workflow plan](docs/plans/2026-10-11-editor-workflow/plan.md), [editor guide](docs/engine/editor.md), and [EW3 screenshot report](docs/plans/2026-10-11-editor-workflow/ew3-screenshot-validation.html).
+For implementation boundaries, verification evidence, and the next editor slices, see the [editor workflow plan](docs/plans/2026-10-11-editor-workflow/plan.md), [scene editing guide](docs/engine/editor.md), [interaction contract](docs/plans/2026-10-11-editor-workflow/editor-interaction-contract.md), and [EW3 screenshot report](docs/plans/2026-10-11-editor-workflow/ew3-screenshot-validation.html).
 
 ## See it run
 

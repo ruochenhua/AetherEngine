@@ -1,4 +1,7 @@
-use super::{asset_drop::validate_obj_asset, App, LauncherState};
+use super::{
+    asset_validation::{project_relative_texture_path, validate_obj_asset},
+    App, LauncherState,
+};
 use aether_engine::{
     asset::{
         mesh::{CpuMesh, GpuMesh},
@@ -7,7 +10,7 @@ use aether_engine::{
     ecs::components::{MeshHandle, MeshSource},
     editor::{EditorContext, EditorError, EditorOperation, OperationLog, PreparedObject},
     renderer::{extracted_material::ExtractedMaterial, renderable::MaterialUniform},
-    scene::{material::MaterialResolver, MeshRef, ObjectConfig},
+    scene::{material::MaterialResolver, MaterialConfig, MeshRef, ObjectConfig},
 };
 use std::{path::Path, sync::Arc};
 
@@ -125,18 +128,41 @@ pub(super) fn resolve_logged_object(
     let mesh = assets.get(handle).ok_or_else(|| {
         EditorError::InvalidObjectOperation(format!("loaded OBJ is not available: {asset_path}"))
     })?;
-    if !mesh.submeshes.is_empty() || mesh.positions.is_empty() || mesh.indices.is_empty() {
+    if mesh.submeshes.len() > 1 || mesh.positions.is_empty() || mesh.indices.is_empty() {
         return Err(EditorError::InvalidObjectOperation(
-            "replay requires one valid OBJ mesh without submeshes".into(),
+            "replay requires a valid OBJ mesh with at most one material".into(),
         ));
     }
+    let material_config = if let Some(part) = mesh.submeshes.first() {
+        MaterialConfig {
+            albedo: part.material.base_color,
+            roughness: part.material.roughness,
+            metallic: part.material.metallic,
+            albedo_texture: part
+                .material
+                .albedo_texture
+                .as_deref()
+                .map(|path| project_relative_texture_path(path, &canonical_root))
+                .transpose()
+                .map_err(|error| EditorError::InvalidObjectOperation(error.to_string()))?,
+            ..MaterialConfig::default()
+        }
+    } else {
+        object.material.clone()
+    };
     let material = MaterialResolver::new(&canonical_root)
-        .resolve(&object.material, assets)
+        .resolve(&material_config, assets)
         .map_err(|error| EditorError::InvalidObjectOperation(error.to_string()))?;
+    let gpu_mesh = GpuMesh::from_cpu(device, &mesh);
+    let gpu_mesh = if let Some(part) = mesh.submeshes.first() {
+        GpuMesh::submesh_view(&gpu_mesh, part.index_offset as u32, part.index_count as u32)
+    } else {
+        gpu_mesh
+    };
     Ok(PreparedObject {
         object: object.clone(),
         mesh: MeshHandle::new(
-            Arc::new(GpuMesh::from_cpu(device, &mesh)),
+            Arc::new(gpu_mesh),
             MeshSource::File(asset_path),
             object.name.clone(),
         ),

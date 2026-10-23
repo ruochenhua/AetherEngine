@@ -117,6 +117,7 @@ pub(super) fn build_objects(
         // Otherwise fall back to the single material defined in the scene.
         if let Some(cpu_mesh) = cpu_mesh {
             if !cpu_mesh.submeshes.is_empty() {
+                let suffix_part_names = cpu_mesh.submeshes.len() > 1;
                 for submesh in &cpu_mesh.submeshes {
                     let gpu_mesh = Arc::new(GpuMesh::submesh_view(
                         &base_gpu_mesh,
@@ -141,6 +142,11 @@ pub(super) fn build_objects(
                     let material = MaterialUniform::from_resolution(&resolution);
                     let extracted_material = ExtractedMaterial::from_resolution(&resolution);
 
+                    let entity_name = if suffix_part_names {
+                        format!("{}::{}", obj.name, submesh.name)
+                    } else {
+                        obj.name.clone()
+                    };
                     let components = (
                         transform.clone(),
                         MeshHandle::new(
@@ -152,7 +158,7 @@ pub(super) fn build_objects(
                         material,
                         extracted_material,
                         Visibility(obj.visible),
-                        Name(format!("{}::{}", obj.name, submesh.name)),
+                        Name(entity_name),
                     );
                     let entity = world.spawn(components);
                     if let Some((path, _, _)) = &linked_material {

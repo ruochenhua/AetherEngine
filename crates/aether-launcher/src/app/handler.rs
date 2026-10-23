@@ -131,11 +131,27 @@ impl ApplicationHandler for App {
             }
         }
 
-        let egui_response = self
-            .egui_winit_state
-            .as_mut()
-            .unwrap()
-            .on_window_event(self.window.as_ref().unwrap(), &event);
+        let camera_navigation_active =
+            self.camera.active && self.input.mouse_held(winit::event::MouseButton::Left);
+        let camera_owns_keyboard_event = match &event {
+            WindowEvent::KeyboardInput {
+                event:
+                    winit::event::KeyEvent {
+                        physical_key: winit::keyboard::PhysicalKey::Code(key),
+                        ..
+                    },
+                ..
+            } => camera_navigation_owns_keyboard_key(*key, camera_navigation_active),
+            _ => false,
+        };
+        let egui_response = if camera_owns_keyboard_event {
+            egui_winit::EventResponse::default()
+        } else {
+            self.egui_winit_state
+                .as_mut()
+                .unwrap()
+                .on_window_event(self.window.as_ref().unwrap(), &event)
+        };
         // Track whether the pointer is currently over an egui UI area.
         // For any pointer event (move/click/wheel) we update the flag so
         // it always reflects the current pointer state — this prevents
@@ -143,8 +159,7 @@ impl ApplicationHandler for App {
         match &event {
             WindowEvent::CursorMoved { .. }
             | WindowEvent::MouseInput { .. }
-            | WindowEvent::MouseWheel { .. }
-            | WindowEvent::PinchGesture { .. } => {
+            | WindowEvent::MouseWheel { .. } => {
                 self.egui_consumed_pointer = egui_response.consumed;
             }
             _ => {}
@@ -161,20 +176,18 @@ impl ApplicationHandler for App {
             }
             WindowEvent::MouseInput {
                 state: winit::event::ElementState::Pressed,
-                button: winit::event::MouseButton::Right,
+                button: winit::event::MouseButton::Left,
                 ..
-            } if !egui_response.consumed
-                && set_viewport_cursor_capture(self.window.as_ref(), true) =>
-            {
+            } if (!egui_response.consumed || self.viewport_hovered) => {
+                // Use the primary-button drag gesture for viewport navigation.
                 self.camera.active = true;
             }
             WindowEvent::MouseInput {
                 state: winit::event::ElementState::Released,
-                button: winit::event::MouseButton::Right,
+                button: winit::event::MouseButton::Left,
                 ..
             } => {
                 self.camera.active = false;
-                set_viewport_cursor_capture(self.window.as_ref(), false);
             }
             WindowEvent::KeyboardInput {
                 event:
@@ -216,7 +229,7 @@ impl ApplicationHandler for App {
                 self.egui_consumed_pointer = false;
                 // Discard scroll accumulated during egui interaction
                 // to avoid leaking into camera speed adjustment.
-                if egui_consumed {
+                if egui_consumed && !self.viewport_hovered && !self.camera.active {
                     self.scroll_input = 0.0;
                 }
 
@@ -329,5 +342,31 @@ fn set_viewport_cursor_capture(window: Option<&Arc<winit::window::Window>>, capt
         window.set_cursor_visible(true);
         let _ = window.set_cursor_grab(winit::window::CursorGrabMode::None);
         false
+    }
+}
+
+fn camera_navigation_owns_keyboard_key(key: KeyCode, navigation_active: bool) -> bool {
+    navigation_active
+        && matches!(
+            key,
+            KeyCode::KeyW
+                | KeyCode::KeyA
+                | KeyCode::KeyS
+                | KeyCode::KeyD
+                | KeyCode::KeyQ
+                | KeyCode::KeyE
+        )
+}
+
+#[cfg(test)]
+mod camera_keyboard_routing_tests {
+    use super::*;
+
+    #[test]
+    fn camera_navigation_keys_bypass_focused_egui_text_inputs_only_during_navigation() {
+        assert!(camera_navigation_owns_keyboard_key(KeyCode::KeyW, true));
+        assert!(camera_navigation_owns_keyboard_key(KeyCode::KeyQ, true));
+        assert!(!camera_navigation_owns_keyboard_key(KeyCode::KeyW, false));
+        assert!(!camera_navigation_owns_keyboard_key(KeyCode::KeyF, true));
     }
 }

@@ -1,6 +1,7 @@
 //! Bridge replayable editor operations into the live launcher scene.
 
 mod asset_drop;
+mod asset_validation;
 mod image_decode;
 mod material_document;
 mod material_drop;

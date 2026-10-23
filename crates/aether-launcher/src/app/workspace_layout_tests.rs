@@ -119,23 +119,10 @@ fn viewport_shows_mouse_navigation_tips_by_default() {
     let output = frame(&mut app, vec![]);
 
     assert_eq!(text_count(&output, "Viewport Controls"), 1);
-    assert_eq!(text_count(&output, "Right drag"), 1);
+    assert_eq!(text_count(&output, "LMB drag"), 1);
     assert_eq!(text_count(&output, "MMB drag"), 1);
-}
-
-#[test]
-fn viewport_tips_switch_to_mac_trackpad_gestures() {
-    let mut app = app();
-    running(&mut app);
-    let output = frame(&mut app, vec![]);
-    let device_button = text_rect(&output, "Mac Trackpad").unwrap().center();
-
-    let output = click_at(&mut app, device_button);
-
-    assert!(app.viewport_tips.trackpad);
-    assert_eq!(text_count(&output, "Two-finger press + drag"), 1);
-    assert_eq!(text_count(&output, "Pinch"), 1);
-    assert_eq!(text_count(&output, "Right drag"), 0);
+    assert_eq!(text_count(&output, "LMB + WASD/QE"), 1);
+    assert_eq!(text_count(&output, "Mac Trackpad"), 0);
 }
 
 #[test]

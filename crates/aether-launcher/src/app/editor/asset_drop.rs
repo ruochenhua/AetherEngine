@@ -1,3 +1,4 @@
+use super::asset_validation::{project_relative_texture_path, validate_obj_asset};
 use aether_engine::{
     asset::mesh::{CpuMesh, GpuMesh},
     ecs::{
@@ -10,9 +11,7 @@ use aether_engine::{
 };
 use glam::{Quat, Vec3};
 use std::{
-    fs,
-    io::BufRead,
-    path::{Component, Path, PathBuf},
+    path::{Path, PathBuf},
     sync::Arc,
 };
 
@@ -41,10 +40,8 @@ pub(super) fn prepare_obj_drop(
     let cpu_mesh = assets
         .get(handle)
         .ok_or_else(|| anyhow::anyhow!("loaded OBJ is not available: {asset_path}"))?;
-    if !cpu_mesh.submeshes.is_empty() {
-        anyhow::bail!(
-            "OBJ contains multiple material submeshes; placement currently supports one mesh"
-        );
+    if cpu_mesh.submeshes.len() > 1 {
+        anyhow::bail!("OBJ uses multiple materials; placement currently supports one material");
     }
     if cpu_mesh.positions.is_empty()
         || cpu_mesh.indices.is_empty()
@@ -81,7 +78,22 @@ pub(super) fn prepare_obj_drop(
         suffix += 1;
     }
 
-    let material = MaterialConfig::default();
+    let material = if let Some(part) = cpu_mesh.submeshes.first() {
+        MaterialConfig {
+            albedo: part.material.base_color,
+            roughness: part.material.roughness,
+            metallic: part.material.metallic,
+            albedo_texture: part
+                .material
+                .albedo_texture
+                .as_deref()
+                .map(|path| project_relative_texture_path(path, &canonical_root))
+                .transpose()?,
+            ..MaterialConfig::default()
+        }
+    } else {
+        MaterialConfig::default()
+    };
     let resolution = MaterialResolver::new(&canonical_root).resolve(&material, assets)?;
     let object = ObjectConfig {
         name,
@@ -96,10 +108,16 @@ pub(super) fn prepare_obj_drop(
         visible: true,
         physics: None,
     };
+    let gpu_mesh = GpuMesh::from_cpu(device, &cpu_mesh);
+    let gpu_mesh = if let Some(part) = cpu_mesh.submeshes.first() {
+        GpuMesh::submesh_view(&gpu_mesh, part.index_offset as u32, part.index_count as u32)
+    } else {
+        gpu_mesh
+    };
     let prepared = PreparedObject {
         object: object.clone(),
         mesh: MeshHandle::new(
-            Arc::new(GpuMesh::from_cpu(device, &cpu_mesh)),
+            Arc::new(gpu_mesh),
             MeshSource::File(asset_path),
             object.name.clone(),
         ),
@@ -108,61 +126,6 @@ pub(super) fn prepare_obj_drop(
     };
     let operation = EditorOperation::PlaceObject { object };
     Ok((operation, prepared))
-}
-
-pub(super) fn validate_obj_asset(
-    relative_path: &Path,
-    project_root: &Path,
-) -> anyhow::Result<PathBuf> {
-    if relative_path.is_absolute()
-        || relative_path.components().any(|part| {
-            matches!(
-                part,
-                Component::ParentDir | Component::RootDir | Component::Prefix(_)
-            )
-        })
-        || relative_path.components().next() != Some(Component::Normal("assets".as_ref()))
-        || !relative_path
-            .extension()
-            .is_some_and(|extension| extension.eq_ignore_ascii_case("obj"))
-    {
-        anyhow::bail!("only project-relative OBJ files under assets/ can be placed");
-    }
-
-    let root_metadata = fs::symlink_metadata(project_root)?;
-    if root_metadata.file_type().is_symlink() || !root_metadata.is_dir() {
-        anyhow::bail!("project root is missing or is a symlink");
-    }
-    let canonical_root = project_root.canonicalize()?;
-    let assets_root = canonical_root.join("assets");
-    let assets_metadata = fs::symlink_metadata(&assets_root)?;
-    if assets_metadata.file_type().is_symlink() || !assets_metadata.is_dir() {
-        anyhow::bail!("project assets directory is missing or is a symlink");
-    }
-    let mut cursor = canonical_root.clone();
-    for component in relative_path.components() {
-        let Component::Normal(name) = component else {
-            anyhow::bail!("invalid project resource path");
-        };
-        cursor.push(name);
-        let metadata = fs::symlink_metadata(&cursor)?;
-        if metadata.file_type().is_symlink() {
-            anyhow::bail!("symbolic links are not supported for dropped resources");
-        }
-    }
-
-    let canonical_path = cursor.canonicalize()?;
-    let canonical_assets = assets_root.canonicalize()?;
-    if !canonical_path.starts_with(&canonical_assets) || !canonical_path.is_file() {
-        anyhow::bail!("resource is outside the project assets directory");
-    }
-    let reader = std::io::BufReader::new(fs::File::open(&canonical_path)?);
-    for line in reader.lines() {
-        if line?.split_whitespace().next() == Some("mtllib") {
-            anyhow::bail!("OBJ material libraries and external dependencies are not supported yet");
-        }
-    }
-    Ok(canonical_path)
 }
 
 pub(super) fn apply_pending_drop(app: &mut super::App) {
@@ -301,6 +264,7 @@ pub(super) fn apply_pending_drop(app: &mut super::App) {
 mod tests {
     use super::*;
     use aether_engine::{
+        asset::registry::BuiltinMeshRegistry,
         asset::AssetManager,
         ecs::components::{Selected, Transform},
         editor::{EditorContext, EditorHistory, OperationLog},
@@ -347,10 +311,16 @@ mod tests {
     }
 
     #[test]
-    fn obj_dependencies_and_paths_outside_assets_are_rejected() {
+    fn local_obj_material_dependencies_are_allowed_and_outside_paths_are_rejected() {
         let fixture = Fixture::new();
         fixture.obj("mtllib sample.mtl\nv 0 0 0\n");
-        assert!(validate_obj_asset(Path::new("assets/models/sample.obj"), &fixture.0).is_err());
+        fs::write(
+            fixture.0.join("assets/models/sample.mtl"),
+            "newmtl Sample\nmap_Kd sample.png\n",
+        )
+        .unwrap();
+        fs::write(fixture.0.join("assets/models/sample.png"), b"texture").unwrap();
+        assert!(validate_obj_asset(Path::new("assets/models/sample.obj"), &fixture.0).is_ok());
         assert!(validate_obj_asset(Path::new("../outside.obj"), &fixture.0).is_err());
         assert!(validate_obj_asset(Path::new("scenes/sample.obj"), &fixture.0).is_err());
     }
@@ -433,6 +403,65 @@ mod tests {
             .query::<&Name>()
             .iter()
             .any(|name| name.0 == dropped_name));
+    }
+
+    #[test]
+    fn textured_single_material_obj_can_be_prepared_for_placement() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let device = headless_device();
+        let mut assets = AssetManager::with_project_root(&root);
+        let expected_indices = {
+            let handle = assets
+                .load::<CpuMesh>("assets/models/cyborg/cyborg.obj")
+                .unwrap();
+            assets.get(handle).unwrap().submeshes[0].index_count as u32
+        };
+        let world = World::new();
+
+        let (_, prepared) = prepare_obj_drop(
+            "assets/models/cyborg/cyborg.obj",
+            &root,
+            &device,
+            &mut assets,
+            Vec3::ZERO,
+            &world,
+        )
+        .expect("the project's textured one-material OBJ should stage for placement");
+
+        assert_eq!(prepared.mesh.mesh.index_count, expected_indices);
+        assert_eq!(
+            prepared.object.material.albedo_texture.as_deref(),
+            Some("assets/models/cyborg/cyborg_diffuse.png")
+        );
+
+        let mut description = aether_engine::scene::SceneDescription {
+            name: "Placement Replay".into(),
+            camera: Default::default(),
+            lights: vec![],
+            ambient: 0.05,
+            objects: vec![],
+            prefab_instances: vec![],
+            terrain: None,
+            atmosphere: None,
+            water: None,
+            clouds: None,
+            god_ray: None,
+            particle_emitters: vec![],
+        };
+        description.objects.push(prepared.object.clone());
+        let mut reopened_world = World::new();
+        SceneLoader::build_world(
+            &description,
+            &device,
+            &BuiltinMeshRegistry::default(),
+            &mut assets,
+            &mut reopened_world,
+        )
+        .expect("placed OBJ should load from its saved scene representation");
+        assert!(reopened_world
+            .query::<&Name>()
+            .iter()
+            .any(|name| name.0 == prepared.object.name));
     }
 
     fn headless_device() -> wgpu::Device {

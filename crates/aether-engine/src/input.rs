@@ -15,7 +15,6 @@ pub struct InputManager {
     mouse_buttons_pressed: Vec<MouseButton>,
     mouse_buttons_held: Vec<MouseButton>,
     mouse_buttons_released: Vec<MouseButton>,
-    magnification_delta: f32,
 }
 
 impl InputManager {
@@ -31,9 +30,6 @@ impl InputManager {
                 self.modifiers = modifiers.state();
             }
             WindowEvent::Focused(false) => self.clear_held_state(),
-            WindowEvent::PinchGesture { delta, .. } if delta.is_finite() => {
-                self.magnification_delta += *delta as f32;
-            }
             WindowEvent::KeyboardInput {
                 event:
                     winit::event::KeyEvent {
@@ -86,7 +82,6 @@ impl InputManager {
         self.mouse_buttons_held.clear();
         self.mouse_buttons_released.clear();
         self.mouse_delta = (0.0, 0.0);
-        self.magnification_delta = 0.0;
     }
 
     /// Check if a key was pressed this frame.
@@ -112,11 +107,6 @@ impl InputManager {
     /// Get the mouse delta since last frame.
     pub fn mouse_delta(&self) -> (f32, f32) {
         self.mouse_delta
-    }
-
-    /// Get accumulated trackpad magnification for the current frame.
-    pub fn magnification_delta(&self) -> f32 {
-        self.magnification_delta
     }
 
     /// Check if a mouse button is being held.
@@ -151,7 +141,6 @@ impl InputManager {
         self.mouse_buttons_pressed.clear();
         self.mouse_buttons_released.clear();
         self.mouse_delta = (0.0, 0.0);
-        self.magnification_delta = 0.0;
     }
 }
 
@@ -176,7 +165,7 @@ mod tests {
     }
 
     #[test]
-    fn fly_movement_requires_right_mouse_navigation() {
+    fn fly_movement_requires_an_accepted_navigation_gesture() {
         let mut camera = FlyCamera::default();
         let mut input = InputManager::default();
         input.keys_held.push(winit::keyboard::KeyCode::KeyW);
@@ -188,10 +177,37 @@ mod tests {
     }
 
     #[test]
-    fn right_mouse_drag_rotates_the_view() {
+    fn left_mouse_held_with_wasd_flies_camera() {
         let mut camera = FlyCamera::default();
         let mut input = InputManager::default();
-        input.mouse_buttons_held.push(MouseButton::Right);
+        input.mouse_buttons_held.push(MouseButton::Left);
+        input.keys_held.push(winit::keyboard::KeyCode::KeyW);
+        let start = camera.position;
+
+        camera.update(1.0, 0.0, 0.0, 0.0, &input);
+
+        assert_ne!(camera.position, start);
+    }
+
+    #[test]
+    fn left_mouse_click_without_fly_keys_does_not_move_or_rotate_camera() {
+        let mut camera = FlyCamera::default();
+        let mut input = InputManager::default();
+        input.mouse_buttons_held.push(MouseButton::Left);
+        let start = camera.position;
+        let start_yaw = camera.yaw;
+
+        camera.update(1.0, 20.0, 10.0, 0.0, &input);
+
+        assert_eq!(camera.position, start);
+        assert_eq!(camera.yaw, start_yaw);
+    }
+
+    #[test]
+    fn left_mouse_drag_rotates_the_view() {
+        let mut camera = FlyCamera::default();
+        let mut input = InputManager::default();
+        input.mouse_buttons_held.push(MouseButton::Left);
         camera.active = true;
         let start_yaw = camera.yaw;
 
@@ -201,10 +217,10 @@ mod tests {
     }
 
     #[test]
-    fn right_mouse_button_alone_does_not_activate_fly_mode() {
+    fn left_mouse_button_without_viewport_activation_does_not_rotate() {
         let mut camera = FlyCamera::default();
         let mut input = InputManager::default();
-        input.mouse_buttons_held.push(MouseButton::Right);
+        input.mouse_buttons_held.push(MouseButton::Left);
         let start_yaw = camera.yaw;
 
         camera.update(1.0, 20.0, 0.0, 0.0, &input);
@@ -226,20 +242,35 @@ mod tests {
     }
 
     #[test]
-    fn scroll_during_fly_navigation_adjusts_speed_instead_of_dollying() {
+    fn trackpad_dolly_still_works_while_keyboard_input_is_owned_by_ui() {
+        let mut camera = FlyCamera::default();
+        let mut input = InputManager::default();
+        input.keys_held.push(winit::keyboard::KeyCode::KeyW);
+        let start_position = camera.position;
+
+        camera.update_with_keyboard(1.0, 0.0, 0.0, 1.0, &input, false);
+
+        assert_ne!(camera.position, start_position);
+        let dolly_position = camera.position;
+        camera.update_with_keyboard(1.0, 0.0, 0.0, 0.0, &input, false);
+        assert_eq!(camera.position, dolly_position);
+    }
+
+    #[test]
+    fn scroll_during_left_mouse_navigation_dollies_camera() {
         let mut camera = FlyCamera {
             active: true,
             ..FlyCamera::default()
         };
         let mut input = InputManager::default();
-        input.mouse_buttons_held.push(MouseButton::Right);
+        input.mouse_buttons_held.push(MouseButton::Left);
         let start_position = camera.position;
         let start_speed = camera.speed;
 
         camera.update(0.0, 0.0, 0.0, 1.0, &input);
 
-        assert_eq!(camera.position, start_position);
-        assert_ne!(camera.speed, start_speed);
+        assert_ne!(camera.position, start_position);
+        assert_eq!(camera.speed, start_speed);
     }
 
     #[test]
@@ -271,19 +302,5 @@ mod tests {
         let movement = camera.position - start_position;
         assert!(movement.dot(start_forward).abs() < 1e-5);
         assert!(movement.length() > 0.0);
-    }
-
-    #[test]
-    fn mac_trackpad_pinch_event_is_exposed_once_per_frame() {
-        let mut input = InputManager::default();
-        input.handle_window_event(&WindowEvent::PinchGesture {
-            device_id: winit::event::DeviceId::dummy(),
-            delta: 0.25,
-            phase: winit::event::TouchPhase::Moved,
-        });
-
-        assert_eq!(input.magnification_delta(), 0.25);
-        input.end_frame();
-        assert_eq!(input.magnification_delta(), 0.0);
     }
 }

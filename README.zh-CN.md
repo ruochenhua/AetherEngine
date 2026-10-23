@@ -13,11 +13,12 @@
 
 **Aether Engine 是一个 Rust 实时 3D 引擎，我们希望让每一帧都能解释自己。**你可以打开场景，检查渲染 Pass 如何依赖 GPU 资源，在编辑器里修改场景，再用固定时间重放模拟。
 
-这是一个持续开发中的引擎研发项目，尚不是生产就绪的通用引擎。当前重点是非光追实时渲染、可操作的场景编辑器、确定性模拟，以及让代码变更更容易复核的验证证据。
+这是一个持续开发中的引擎研发项目，尚不是生产就绪的通用引擎。近期编辑器工作已把项目资源浏览、资源预览、运行日志、安全导入与放置、场景未保存保护和可发现的视口操作连接成一个工作流。
 
 <p align="center">
   <a href="#运行一个场景">运行一个场景</a> ·
   <a href="#aether-的独特点">Aether 的独特点</a> ·
+  <a href="#编辑器工作流已进入引擎">编辑器工作流</a> ·
   <a href="docs/engine/README.md">引擎文档</a> ·
   <a href="docs/plans/2026-09-17-non-raytracing-engine-roadmap/index.html">项目路线图</a>
 </p>
@@ -61,6 +62,23 @@ VisualCase 固定场景、相机、时间和功能开关。报告会保留渲染
 
 当前渲染器覆盖延迟 PBR、IBL、方向光与局部光、阴影、透明、后处理、地形、水体、大气和体积云。SSAO 与 SSR 是屏幕空间效果，只能使用当前相机可见的信息；光线追踪不在项目范围内。
 
+## 编辑器工作流已进入引擎
+
+编辑器现在把项目内容、场景编辑和运行反馈放在同一个工作区中：
+
+- **浏览与检查资源：** Project 面板索引 `scenes/` 和 `assets/`，支持目录导航、搜索、类型筛选，以及受支持图片和模型的预览。Folders 与 Resources 两列可分别拖动调整宽度。
+- **导入与放置：** 可将受支持的 OBJ 网格拖入视口，为对象赋予支持的材质和纹理，并撤销/重做编辑操作。Project 面板支持创建项目目录，以及导入 PNG、JPEG 和自包含 GLB。
+- **保护场景内容：** New、Open、Save、Save As、从 Project 打开场景和关闭窗口共用 Save / Discard / Cancel 流程。场景加载采用事务式切换；加载失败时当前场景仍保留。
+- **查看运行反馈：** Log 面板采集结构化诊断，支持在编辑器内搜索和查看；清空或筛选当前列表不会停止日志采集。
+- **操作视口：** 鼠标或触控板左键拖动旋转视角，按住左键并使用 WASD/QE 飞行；中键拖动平移；滚轮/触控板滚动推近或拉远；`F` 聚焦所选对象；Option + 左键拖动绕所选对象旋转。视口 Tips 对所有指针显示同一套操作。
+
+<p align="center">
+  <img src="docs/plans/2026-10-11-editor-workflow/ew3-editor-workspace-2026-10-15.png" alt="Aether Engine 编辑器中的 Project 资源浏览器与场景视口" width="100%">
+  <br><sub>Project 工作区截图（2026-10-15）：目录树、可搜索资源列表与可调尺寸的工作区。</sub>
+</p>
+
+**仍在推进：** 为保证运行时资源引用安全，Move、Rename、Delete 仍处于禁用状态。独立的资源预览分页列入 EW6 规划。左键加 WASD 的触控板飞行操作仍需在目标设备上实际验证。
+
 ## 当前项目进度
 
 <!-- ROADMAP_STATUS_ZH:START -->
@@ -82,7 +100,7 @@ VisualCase 固定场景、相机、时间和功能开关。报告会保留渲染
 
 切片状态、待处理验证和证据链接见[路线图](docs/plans/2026-09-17-non-raytracing-engine-roadmap/index.html)。项目 CI 入口为 `./scripts/verify-ci.sh`；只有该命令成功运行后才表示 CI 验证通过，路线图验收状态本身不代表 CI 已通过。
 
-编辑器工作流也已超出场景选择：**Project** 工作区可浏览项目目录和已索引资源，**Log** 面板可搜索运行诊断。两个面板都位于视口下方；工作区高度以及 Folders/Resources 之间的分栏都可拖动调整。EW3 首个切片支持将单个 OBJ 拖入视口，并可撤销/重做；材质和纹理的拖放赋值仍在后续规划中。详见[编辑器工作流计划](docs/plans/2026-10-11-editor-workflow/plan.md)、[编辑器指南](docs/engine/editor.md)和[EW3 截图报告](docs/plans/2026-10-11-editor-workflow/ew3-screenshot-validation.html)。
+编辑器工作流的切片状态、验收边界与后续计划见[编辑器工作流计划](docs/plans/2026-10-11-editor-workflow/plan.md)、[编辑器指南](docs/engine/editor.md)、[EW3 截图报告](docs/plans/2026-10-11-editor-workflow/ew3-screenshot-validation.html)和[视口交互合同](docs/plans/2026-10-11-editor-workflow/editor-interaction-contract.md)。
 
 ## 运行一个场景
 

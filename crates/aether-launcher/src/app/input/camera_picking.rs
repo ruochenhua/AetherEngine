@@ -33,14 +33,29 @@ fn pick_at_screen_position(
 /// Update camera, picking, and gizmo interaction for the current frame.
 pub(crate) fn update_camera_and_picking(app: &mut App, dt: f32, egui_consumed: bool) {
     let mut viewport_camera_changed = false;
-    if !egui_consumed
-        && !app.egui_ctx.egui_wants_keyboard_input()
+    if camera_input_allowed(egui_consumed, app.viewport_hovered, app.camera.active)
         && matches!(app.state, LauncherState::Running { .. })
     {
         let previous_camera = app.camera.clone();
         let (dx, dy) = app.input.mouse_delta();
-        let zoom_delta = app.scroll_input + app.input.magnification_delta();
-        app.camera.update(dt, dx, dy, zoom_delta, &app.input);
+        let (camera_dx, camera_dy) = if app.gizmo_drag_axis.is_some() {
+            (0.0, 0.0)
+        } else {
+            (dx, dy)
+        };
+        let zoom_delta = app.scroll_input;
+        app.camera.update_with_keyboard(
+            dt,
+            camera_dx,
+            camera_dy,
+            zoom_delta,
+            &app.input,
+            camera_keyboard_input_allowed(
+                (app.camera.active && app.input.mouse_held(MouseButton::Left))
+                    || left_mouse_keyboard_navigation(&app.input),
+                app.egui_ctx.egui_wants_keyboard_input(),
+            ),
+        );
         app.scroll_input = 0.0;
         if app.input.alt_held() && app.input.mouse_held(MouseButton::Left) {
             if let LauncherState::Running { world, .. } = &app.state {
@@ -162,6 +177,45 @@ pub(crate) fn update_camera_and_picking(app: &mut App, dt: f32, egui_consumed: b
     }
 }
 
+#[cfg(test)]
+mod navigation_policy_tests {
+    #[test]
+    fn pointer_events_consumed_by_egui_still_reach_the_hovered_viewport() {
+        assert!(!super::camera_input_allowed(true, false, false));
+        assert!(super::camera_input_allowed(true, true, false));
+        assert!(super::camera_input_allowed(true, false, true));
+    }
+
+    #[test]
+    fn active_camera_navigation_owns_wasd_even_if_egui_text_field_has_focus() {
+        assert!(super::camera_keyboard_input_allowed(true, true));
+        assert!(!super::camera_keyboard_input_allowed(false, true));
+        assert!(super::camera_keyboard_input_allowed(false, false));
+    }
+}
+
+fn camera_input_allowed(egui_consumed: bool, viewport_hovered: bool, camera_active: bool) -> bool {
+    !egui_consumed || viewport_hovered || camera_active
+}
+
+fn camera_keyboard_input_allowed(navigating: bool, egui_wants_keyboard: bool) -> bool {
+    navigating || !egui_wants_keyboard
+}
+
+fn left_mouse_keyboard_navigation(input: &aether_engine::input::InputManager) -> bool {
+    input.mouse_held(MouseButton::Left)
+        && [
+            winit::keyboard::KeyCode::KeyW,
+            winit::keyboard::KeyCode::KeyA,
+            winit::keyboard::KeyCode::KeyS,
+            winit::keyboard::KeyCode::KeyD,
+            winit::keyboard::KeyCode::KeyQ,
+            winit::keyboard::KeyCode::KeyE,
+        ]
+        .into_iter()
+        .any(|key| input.key_held(key))
+}
+
 fn orbit_camera_around(
     camera: &mut aether_engine::renderer::camera::FlyCamera,
     target: glam::Vec3,
@@ -281,18 +335,16 @@ mod tests {
     }
 
     #[test]
-    fn mac_trackpad_pinch_changes_view_distance() {
+    fn trackpad_scroll_over_viewport_dollies_even_when_egui_consumes_it() {
         let mut app = app_with_selected_transform(Transform::default());
+        app.viewport_hovered = true;
+        app.scroll_input = 1.0;
         let start = app.camera.position;
-        app.input.handle_window_event(&WindowEvent::PinchGesture {
-            device_id: DeviceId::dummy(),
-            delta: 0.5,
-            phase: winit::event::TouchPhase::Moved,
-        });
 
-        update_navigation(&mut app);
+        update_camera_and_picking(&mut app, 1.0 / 60.0, true);
 
         assert_ne!(app.camera.position, start);
+        assert_eq!(app.scroll_input, 0.0);
     }
 
     #[test]

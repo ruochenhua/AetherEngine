@@ -8,6 +8,7 @@ mod physics_panel;
 mod renderer_controls;
 mod scene_info;
 mod scene_transition_dialog;
+mod viewport;
 pub(crate) mod viewport_tips;
 
 use super::{
@@ -38,6 +39,7 @@ pub(crate) fn render(
     let skip_egui = app.no_gui_overlay && matches!(app.state, LauncherState::Running { .. });
 
     if skip_egui {
+        app.viewport_hovered = false;
         let ctx = app.ctx.as_ref().unwrap();
         let sd = egui_wgpu::ScreenDescriptor {
             size_in_pixels: [ctx.config.width, ctx.config.height],
@@ -67,10 +69,11 @@ pub(crate) fn render(
 pub(crate) fn draw(app: &mut App, dt: f32, raw_input: egui::RawInput) -> egui::FullOutput {
     app.logs.drain();
     if app.no_gui_overlay && matches!(app.state, LauncherState::Running { .. }) {
+        app.viewport_hovered = false;
         return egui::FullOutput::default();
     }
-    // Extract mutable references needed by the egui closure
     let scroll_input = &mut app.scroll_input;
+    let viewport_hovered = &mut app.viewport_hovered;
     let state = &app.state;
     let scene_entries = &app.scene_entries;
     let pending_load = &mut app.pending_load;
@@ -181,8 +184,6 @@ pub(crate) fn draw(app: &mut App, dt: f32, raw_input: egui::RawInput) -> egui::F
     });
 
     let egui_output = app.egui_ctx.run_ui(raw_input, |ui| {
-        *scroll_input += ui.ctx().input(|i| i.smooth_scroll_delta.y * 0.01);
-
         if (matches!(state, LauncherState::Menu) || *show_overlay) && !*fullscreen_3d {
             let requests = workspace.render(
                 ui,
@@ -385,13 +386,12 @@ pub(crate) fn draw(app: &mut App, dt: f32, raw_input: egui::RawInput) -> egui::F
                     }
                 }
 
-                // Central panel: 3D viewport (transparent so 3D render shows through)
-                egui::CentralPanel::default()
-                    .frame(egui::Frame::NONE)
-                    .show_inside(ui, |ui| {
-                        viewport_drop_request = asset_drop::capture_viewport_drop(ui);
-                        viewport_tips::render(ui, &mut app.viewport_tips);
-                    });
+                *viewport_hovered = viewport::render(
+                    ui,
+                    scroll_input,
+                    &mut viewport_drop_request,
+                    &mut app.viewport_tips,
+                );
             }
         }
 

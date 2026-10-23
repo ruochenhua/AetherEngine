@@ -1,6 +1,6 @@
 # 下一阶段：项目资源浏览器与日志面板
 
-状态：规划草案 v0.1 · 2026-10-11  
+状态：实施计划 · 进度更新 2026-10-21
 目标：让 Aether Engine 从“能打开和编辑场景”迈向“能在引擎内管理项目内容并解释运行问题”的完整创作工作流。
 
 ## 产品目标
@@ -106,7 +106,7 @@
 
 ### EW5 · 依赖感知的移动、重命名与删除
 
-状态（2026-10-17）：EW5-A 已完成，包含类型化只读依赖分析服务和 Project 面板的引用预览；不完整依赖图会明确阻断完整性结论，预览支持固定目标、定位引用方和异步过期检查。Move/Rename/Delete 仍禁用：当前没有通用场景脏状态，也没有完整的运行时路径迁移合同。EW5-B 前置扫描已提供 AssetStore 持有项与 live World 引用的只读快照，但 history/replay、GPU 缓存、watcher、待处理操作和 lifecycle 仍需纳入资格判断。详见[EW5-A 实施报告](ew5-a-implementation-report.md)、[EW5-B 资源持有快照报告](ew5-b-ownership-report.md)和[EW5-B 前置条件审查](ew5-b-readiness-audit.md)。
+状态（2026-10-20）：EW5-A 已完成，包含类型化只读依赖分析服务和 Project 面板的引用预览；不完整依赖图会明确阻断完整性结论，预览支持固定目标、定位引用方和异步过期检查。场景导入回滚、文档脏状态和共享 Save/Discard/Cancel 场景切换也已实现并通过完整 CI。Move/Rename/Delete 仍禁用：legacy Undo/Redo 路径、LogPanel 队列观察和 GPU material cache 清点仍有缺口，当前没有安全迁移路径。详见[EW5-A 实施报告](ew5-a-implementation-report.md)、[EW5-B 资源持有与生命周期报告](ew5-b-ownership-report.md)、[场景生命周期合同](ew5-scene-lifecycle-contract.md)和[EW5-B 前置条件审查](ew5-b-readiness-audit.md)。
 
 - 建立类型化依赖 visitor，覆盖 Scene 中 MeshRef/MaterialAsset/Prefab、Prefab 中 Mesh/Material 与 override、MaterialAsset 中所有纹理槽、Terrain heightmap/layer textures。
 - 禁止字符串全局替换。移动/重命名仅对已支持 schema 执行；无法解析文件、未知引用或真实路径检查失败时拒绝操作并列明原因。
@@ -133,7 +133,7 @@ EW0 工作区面板骨架
                      └─ EW6 多资源预览分页
 ```
 
-**当前推进顺序：EW3 → EW4 → EW5 → EW6。** EW0–EW2 已交付；EW3 自动化覆盖已完成，仍需最终手动验收记录；EW4 安全目录/资源导入纵切已实现，仍需原生文件选择器手动验收。EW5-A 只读依赖预览已实现并通过完整 CI；下一步是继续补齐 history/replay 与其他运行时资源持有者快照，再关闭脏场景与生命周期缺口；具备完整资格判断后，再按交互先行与 TDD 开放单资源移动/重命名，最后处理删除；完成后进入 EW6 多资源预览分页。
+**当前推进顺序：完成 EW3/EW4 的手动交互验收 → 补齐 EW5 资源持有者清点 → 再评估 Move/Rename → EW6 多资源预览分页。** EW0–EW2 已交付；EW3 自动化覆盖已完成，仍需最终拖放交互验收记录；EW4 安全目录/资源导入纵切已实现，仍需原生文件选择器手动验收。EW5-A 只读依赖预览和场景生命周期保护均已实现并通过完整 CI，但 Move/Rename/Delete 仍受真实资源持有者缺口阻断。视口鼠标/触控板操作与 Tips 已实现，实际 Mac 触控板手势仍待实机验证。任何文件写操作必须等资格判断完整后再按交互先行与 TDD 重新规划；删除继续单独评估。
 
 **交互先行门槛：EW3–EW6 的每个新交互切片在生产实现前，先做多代理审阅、低成本原型和交互合同评审。** 至少包含成熟引擎官方模式、Aether 当前架构、失败/取消/撤销三种视角；把官方事实与 Aether 设计推断区分开，明确入口、即时反馈、提交、取消/失败、Undo/Redo、选择与焦点影响。确认交互后按 TDD 先 RED 再 GREEN。详细流程及当前基线见[交互设计与评审合同](interaction-design.md)。
 
