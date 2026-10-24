@@ -37,7 +37,8 @@ fn app_request_snapshot_covers_each_path_slot_without_consuming_requests() {
     });
     app.pending_asset_import = Some(PendingAssetImport {
         destination: "assets/models".into(),
-        source: PathBuf::from("/external/model.obj"),
+        sources: vec![PathBuf::from("/external/model.obj")],
+        requires_confirmation: true,
     });
     app.pending_asset_drop = Some(ViewportDropRequest {
         relative_path: "assets/models/ship.obj".into(),

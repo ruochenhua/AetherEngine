@@ -8,6 +8,10 @@ pub(super) fn bytes(bytes: &[u8], extension: &str) -> Result<(), FileOperationEr
     if extension == "glb" {
         return glb(bytes);
     }
+    if matches!(extension, "obj" | "mtl") {
+        std::str::from_utf8(bytes).map_err(invalid)?;
+        return Ok(());
+    }
     let expected = if extension == "png" {
         image::ImageFormat::Png
     } else {

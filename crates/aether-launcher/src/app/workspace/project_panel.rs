@@ -28,6 +28,7 @@ pub(super) struct ProjectPanel {
     creating_folder: bool,
     scan_result: Option<Receiver<(u64, Result<IndexSnapshot, crate::project_index::IndexError>)>>,
     preview: preview::ResourcePreview,
+    asset_list_rect: Option<egui::Rect>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -42,6 +43,7 @@ impl ProjectPanel {
         let mut panel = Self {
             references: references::ReferencePreview::new(root.clone()),
             preview: preview::ResourcePreview::new(root.clone()),
+            asset_list_rect: None,
             root,
             index: ProjectIndex::default(),
             search: String::new(),
@@ -77,6 +79,10 @@ impl ProjectPanel {
 
     pub(super) fn selected_resource(&self) -> Option<&str> {
         self.selected_resource.as_deref()
+    }
+
+    pub(super) fn asset_drop_target_rect(&self) -> Option<egui::Rect> {
+        self.asset_list_rect
     }
 
     pub(super) fn async_work_snapshot(&self) -> AsyncWorkSnapshot {
@@ -159,8 +165,9 @@ impl ProjectPanel {
             if ui
                 .add_enabled(
                     destination == "assets" || destination.starts_with("assets/"),
-                    egui::Button::new("Import Asset…"),
+                    egui::Button::new("Import Assets…"),
                 )
+                .on_hover_text("Select multiple PNG, JPEG, or self-contained GLB files")
                 .clicked()
             {
                 project_file = Some(super::ProjectFileAction::ImportAsset { destination });
@@ -275,11 +282,14 @@ impl ProjectPanel {
                 } else {
                     available_width
                 };
-                ui.allocate_ui_with_layout(
+                let resource_area = ui.allocate_ui_with_layout(
                     egui::vec2(resource_width, resource_height),
                     egui::Layout::top_down(egui::Align::Min),
                     |ui| {
-                        ui.heading("Resources");
+                        ui.horizontal(|ui| {
+                            ui.heading("Resources");
+                            ui.small("Drop supported files or folders here to import");
+                        });
                         let query = ProjectQuery::default().search(&self.search).sort(self.sort);
                         let resources = query.apply(&snapshot);
                         let resources = resources
@@ -356,6 +366,7 @@ impl ProjectPanel {
                         }
                     },
                 );
+                self.asset_list_rect = Some(resource_area.response.rect);
                 if selected {
                     ui.separator();
                     ui.allocate_ui_with_layout(

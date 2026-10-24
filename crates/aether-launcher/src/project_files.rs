@@ -5,10 +5,13 @@ use std::{
     path::{Component, Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
 };
+#[path = "project_files/import_batch.rs"]
+mod import_batch;
 #[path = "project_files/publish.rs"]
 mod publish;
 #[path = "project_files/validate.rs"]
 mod validate;
+pub use import_batch::{import_paths, ImportBatchReport};
 
 const BYTE_LIMIT: u64 = 64 * 1024 * 1024;
 static NEXT_STAGE: AtomicU64 = AtomicU64::new(0);
@@ -60,7 +63,8 @@ pub fn create_folder(
     Ok(format!("{directory}/{name}"))
 }
 
-/// Import one validated image or self-contained binary glTF, without replacing targets.
+/// Import one validated image, self-contained binary glTF, or text-based OBJ asset file,
+/// without replacing targets. OBJ material libraries are imported as text dependencies.
 pub fn import_file(
     root: &Path,
     directory: &str,
@@ -84,7 +88,10 @@ pub fn import_file(
         .and_then(|s| s.to_str())
         .unwrap_or("")
         .to_ascii_lowercase();
-    if !matches!(extension.as_str(), "png" | "jpg" | "jpeg" | "glb") {
+    if !matches!(
+        extension.as_str(),
+        "png" | "jpg" | "jpeg" | "glb" | "obj" | "mtl"
+    ) {
         return Err(FileOperationError::UnsupportedFormat(extension));
     }
     let mut bytes = Vec::new();

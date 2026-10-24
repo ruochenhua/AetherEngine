@@ -13,7 +13,7 @@ Launcher 是引擎的交互式入口，提供场景浏览和基础编辑能力�
 - **Inspector**：查看和修改选中对象的可编辑属性；具体显示项依实体类型而异。
 - **视口交互**：鼠标或触控板使用统一的左键、键盘和滚动输入操作视口；左上角 Tips 显示同一套快捷操作。
 - **场景文件**：New、Open、Save、Save As、从 Project 打开场景和关闭窗口共用 Save / Discard / Cancel 确认。场景先完成加载和初始化，再替换当前文档；失败时保留原场景。模拟运行期间需先 Stop 才能切换场景。
-- **资源导入与拖放**：可创建项目目录，导入 PNG、JPEG 和自包含 GLB；支持的 OBJ 网格可拖入视口，MaterialAsset 和纹理可拖到兼容属性槽。相关场景编辑支持 Undo/Redo。
+- **资源导入与拖放**：可创建项目目录；通过 Import Assets… 多选导入 PNG、JPEG、自包含 GLB、OBJ 和 MTL，文件选择器会在本次编辑器会话中记住上次导入目录。也可把文件或文件夹拖到 Assets 下的 Resources 列表直接导入；目录层级和 OBJ 材质依赖会保留，批次中的损坏或不支持文件会单独报告，不会阻止其余有效文件导入。支持的 OBJ 网格可拖入视口，MaterialAsset 和纹理可拖到兼容属性槽。相关场景编辑支持 Undo/Redo。
 - **资源引用预览**：Project 可显示只读的 Used by / Depends on 分析。Move、Rename、Delete 尚未开放，原因是运行时资源持有者和生命周期还没有完整的安全迁移合同。
 
 Project 与 Log 面板通过工作区标签切换；底部工作区可调整高度，Project 内部的 Folders/Resources 分栏也可独立拖动调整。当前使用固定工作区布局，不支持任意浮动停靠或保存多套布局。资源在独立预览分页打开属于后续 EW6 规划，当前仍通过 Project 详情区域预览。

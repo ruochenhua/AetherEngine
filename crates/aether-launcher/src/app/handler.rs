@@ -119,6 +119,13 @@ impl ApplicationHandler for App {
         _window_id: WindowId,
         event: WindowEvent,
     ) {
+        if let WindowEvent::CursorMoved { position, .. } = &event {
+            let points_per_pixel = self.egui_ctx.pixels_per_point();
+            self.last_cursor_position = Some(egui::Pos2::new(
+                position.x as f32 / points_per_pixel,
+                position.y as f32 / points_per_pixel,
+            ));
+        }
         // Handle undo/redo before any ctx borrow to avoid lifetime conflicts.
         if matches!(event, WindowEvent::RedrawRequested)
             && !self.egui_ctx.egui_wants_keyboard_input()
@@ -211,6 +218,11 @@ impl ApplicationHandler for App {
                     self,
                     super::scene_transition::SceneTransitionTarget::CloseApplication,
                 );
+            }
+            WindowEvent::DroppedFile(path) => {
+                if let Some(position) = self.last_cursor_position {
+                    queue_asset_drop(self, path, position);
+                }
             }
             WindowEvent::Resized(size) if size.width > 0 && size.height > 0 => {
                 let ctx = self.ctx.as_mut().unwrap();
@@ -325,6 +337,31 @@ impl ApplicationHandler for App {
             window.request_redraw();
         }
     }
+}
+
+pub(super) fn queue_asset_drop(
+    app: &mut App,
+    path: std::path::PathBuf,
+    position: egui::Pos2,
+) -> bool {
+    let workspace_visible = matches!(&app.state, LauncherState::Menu) || app.show_overlay;
+    if !workspace_visible || app.fullscreen_3d || app.pending_asset_import.is_some() {
+        return false;
+    }
+    let Some(destination) = app.workspace.import_destination() else {
+        return false;
+    };
+    if !app.workspace.accepts_asset_drop_at(position) {
+        return false;
+    }
+    app.last_asset_import_directory = path.parent().map(std::path::Path::to_path_buf);
+    app.pending_asset_import = Some(super::PendingAssetImport {
+        destination,
+        sources: vec![path],
+        requires_confirmation: false,
+    });
+    app.pending_asset_import_confirm = false;
+    true
 }
 
 fn set_viewport_cursor_capture(window: Option<&Arc<winit::window::Window>>, capture: bool) -> bool {

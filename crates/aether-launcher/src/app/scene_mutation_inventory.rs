@@ -31,7 +31,7 @@ impl SceneMutationInventory {
         ui.label(format!("Project: {}", inventory.project_root.display()));
         ui.label(format!("Scene document: {:?}", inventory.document_status));
         ui.label(format!(
-            "Observed owners: World {}, history {}, persisted log {}, app requests {}, watchers {}, AssetStore {}, GPU texture cache {}, log links {}",
+            "Observed owners: World {}, history {}, persisted log {}, app requests {}, watchers {}, AssetStore {}, GPU texture cache {}, log links {}, queued log links {}",
             inventory.world_resources.len(),
             inventory.history_resources.len(),
             inventory.persisted_log.resources.len(),
@@ -40,6 +40,7 @@ impl SceneMutationInventory {
             inventory.asset_store.len(),
             inventory.gpu_textures.as_ref().map_or(0, |snapshot| snapshot.resources.len()),
             inventory.log_panel.buffered_event_resources.len(),
+            inventory.log_panel.queued_event_resources.len(),
         ));
         ui.separator();
         if inventory.can_plan_single_resource_rename() {

@@ -111,12 +111,30 @@ impl Workspace {
         self.project.refresh();
     }
 
+    pub(crate) fn import_destination(&self) -> Option<String> {
+        if self.tab != WorkspaceTab::Project || !self.visible {
+            return None;
+        }
+        let current = self.project.current_directory();
+        (current == "assets" || current.starts_with("assets/")).then(|| current.to_owned())
+    }
+
+    pub(crate) fn asset_drop_target_rect(&self) -> Option<egui::Rect> {
+        self.import_destination()?;
+        self.project.asset_drop_target_rect()
+    }
+
+    pub(crate) fn accepts_asset_drop_at(&self, position: egui::Pos2) -> bool {
+        self.asset_drop_target_rect()
+            .is_some_and(|rect| rect.contains(position))
+    }
+
     pub(crate) fn render(
         &mut self,
         ui: &mut egui::Ui,
         message: Option<&str>,
         logs: &mut crate::logging::LogPanel,
-        pending_import: Option<(&str, &std::path::Path)>,
+        pending_import: Option<(&str, &[PathBuf])>,
     ) -> WorkspaceRequests {
         let mut requests = WorkspaceRequests::default();
         egui::Panel::top("workspace_controls").show_inside(ui, |ui| {
@@ -142,10 +160,20 @@ impl Workspace {
             .size_range(100.0..=maximum)
             .resizable(true)
             .show_inside(ui, |ui| {
-                if let Some((destination, source)) = pending_import {
+                if let Some((destination, sources)) = pending_import {
                     egui::Frame::popup(ui.style()).show(ui, |ui| {
                         ui.heading("Confirm Asset Import");
-                        ui.label(format!("File: {}", source.display()));
+                        if sources.len() == 1 {
+                            ui.label(format!("File: {}", sources[0].display()));
+                        } else {
+                            ui.label(format!("Files: {} selected", sources.len()));
+                            for source in sources.iter().take(5) {
+                                ui.small(source.display().to_string());
+                            }
+                            if sources.len() > 5 {
+                                ui.small(format!("…and {} more", sources.len() - 5));
+                            }
+                        }
                         ui.label(format!(
                             "Target: {}",
                             if destination.is_empty() {

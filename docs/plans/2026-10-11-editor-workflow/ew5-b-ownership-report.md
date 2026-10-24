@@ -1,7 +1,7 @@
 # EW5-B Runtime Ownership and Lifecycle Progress
 
-Date: 2026-10-18  
-Status: Lifecycle slices 1–4 implemented as internal contracts and read-only snapshots; Move/Rename/Delete remain disabled
+Date: 2026-10-24
+Status: Lifecycle contracts and read-only snapshots implemented; Move/Rename/Delete remain disabled
 
 ## Implemented in this pass
 
@@ -30,16 +30,17 @@ An internal deterministic snapshot currently collects:
 - Project scan state, active/pending preview requests, reference-analysis state;
 - animation fixture ownership and retained LogPanel event links.
 
-The snapshot is observational: it does not drain queues or mutate owners. Unknown lifecycle state, missing inventory, active work, non-clean documents, simulation ownership, or unidentified legacy history blocks rename planning. It is an internal API and test surface today; no user-facing report panel has been added.
+The bounded runtime-log queue now shares a non-consuming resource-path snapshot with the readiness report. Queue inspection uses a non-blocking lock; if a producer holds it during capture, the snapshot marks the queue unobserved and that readiness check remains blocked. This replaces the former permanent assumption that every live receiver queue is unobservable.
+
+The snapshot is observational: it does not drain queues or mutate owners. Unknown lifecycle state, missing inventory, active work, non-clean documents, simulation ownership, or unidentified legacy history blocks rename planning. A read-only readiness report is available from the editor menu.
 
 ## Current decision: no-go for Move/Rename/Delete
 
 The gate correctly remains closed under current runtime conditions:
 
 - legacy undo/redo entries do not expose typed resource locators and block while present;
-- the LogPanel receiver queue cannot be inspected without consuming it, so its possible resource paths are marked unobserved and block;
 - a GPU material-cache inventory is not yet integrated into this snapshot;
-- no user-visible diagnostic report currently explains the blockers in the editor.
+- a concurrent log producer can make one queue snapshot temporarily unobservable; retry after the producer releases the queue;
 
 These are real gaps, not permission to relax the gate. Resolve them before planning a writer. Delete remains a separate, later contract. The ownership snapshot itself does not implement path relocation or cache invalidation.
 
@@ -53,6 +54,6 @@ These are real gaps, not permission to relax the gate. Resolve them before plann
 ## Next work in order
 
 1. Complete and rerun the repository verification gates for the current lifecycle slices.
-2. Reconcile the remaining owner gaps: typed legacy undo/redo locators or a safe reset contract, non-consuming log-queue inventory, and GPU material-cache inventory.
-3. Add an editor-visible read-only blocker report and tests proving it reflects the captured snapshot without changing owner state.
+2. Reconcile the remaining owner gaps: typed legacy undo/redo locators or a safe reset contract, and GPU material-cache inventory.
+3. Extend tests for the editor-visible read-only blocker report and prove it reflects the captured snapshot without changing owner state. Runtime log queue paths are now included without consuming events.
 4. Reassess readiness. Only after the complete inventory can prove quiescence should a one-resource Move/Rename contract be planned. Keep Delete deferred.

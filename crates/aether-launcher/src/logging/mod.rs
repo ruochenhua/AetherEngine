@@ -1,9 +1,6 @@
 //! Structured runtime diagnostics, independent of editor transaction replay.
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::BTreeMap,
-    sync::mpsc::{self, Receiver, SyncSender},
-};
+use std::{collections::BTreeMap, sync::Arc};
 use tracing_subscriber::{layer::Context, Layer};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -17,19 +14,19 @@ pub(crate) struct CapturedEvent {
 }
 #[derive(Clone)]
 pub(crate) struct CaptureLayer {
-    sender: SyncSender<CapturedEvent>,
+    sender: EventQueue,
     pub health: std::sync::Arc<Health>,
     file: Option<file::FileSink>,
 }
-pub(crate) fn capture(capacity: usize) -> (CaptureLayer, Receiver<CapturedEvent>) {
-    let (sender, receiver) = mpsc::sync_channel(capacity);
+pub(crate) fn capture(capacity: usize) -> (CaptureLayer, EventQueue) {
+    let sender = EventQueue::bounded(capacity);
     (
         CaptureLayer {
-            sender,
-            health: Default::default(),
+            sender: sender.clone(),
+            health: Arc::default(),
             file: None,
         },
-        receiver,
+        sender.clone(),
     )
 }
 impl<S: tracing::Subscriber> Layer<S> for CaptureLayer {
@@ -49,7 +46,7 @@ impl<S: tracing::Subscriber> Layer<S> for CaptureLayer {
         if let Some(file) = self.file.as_ref() {
             file.send(captured.clone());
         }
-        if self.sender.try_send(captured).is_err() {
+        if !self.sender.try_send(captured) {
             let index = level_index(event.metadata().level().as_str());
             self.health.dropped[index].fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         }
@@ -187,6 +184,9 @@ fn level_index(level: &str) -> usize {
 
 mod store;
 pub(crate) use store::{LogStore, LogView};
+
+mod event_queue;
+pub(crate) use event_queue::EventQueue;
 
 mod file;
 

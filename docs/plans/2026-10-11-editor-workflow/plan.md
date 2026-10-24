@@ -84,7 +84,7 @@
 
 任务包：[EW3 拖放实施简报](ew3-drag-drop-brief.md)
 
-状态（2026-10-17）：EW3 的 Project→视口 OBJ 放置、MaterialAsset 与 inline texture 拖放、操作日志持久化、Undo/Redo、保存重开和 replay 解析均已实现并通过自动化覆盖。Folders/Resources 分割条已在 Release Launcher 中确认可拖动；异步图片/模型预览在右侧受限视口中显示。剩余事项是最终手动交互验收并记录结果。
+状态（2026-10-24）：EW3 的 Project→视口 OBJ 放置、MaterialAsset 与 inline texture 拖放、操作日志持久化、Undo/Redo、保存重开和 replay 解析均已实现并通过自动化覆盖。用户已手动确认视口交互可用，且将 OBJ 拖入场景后模型正常出现；EW3 最终手动验收通过。Folders/Resources 分割条已在 Release Launcher 中确认可拖动；异步图片/模型预览在右侧受限视口中显示。
 
 - 规划审阅结论：先交付 Project 到视口的单实体 OBJ 地面放置，再扩充材质/纹理属性拖放；现有 renderer 用全窗投影，egui rect 只负责限定 drop 命中区。
 - 实现顺序固定为 EW3-A 放置数学、EW3-B 拖放路由、EW3-C1 Engine operation/history、EW3-C2 Launcher host resolver、EW3-C3 Project/viewport 集成，每个切片先 RED 再 GREEN。
@@ -98,7 +98,7 @@
 
 ### EW4 · 导入与安全文件操作
 
-状态（2026-10-17）：首个可用纵切已实现：安全创建目录、导入单个 PNG/JPEG/自包含 GLB、预览确认、成功后刷新并选中资源。文件操作服务独立于 egui 和 AssetManager；验证拒绝外部依赖、路径逃逸、符号链接、格式错误和覆盖碰撞。Project 索引现在记录空目录，因此新建目录会立即出现在树中。自动化已覆盖服务安全边界、UI 发出延迟动作、确认前不写入及确认后导入；原生文件选择器仍需手动运行验收。
+状态（2026-10-24）：首个可用纵切已实现：安全创建目录、导入单个 PNG/JPEG/自包含 GLB、预览确认、成功后刷新并选中资源。文件操作服务独立于 egui 和 AssetManager；验证拒绝外部依赖、路径逃逸、符号链接、格式错误和覆盖碰撞。Project 索引现在记录空目录，因此新建目录会立即出现在树中。自动化已覆盖服务安全边界、UI 发出延迟动作、确认前不写入及确认后导入；原生文件选择器仍需手动运行验收。用户本轮将 OBJ 拖入场景并确认模型正常出现，这验证的是 EW3 Project→视口资源放置，不等同于 EW4 从文件选择器把外部文件导入项目；EW4 手动验收仍待完成。
 
 - 先支持新建项目子文件夹、导入单纹理和自包含 GLB；对依赖外部 MTL/纹理/buffer 的 OBJ/glTF 拒绝导入并列明依赖，不复制不完整资源包。
 - 导入使用项目内 staging 目录，验证格式和全部依赖后再发布；失败清理 staging 且不改变项目索引。
@@ -106,7 +106,7 @@
 
 ### EW5 · 依赖感知的移动、重命名与删除
 
-状态（2026-10-20）：EW5-A 已完成，包含类型化只读依赖分析服务和 Project 面板的引用预览；不完整依赖图会明确阻断完整性结论，预览支持固定目标、定位引用方和异步过期检查。场景导入回滚、文档脏状态和共享 Save/Discard/Cancel 场景切换也已实现并通过完整 CI。Move/Rename/Delete 仍禁用：legacy Undo/Redo 路径、LogPanel 队列观察和 GPU material cache 清点仍有缺口，当前没有安全迁移路径。详见[EW5-A 实施报告](ew5-a-implementation-report.md)、[EW5-B 资源持有与生命周期报告](ew5-b-ownership-report.md)、[场景生命周期合同](ew5-scene-lifecycle-contract.md)和[EW5-B 前置条件审查](ew5-b-readiness-audit.md)。
+状态（2026-10-24）：EW5-A 已完成，包含类型化只读依赖分析服务和 Project 面板的引用预览；不完整依赖图会明确阻断完整性结论，预览支持固定目标、定位引用方和异步过期检查。场景导入回滚、文档脏状态和共享 Save/Discard/Cancel 场景切换也已实现并通过完整 CI。Move/Rename/Delete 仍禁用：legacy Undo/Redo 路径和 GPU material cache 清点仍有缺口；LogPanel 有界队列现可非消费式盘点，竞争期间的临时不可观察仍会阻断当次判断。详见[EW5-A 实施报告](ew5-a-implementation-report.md)、[EW5-B 资源持有与生命周期报告](ew5-b-ownership-report.md)、[场景生命周期合同](ew5-scene-lifecycle-contract.md)和[EW5-B 前置条件审查](ew5-b-readiness-audit.md)。
 
 - 建立类型化依赖 visitor，覆盖 Scene 中 MeshRef/MaterialAsset/Prefab、Prefab 中 Mesh/Material 与 override、MaterialAsset 中所有纹理槽、Terrain heightmap/layer textures。
 - 禁止字符串全局替换。移动/重命名仅对已支持 schema 执行；无法解析文件、未知引用或真实路径检查失败时拒绝操作并列明原因。
@@ -133,7 +133,7 @@ EW0 工作区面板骨架
                      └─ EW6 多资源预览分页
 ```
 
-**当前推进顺序：完成 EW3/EW4 的手动交互验收 → 补齐 EW5 资源持有者清点 → 再评估 Move/Rename → EW6 多资源预览分页。** EW0–EW2 已交付；EW3 自动化覆盖已完成，仍需最终拖放交互验收记录；EW4 安全目录/资源导入纵切已实现，仍需原生文件选择器手动验收。EW5-A 只读依赖预览和场景生命周期保护均已实现并通过完整 CI，但 Move/Rename/Delete 仍受真实资源持有者缺口阻断。视口鼠标/触控板操作与 Tips 已实现，实际 Mac 触控板手势仍待实机验证。任何文件写操作必须等资格判断完整后再按交互先行与 TDD 重新规划；删除继续单独评估。
+**当前推进顺序：完成 EW4 原生文件选择器手动验收 → 补齐 EW5 资源持有者清点 → 再评估 Move/Rename → EW6 多资源预览分页。** EW0–EW2 已交付；EW3 自动化和最终手动验收已完成，用户确认视口交互可用且 OBJ 可拖入场景；EW4 安全目录/资源导入纵切已实现，仍需原生文件选择器手动验收。EW5-A 只读依赖预览和场景生命周期保护均已实现并通过完整 CI，但 Move/Rename/Delete 仍受真实资源持有者缺口阻断。视口鼠标/触控板操作与 Tips 已实现并完成用户手动验收。任何文件写操作必须等资格判断完整后再按交互先行与 TDD 重新规划；删除继续单独评估。
 
 **交互先行门槛：EW3–EW6 的每个新交互切片在生产实现前，先做多代理审阅、低成本原型和交互合同评审。** 至少包含成熟引擎官方模式、Aether 当前架构、失败/取消/撤销三种视角；把官方事实与 Aether 设计推断区分开，明确入口、即时反馈、提交、取消/失败、Undo/Redo、选择与焦点影响。确认交互后按 TDD 先 RED 再 GREEN。详细流程及当前基线见[交互设计与评审合同](interaction-design.md)。
 

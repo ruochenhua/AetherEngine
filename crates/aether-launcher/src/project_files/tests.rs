@@ -168,6 +168,46 @@ fn imports_real_images_preserving_bytes_and_existing_files() {
     }
     assert_eq!(fs::read_dir(p.0.join("assets")).unwrap().count(), 3);
 }
+
+#[test]
+fn imports_multiple_files_and_folder_contents_preserving_structure() {
+    let p = Project::new();
+    let external = std::env::temp_dir().join(format!(
+        "aether-import-batch-{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ));
+    fs::create_dir_all(external.join("Pack/nested")).unwrap();
+    let standalone = external.join("standalone.png");
+    let nested = external.join("Pack/nested/inside.jpg");
+    fs::write(&standalone, image_bytes(image::ImageFormat::Png)).unwrap();
+    fs::write(&nested, image_bytes(image::ImageFormat::Jpeg)).unwrap();
+
+    let report = import_paths(&p.0, "assets", &[standalone.clone(), external.join("Pack")]);
+
+    assert_eq!(
+        report.imported,
+        ["assets/standalone.png", "assets/Pack/nested/inside.jpg"]
+    );
+    assert!(report.failures.is_empty());
+    assert!(p.0.join("assets/Pack/nested/inside.jpg").is_file());
+    let _ = fs::remove_dir_all(external);
+}
+
+#[test]
+fn batch_import_continues_after_unsupported_or_invalid_sources() {
+    let p = Project::new();
+    let good = p.source("good.png", &image_bytes(image::ImageFormat::Png));
+    let bad = p.source("bad.png", b"not a png");
+    let unsupported = p.source("model.fbx", b"not supported yet");
+
+    let report = import_paths(&p.0, "assets", &[bad, unsupported, good]);
+
+    assert_eq!(report.imported, ["assets/good.png"]);
+    assert_eq!(report.failures.len(), 2);
+    assert!(p.0.join("assets/good.png").is_file());
+    assert!(!p.0.join("assets/bad.png").exists());
+}
 #[test]
 fn rejects_corrupt_mismatched_and_unsupported_images_without_staging() {
     let p = Project::new();
@@ -181,12 +221,39 @@ fn rejects_corrupt_mismatched_and_unsupported_images_without_staging() {
         import_file(&p.0, "assets", &mismatch),
         Err(FileOperationError::Validation(_))
     ));
-    let unsupported = p.source("bad.obj", b"v 0 0 0");
+    let unsupported = p.source("bad.fbx", b"not supported yet");
     assert!(matches!(
         import_file(&p.0, "assets", &unsupported),
         Err(FileOperationError::UnsupportedFormat(_))
     ));
+    let invalid_obj = p.source("invalid.obj", &[0xff, 0xfe]);
+    assert!(matches!(
+        import_file(&p.0, "assets", &invalid_obj),
+        Err(FileOperationError::Validation(_))
+    ));
     p.empty_assets();
+}
+
+#[test]
+fn imports_obj_and_material_library_as_text_assets() {
+    let p = Project::new();
+    let obj = p.source("mesh.obj", b"v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n");
+    let mtl = p.source("mesh.mtl", b"newmtl default\nKd 1 1 1\n");
+
+    assert_eq!(
+        import_file(&p.0, "assets", &obj).unwrap(),
+        "assets/mesh.obj"
+    );
+    assert_eq!(
+        import_file(&p.0, "assets", &mtl).unwrap(),
+        "assets/mesh.mtl"
+    );
+    assert_eq!(
+        fs::read_to_string(p.0.join("assets/mesh.obj")).unwrap(),
+        "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n"
+    );
+    assert!(p.0.join("assets/mesh.obj").is_file());
+    assert!(p.0.join("assets/mesh.mtl").is_file());
 }
 #[test]
 fn imports_embedded_glb_mesh() {

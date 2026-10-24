@@ -76,7 +76,23 @@ pub(crate) struct SceneEntry {
 
 pub(crate) struct PendingAssetImport {
     pub(crate) destination: String,
-    pub(crate) source: PathBuf,
+    pub(crate) sources: Vec<PathBuf>,
+    pub(crate) requires_confirmation: bool,
+}
+
+impl PendingAssetImport {
+    pub(crate) fn confirmation_view(&self) -> Option<(&str, &[PathBuf])> {
+        self.requires_confirmation
+            .then_some((self.destination.as_str(), self.sources.as_slice()))
+    }
+}
+
+pub(crate) fn pending_asset_import_confirmation(
+    pending: Option<&PendingAssetImport>,
+) -> Option<(String, Vec<PathBuf>)> {
+    pending
+        .and_then(PendingAssetImport::confirmation_view)
+        .map(|(destination, sources)| (destination.to_owned(), sources.to_vec()))
 }
 
 // ── App ─────────────────────────────────────────────────────────────
@@ -110,6 +126,8 @@ pub(crate) struct App {
     pub(crate) pending_project_file: Option<workspace::ProjectFileAction>,
     pub(crate) pending_asset_import: Option<PendingAssetImport>,
     pub(crate) pending_asset_import_confirm: bool,
+    pub(crate) last_asset_import_directory: Option<PathBuf>,
+    pub(crate) last_cursor_position: Option<egui::Pos2>,
     pub(crate) show_overlay: bool,
     pub(crate) fullscreen_3d: bool,
     pub(crate) viewport_tips: ui::viewport_tips::ViewportTipsState,
@@ -237,6 +255,8 @@ impl App {
             pending_project_file: None,
             pending_asset_import: None,
             pending_asset_import_confirm: false,
+            last_asset_import_directory: None,
+            last_cursor_position: None,
             show_overlay: false,
             fullscreen_3d: false,
             viewport_tips: ui::viewport_tips::ViewportTipsState::default(),

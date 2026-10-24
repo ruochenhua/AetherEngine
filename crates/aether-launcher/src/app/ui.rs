@@ -102,10 +102,8 @@ pub(crate) fn draw(app: &mut App, dt: f32, raw_input: egui::RawInput) -> egui::F
     let fullscreen_3d = &mut app.fullscreen_3d;
     let workspace = &mut app.workspace;
     let logs = &mut app.logs;
-    let pending_asset_import = app
-        .pending_asset_import
-        .as_ref()
-        .map(|pending| (pending.destination.as_str(), pending.source.as_path()));
+    let pending_asset_import =
+        super::pending_asset_import_confirmation(app.pending_asset_import.as_ref());
     let mut project_open_request = None;
     let mut project_file_request = None;
     let mut confirm_asset_import = false;
@@ -189,7 +187,9 @@ pub(crate) fn draw(app: &mut App, dt: f32, raw_input: egui::RawInput) -> egui::F
                 ui,
                 editor_operation_message.as_deref(),
                 logs,
-                pending_asset_import,
+                pending_asset_import
+                    .as_ref()
+                    .map(|(destination, sources)| (destination.as_str(), sources.as_slice())),
             );
             project_open_request = requests.open_scene;
             project_file_request = requests.project_file;

@@ -2,20 +2,21 @@
 use super::{CapturedEvent, Health, LogStore, LogView, UI_QUEUE_CAPACITY};
 use std::{
     path::{Component, Path, PathBuf},
-    sync::{mpsc::Receiver, Arc},
+    sync::Arc,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct LogPanelResourceSnapshot {
     pub buffered_event_resources: Vec<PathBuf>,
     pub selected_event_resource: Option<PathBuf>,
+    pub queued_event_resources: Vec<PathBuf>,
     pub receiver_queue_unobserved: bool,
 }
 
 pub(crate) struct LogPanel {
     pub store: LogStore,
     pub view: LogView,
-    receiver: Option<Receiver<CapturedEvent>>,
+    receiver: Option<super::EventQueue>,
     pub ui_health: Arc<Health>,
     pub file_health: Arc<Health>,
     root: Option<PathBuf>,
@@ -33,7 +34,7 @@ impl Default for LogPanel {
 }
 impl LogPanel {
     pub fn new(
-        receiver: Option<Receiver<CapturedEvent>>,
+        receiver: Option<super::EventQueue>,
         ui_health: Arc<Health>,
         file_health: Arc<Health>,
         root: PathBuf,
@@ -49,14 +50,12 @@ impl LogPanel {
         }
     }
     pub fn drain(&mut self) {
-        for _ in 0..UI_QUEUE_CAPACITY {
-            let event = self
-                .receiver
-                .as_ref()
-                .and_then(|receiver| receiver.try_recv().ok());
-            let Some(mut event) = event else {
-                break;
-            };
+        let events = self
+            .receiver
+            .as_ref()
+            .map(|queue| queue.try_iter().take(UI_QUEUE_CAPACITY).collect::<Vec<_>>())
+            .unwrap_or_default();
+        for mut event in events {
             event.resource = self.resource(&event);
             self.store.push(event);
         }
@@ -94,6 +93,10 @@ impl LogPanel {
         }
     }
     pub fn resource_usage_snapshot(&self) -> LogPanelResourceSnapshot {
+        let queued_resources = self
+            .receiver
+            .as_ref()
+            .map(super::EventQueue::resource_path_hints);
         LogPanelResourceSnapshot {
             buffered_event_resources: self
                 .store
@@ -105,7 +108,12 @@ impl LogPanel {
                 .selected
                 .as_ref()
                 .and_then(|event| event.resource.clone()),
-            receiver_queue_unobserved: self.receiver.is_some(),
+            queued_event_resources: queued_resources
+                .as_ref()
+                .and_then(|resources| resources.as_ref().ok())
+                .cloned()
+                .unwrap_or_default(),
+            receiver_queue_unobserved: queued_resources.is_some_and(|result| result.is_err()),
         }
     }
     pub fn render(&mut self, ui: &mut egui::Ui) -> Option<PathBuf> {
@@ -200,7 +208,36 @@ mod tests {
     use std::collections::BTreeMap;
 
     #[test]
-    fn resource_snapshot_lists_retained_links_and_marks_the_unobserved_receiver() {
+    fn resource_snapshot_observes_queued_paths_without_consuming_events() {
+        let queue = super::super::EventQueue::bounded(4);
+        let event = CapturedEvent {
+            timestamp_ms: 1,
+            level: "INFO".into(),
+            target: "asset_loader".into(),
+            message: "loading asset".into(),
+            fields: BTreeMap::from([("asset".into(), "assets/model.obj".into())]),
+            resource: None,
+        };
+        assert!(queue.try_send(event.clone()));
+        let panel = LogPanel::new(
+            Some(queue.clone()),
+            Arc::default(),
+            Arc::default(),
+            std::env::current_dir().unwrap(),
+        );
+
+        let snapshot = panel.resource_usage_snapshot();
+
+        assert_eq!(
+            snapshot.queued_event_resources,
+            vec![PathBuf::from("assets/model.obj")]
+        );
+        assert!(!snapshot.receiver_queue_unobserved);
+        assert_eq!(queue.try_recv().unwrap().message, event.message);
+    }
+
+    #[test]
+    fn resource_snapshot_lists_retained_links_and_observes_an_empty_receiver() {
         let (_sender, receiver) = super::super::capture(4);
         let mut panel = LogPanel::new(
             Some(receiver),
@@ -229,6 +266,6 @@ mod tests {
             snapshot.selected_event_resource,
             Some(PathBuf::from("assets/model.obj"))
         );
-        assert!(snapshot.receiver_queue_unobserved);
+        assert!(!snapshot.receiver_queue_unobserved);
     }
 }

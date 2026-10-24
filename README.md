@@ -67,7 +67,7 @@ The current renderer covers deferred PBR, IBL, directional and local lights, sha
 The editor now connects project content, scene editing, and runtime feedback in one workspace:
 
 - **Browse and inspect:** the Project panel indexes `scenes/` and `assets/`, with folder navigation, search, type filters, and previews for supported images and models. Its folder and resource columns can be resized independently.
-- **Place and import:** drag supported OBJ meshes into the viewport, assign supported materials and textures, and undo or redo editor operations. Create project folders and import PNG, JPEG, and self-contained GLB assets through the Project panel.
+- **Place and import:** drag supported OBJ meshes into the viewport, assign supported materials and textures, and undo or redo editor operations. Create project folders; multi-select PNG, JPEG, self-contained GLB, OBJ, and MTL files for import; or drop files and folders into the asset list. Folder structure and OBJ material dependencies are preserved, and the last import folder is remembered for the editor session.
 - **Keep scenes safe:** New, Open, Save, Save As, Project scene opening, and window close share a Save / Discard / Cancel flow. Scene loading is transactional, so a failed load leaves the current scene in place.
 - **Understand runtime behavior:** the Log panel captures structured diagnostics for in-editor search and review; clearing or filtering the visible list does not stop log collection.
 - **Navigate the viewport:** use right-drag to look, hold right mouse with WASD/QE to fly, middle-drag to pan, the wheel to dolly, `F` to frame the selection, and Option-drag with the left mouse button to orbit the selected object. The viewport Tips card also lists Mac trackpad gestures.

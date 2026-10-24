@@ -95,12 +95,14 @@ pub(crate) fn capture_app_request_resource_usage(app: &super::App) -> Vec<AppReq
         }
     }
     if let Some(pending) = &app.pending_asset_import {
-        visitor.push_path(
-            AppRequestOwner::AssetImport,
-            "source",
-            None,
-            pending.source.clone(),
-        );
+        for (index, source) in pending.sources.iter().enumerate() {
+            visitor.push_path(
+                AppRequestOwner::AssetImport,
+                &format!("sources[{index}]"),
+                None,
+                source.clone(),
+            );
+        }
         visitor.push_path(
             AppRequestOwner::AssetImport,
             "destination",
