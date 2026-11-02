@@ -43,10 +43,10 @@ fn unavailable_lifecycle_and_runtime_sources_block_rename_planning() {
         .blockers
         .iter()
         .any(|item| item.contains("GPU texture cache inventory is unavailable")));
-    assert!(report
+    assert!(!report
         .blockers
         .iter()
-        .any(|item| item.contains("GPU material-cache inventory is unavailable")));
+        .any(|item| item.contains("GPU material-cache")));
     assert!(report
         .blockers
         .iter()

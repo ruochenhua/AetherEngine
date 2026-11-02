@@ -13,6 +13,7 @@ EW5-A's authored dependency report is necessary but not sufficient to authorize 
 - **Scene dirty state is unknown.** World edits, camera persistence, editor history and save behavior do not share a saved baseline. Undo depth is not a clean/dirty signal.
 - **Path references outlive the current World.** AssetStore retains entries, path-derived IDs, pending worker jobs and deferred results across scene changes. It exposes no complete loaded/pending path inventory, eviction or relocation operation.
 - **Other runtime owners retain paths or identities.** Material texture dependencies, GPU texture caches, hot-reload watcher queues, Undo/Redo runtime states, persisted `.editor.jsonl` replay records, scene-load requests, resource drops and operation queues all need inspection or invalidation.
+- **The GPU material cache is not a current Launcher owner.** `GpuMaterialCache` has an engine inventory API but no runtime constructor call in the Launcher; the readiness report records it as known absent. If that cache is integrated into Launcher later, it must be added to the mutation inventory before file writes are enabled.
 - **EW5-A completeness describes authored Scene/Prefab/MaterialAsset and supported glTF graph coverage.** It does not certify replay history, active World state, caches, pending jobs or watcher state.
 - **MaterialAsset relocation also rebases its outbound texture paths** because the loader resolves them relative to the material's directory. Updating inbound references alone is insufficient.
 
@@ -33,7 +34,7 @@ Do not claim byte-identical inode replacement detection from content hashes alon
 ## Recommended next implementation sequence
 
 1. **Completed:** read-only AssetStore usage snapshot and live-World typed reference snapshot; details in [EW5-B ownership report](ew5-b-ownership-report.md).
-2. Add owner APIs and tests for in-memory undo/redo, persisted replay logs, GPU caches, watchers and pending editor requests. Design an explicit editor/project lifecycle. Unknown dirty state remains a blocker; do not infer cleanliness.
+2. Remaining ownership work is the legacy Inspector undo/redo stack: add typed path locators or define and test an explicit reset contract. Persisted replay logs, active editor history, GPU texture cache, watchers, pending requests, and Project work already have read-only snapshots. Unknown dirty state remains a blocker; do not infer cleanliness.
 3. Only after the eligibility report can prove safety, implement one narrow Move/Rename slice with typed rewrites, transaction journal/rollback and focused failure-injection tests.
 4. Keep Delete after the move transaction is proven; keep EW6 preview tabs after EW5 path identity updates are defined.
 

@@ -5,6 +5,9 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
+#[path = "tests/import_batch.rs"]
+mod import_batch;
+
 static NEXT: AtomicU64 = AtomicU64::new(0);
 struct Project(PathBuf);
 impl Project {

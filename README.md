@@ -67,17 +67,17 @@ The current renderer covers deferred PBR, IBL, directional and local lights, sha
 The editor now connects project content, scene editing, and runtime feedback in one workspace:
 
 - **Browse and inspect:** the Project panel indexes `scenes/` and `assets/`, with folder navigation, search, type filters, and previews for supported images and models. Its folder and resource columns can be resized independently.
-- **Place and import:** drag supported OBJ meshes into the viewport, assign supported materials and textures, and undo or redo editor operations. Create project folders; multi-select PNG, JPEG, self-contained GLB, OBJ, and MTL files for import; or drop files and folders into the asset list. Folder structure and OBJ material dependencies are preserved, and the last import folder is remembered for the editor session.
+- **Place and import:** drag supported OBJ meshes into the viewport, assign supported materials and textures, and undo or redo editor operations. Create project folders; multi-select PNG, JPEG, self-contained GLB, OBJ, and MTL files for import; or drop files and folders into the asset list. Each selected folder is validated and published as one package, preserving its layout and checking OBJ → MTL → diffuse-texture references. A broken folder is rejected as a whole while other selected items can still import. The last import folder is remembered for the editor session.
 - **Keep scenes safe:** New, Open, Save, Save As, Project scene opening, and window close share a Save / Discard / Cancel flow. Scene loading is transactional, so a failed load leaves the current scene in place.
 - **Understand runtime behavior:** the Log panel captures structured diagnostics for in-editor search and review; clearing or filtering the visible list does not stop log collection.
-- **Navigate the viewport:** use right-drag to look, hold right mouse with WASD/QE to fly, middle-drag to pan, the wheel to dolly, `F` to frame the selection, and Option-drag with the left mouse button to orbit the selected object. The viewport Tips card also lists Mac trackpad gestures.
+- **Navigate the viewport:** drag with the left mouse button to look, hold it with WASD/QE to fly, middle-drag to pan, use the wheel to dolly, press `F` to frame the selection, and use Option + left-drag to orbit the selected object. The viewport Tips card shows the same controls for mouse and trackpad.
 
 <p align="center">
   <img src="docs/plans/2026-10-11-editor-workflow/ew3-editor-workspace-2026-10-15.png" alt="Aether Engine editor showing the Project browser beneath the scene viewport" width="100%">
   <br><sub>Project workspace capture (2026-10-15): folder tree, searchable resource list, and resizable workspace.</sub>
 </p>
 
-**Still in progress:** resource Move, Rename, and Delete remain disabled until runtime owners can be reconciled safely. Independent resource preview tabs are planned as EW6. Mac trackpad gestures still need hands-on validation on the target hardware.
+**Still in progress:** folder-package import has automated coverage; a manual editor check of an OBJ + MTL + texture package remains. Resource Move, Rename, and Delete remain disabled until legacy undo history and log-queue ownership can be handled safely. Independent resource preview tabs are planned as EW6. The viewport's shared mouse and trackpad controls have passed manual interaction checks.
 
 ## Current project status
 

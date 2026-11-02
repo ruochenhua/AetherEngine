@@ -39,7 +39,7 @@ The snapshot is observational: it does not drain queues or mutate owners. Unknow
 The gate correctly remains closed under current runtime conditions:
 
 - legacy undo/redo entries do not expose typed resource locators and block while present;
-- a GPU material-cache inventory is not yet integrated into this snapshot;
+- `GpuMaterialCache` has an inventory API, but no Launcher runtime code constructs or owns it (`GpuMaterialCache::new` appears only in engine tests). The readiness report now states this known absence and does not emit a false “inventory unavailable” blocker. If Launcher begins owning this cache, the inventory must be wired into the gate before it is used.
 - a concurrent log producer can make one queue snapshot temporarily unobservable; retry after the producer releases the queue;
 
 These are real gaps, not permission to relax the gate. Resolve them before planning a writer. Delete remains a separate, later contract. The ownership snapshot itself does not implement path relocation or cache invalidation.
@@ -54,6 +54,14 @@ These are real gaps, not permission to relax the gate. Resolve them before plann
 ## Next work in order
 
 1. Complete and rerun the repository verification gates for the current lifecycle slices.
-2. Reconcile the remaining owner gaps: typed legacy undo/redo locators or a safe reset contract, and GPU material-cache inventory.
+2. Reconcile the remaining legacy-history gap: add typed undo/redo resource locators, or define and test an explicit history reset contract. Keep the count-based blocker until one of those contracts is complete.
 3. Extend tests for the editor-visible read-only blocker report and prove it reflects the captured snapshot without changing owner state. Runtime log queue paths are now included without consuming events.
 4. Reassess readiness. Only after the complete inventory can prove quiescence should a one-resource Move/Rename contract be planned. Keep Delete deferred.
+
+## Runtime inventory audit follow-up · 2026-11-02
+
+Verified the material-cache gap against the active Launcher code: repository references to `GpuMaterialCache::new` exist only in engine unit tests; the Launcher does not construct or retain a `GpuMaterialCache`. Its inventory is therefore a known empty runtime ownership category today, not an unavailable one. The readiness window now says this explicitly and no longer adds a blocker for a cache that does not exist in this runtime. `GpuTextureCache` remains actively owned by `App` and is still inventoried.
+
+TDD: changed the inventory regression to require the absence of a GPU material-cache blocker, observed RED against the unconditional blocker, then removed the false blocker and added explicit status text to the read-only window. The focused test passed GREEN, followed by a passing `./scripts/verify-ci.sh`.
+
+The actual unresolved history owner is the legacy Inspector command stack (`EditorCommand`), which is counted but has no resource-path visitor. Keep the count-based blocker while entries remain. The next engineering decision is whether to add typed locators for the legacy undo/redo stack or define and test a safe reset contract. Log receiver contention remains a transient conservative blocker.

@@ -1,7 +1,4 @@
-use std::{
-    fs,
-    path::{Component, Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 /// Resolve an OBJ that can be loaded without following symlinks outside assets/.
 /// Its MTL files and diffuse textures must also be project-local files.
@@ -9,45 +6,10 @@ pub(super) fn validate_obj_asset(
     relative_path: &Path,
     project_root: &Path,
 ) -> anyhow::Result<PathBuf> {
-    if relative_path.is_absolute()
-        || relative_path.components().any(|part| {
-            matches!(
-                part,
-                Component::ParentDir | Component::RootDir | Component::Prefix(_)
-            )
-        })
-        || relative_path.components().next() != Some(Component::Normal("assets".as_ref()))
-        || !relative_path
-            .extension()
-            .is_some_and(|extension| extension.eq_ignore_ascii_case("obj"))
-    {
-        anyhow::bail!("only project-relative OBJ files under assets/ can be placed");
-    }
-
-    let root_metadata = fs::symlink_metadata(project_root)?;
-    if root_metadata.file_type().is_symlink() || !root_metadata.is_dir() {
-        anyhow::bail!("project root is missing or is a symlink");
-    }
-    let canonical_root = project_root.canonicalize()?;
-    let assets_root = canonical_root.join("assets");
-    let assets_metadata = fs::symlink_metadata(&assets_root)?;
-    if assets_metadata.file_type().is_symlink() || !assets_metadata.is_dir() {
-        anyhow::bail!("project assets directory is missing or is a symlink");
-    }
-    let obj = resolve_local_file(&canonical_root, relative_path, &assets_root)?;
-    let reader = std::io::BufReader::new(fs::File::open(&obj)?);
-    for line in std::io::BufRead::lines(reader) {
-        let line = line?;
-        let mut fields = line.split_whitespace();
-        if let Some("mtllib") = fields.next() {
-            for library in fields {
-                let library_path =
-                    resolve_local_file(obj.parent().unwrap(), Path::new(library), &assets_root)?;
-                validate_mtl_textures(&library_path, &assets_root)?;
-            }
-        }
-    }
-    Ok(obj)
+    Ok(crate::project_files::validate_obj_asset(
+        project_root,
+        relative_path,
+    )?)
 }
 
 pub(super) fn project_relative_texture_path(
@@ -71,52 +33,10 @@ pub(super) fn project_relative_texture_path(
         .replace('\\', "/"))
 }
 
-fn validate_mtl_textures(mtl_path: &Path, assets_root: &Path) -> anyhow::Result<()> {
-    let reader = std::io::BufReader::new(fs::File::open(mtl_path)?);
-    for line in std::io::BufRead::lines(reader) {
-        let line = line?;
-        let mut fields = line.split_whitespace();
-        if fields.next() == Some("map_Kd") {
-            let texture = fields
-                .last()
-                .ok_or_else(|| anyhow::anyhow!("MTL diffuse texture path is missing"))?;
-            if texture.starts_with('-') {
-                anyhow::bail!("MTL diffuse texture options are not supported for dropped models");
-            }
-            resolve_local_file(mtl_path.parent().unwrap(), Path::new(texture), assets_root)?;
-        }
-    }
-    Ok(())
-}
-
-fn resolve_local_file(base: &Path, relative: &Path, assets_root: &Path) -> anyhow::Result<PathBuf> {
-    if relative.is_absolute()
-        || relative
-            .components()
-            .any(|part| !matches!(part, Component::Normal(_) | Component::CurDir))
-    {
-        anyhow::bail!("OBJ material dependencies must stay inside assets/");
-    }
-    let mut cursor = base.to_path_buf();
-    for component in relative.components() {
-        if let Component::Normal(name) = component {
-            cursor.push(name);
-            let metadata = fs::symlink_metadata(&cursor)?;
-            if metadata.file_type().is_symlink() {
-                anyhow::bail!("symbolic links are not supported for dropped model dependencies");
-            }
-        }
-    }
-    let canonical = cursor.canonicalize()?;
-    if !canonical.starts_with(assets_root) || !canonical.is_file() {
-        anyhow::bail!("OBJ material dependency is outside assets/ or is not a file");
-    }
-    Ok(canonical)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     #[test]
     fn project_cyborg_obj_and_its_local_texture_dependencies_are_supported() {

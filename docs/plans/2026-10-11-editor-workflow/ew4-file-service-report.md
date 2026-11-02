@@ -45,3 +45,22 @@ Linux and Windows exclusive rename paths are compiled only on those targets; thi
 - `cargo clippy -p aether-launcher --all-targets -- -D warnings`: passed, no warnings (`/tmp/ew4-clippy.log`).
 - `cargo test -p aether-launcher project_files::tests --lib`: passed, 10/10 tests, no warnings (`/tmp/ew4-green-final.log`).
 - `./scripts/verify-module-health.sh`: passed after parent split, 388 Rust files checked, 0 over-limit files.
+
+## Folder package transaction follow-up · 2026-11-02
+
+Closed the remaining package-integrity gap found during the EW4 contract audit:
+
+- A selected folder is collected and checked before publication. Any unsupported entry, invalid asset, missing OBJ material/texture dependency, symlink, collision, or package-budget violation rejects the folder as a whole.
+- Files are copied into a hidden sibling staging directory, byte-checked, dependency-checked, and published with the existing exclusive same-filesystem rename. An RAII guard removes the staged tree on failure.
+- Separate top-level selections remain independent, so a failed folder does not cancel a valid selected file.
+- OBJ dependency validation is shared by the importer and viewport placement path. The importer validates the engine OBJ loader against the staged `.obj` path after all package files exist.
+- Package limits are 32 directory levels, 4096 entries, 64 MiB per file, and 512 MiB aggregate. Common Finder/Windows metadata is skipped; other unsupported entries fail the package.
+
+TDD evidence:
+
+1. RED: rollback, missing-dependency, and nested-symlink tests failed against the previous per-file folder importer, which left a partially published folder. Valid nested OBJ/MTL/PNG and traversal rejection were added as package contract regressions.
+2. GREEN: `cargo test -p aether-launcher --lib project_files::tests` passed, 18/18.
+3. One full CI attempt hit an existing timing-sensitive hot-reload test; the isolated rerun passed, and the subsequent full workspace run passed.
+4. Final `./scripts/verify-ci.sh` passed, including workspace Clippy/tests, module health (433 Rust files, 0 over-limit), and workspace Release build.
+
+The package importer has automated service and UI routing coverage. The new OBJ dependency-package path has not yet received a separate manual editor acceptance session. The release launcher was also started with `scenes/test_one_cube_far.ron` for a short smoke run and stayed alive without panic; visual inspection was unavailable because the desktop automation service could not start.

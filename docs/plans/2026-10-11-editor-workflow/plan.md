@@ -98,15 +98,15 @@
 
 ### EW4 · 导入与安全文件操作
 
-状态（2026-11-02）：EW4 的批量/目录导入路径已实现。Finder 文件夹拖放曾因 macOS winit 的 `DroppedFile` 事件不携带指针坐标而被旧的缓存位置命中检查拦截；改为根据活动的 Project 页签和 Assets 目标目录接收后，用户已手动验收通过。新增无指针坐标的文件夹导入回归测试。此次通过关闭了原生文件/文件夹拖放验收项；EW4 整体仍按导入依赖校验、staging/回滚等合同逐项验收，不据此提前标记整个切片完成。
+状态（2026-11-02）：EW4 的批量/目录导入服务已实现并通过完整 CI。Finder 文件夹拖放曾因 macOS winit 的 `DroppedFile` 事件不携带指针坐标而被旧的缓存位置命中检查拦截；改为根据活动的 Project 页签和 Assets 目标目录接收后，用户已手动验收通过。目录包现在使用整包 staging + exclusive rename，验证 OBJ→MTL→纹理依赖，失败时整包回滚；独立多选项仍分别处理。剩余验收是用户在编辑器中手动导入一次带 MTL/纹理的 OBJ 文件夹，确认最终资源树和预览符合预期。实施与边界见[EW4 文件服务报告](ew4-file-service-report.md)及[文件操作合同](ew4-file-operation-contract.md)。
 
-- 先支持新建项目子文件夹、导入单纹理和自包含 GLB；对依赖外部 MTL/纹理/buffer 的 OBJ/glTF 拒绝导入并列明依赖，不复制不完整资源包。
-- 导入使用项目内 staging 目录，验证格式和全部依赖后再发布；失败清理 staging 且不改变项目索引。
+- 支持新建项目子文件夹、导入纹理、自包含 GLB，以及包含本地 MTL/纹理依赖的 OBJ 文件夹包；依赖不完整或越界时拒绝导入并显示原因，不留下部分文件。
+- 导入使用项目内 staging 目录，验证格式和全部依赖后再发布；失败清理 staging 且不改变项目索引。多选中的独立来源分别提交，单个文件夹包作为一个事务。
 - 新建文件夹与单资源复制可先交付；删除前检查引用，未知/损坏的依赖文档存在时保守拒绝。
 
 ### EW5 · 依赖感知的移动、重命名与删除
 
-状态（2026-10-24）：EW5-A 已完成，包含类型化只读依赖分析服务和 Project 面板的引用预览；不完整依赖图会明确阻断完整性结论，预览支持固定目标、定位引用方和异步过期检查。场景导入回滚、文档脏状态和共享 Save/Discard/Cancel 场景切换也已实现并通过完整 CI。Move/Rename/Delete 仍禁用：legacy Undo/Redo 路径和 GPU material cache 清点仍有缺口；LogPanel 有界队列现可非消费式盘点，竞争期间的临时不可观察仍会阻断当次判断。详见[EW5-A 实施报告](ew5-a-implementation-report.md)、[EW5-B 资源持有与生命周期报告](ew5-b-ownership-report.md)、[场景生命周期合同](ew5-scene-lifecycle-contract.md)和[EW5-B 前置条件审查](ew5-b-readiness-audit.md)。
+状态（2026-11-02）：EW5-A 只读依赖预览和 EW5-B 场景生命周期保护均已实现。Move/Rename/Delete 仍禁用：旧版 Inspector Undo/Redo 尚无类型化资源定位信息；LogPanel 队列被生产者占用时，单次盘点会保守阻断。审查确认 Launcher 当前没有实例化 `GpuMaterialCache`，因此这是已知不存在的运行时持有者，不再作为“盘点不可用”误报；若未来接入 Launcher，必须先纳入库存。详见[EW5-A 实施报告](ew5-a-implementation-report.md)、[EW5-B 资源持有与生命周期报告](ew5-b-ownership-report.md)、[场景生命周期合同](ew5-scene-lifecycle-contract.md)和[EW5-B 前置条件审查](ew5-b-readiness-audit.md)。
 
 - 建立类型化依赖 visitor，覆盖 Scene 中 MeshRef/MaterialAsset/Prefab、Prefab 中 Mesh/Material 与 override、MaterialAsset 中所有纹理槽、Terrain heightmap/layer textures。
 - 禁止字符串全局替换。移动/重命名仅对已支持 schema 执行；无法解析文件、未知引用或真实路径检查失败时拒绝操作并列明原因。
@@ -133,7 +133,7 @@ EW0 工作区面板骨架
                      └─ EW6 多资源预览分页
 ```
 
-**当前推进顺序：完成 EW4 原生文件选择器手动验收 → 补齐 EW5 资源持有者清点 → 再评估 Move/Rename → EW6 多资源预览分页。** EW0–EW2 已交付；EW3 自动化和最终手动验收已完成，用户确认视口交互可用且 OBJ 可拖入场景；EW4 安全目录/资源导入纵切已实现，仍需原生文件选择器手动验收。EW5-A 只读依赖预览和场景生命周期保护均已实现并通过完整 CI，但 Move/Rename/Delete 仍受真实资源持有者缺口阻断。视口鼠标/触控板操作与 Tips 已实现并完成用户手动验收。任何文件写操作必须等资格判断完整后再按交互先行与 TDD 重新规划；删除继续单独评估。
+**当前推进顺序：完成 EW4 OBJ 文件夹包手动验收 → 给旧版 Undo/Redo 补充路径盘点或安全重置合同 → 再评估 Move/Rename → EW6 多资源预览分页。** EW0–EW2 已交付；EW3 自动化和最终手动验收已完成，用户确认视口交互可用且 OBJ 可拖入场景；EW4 服务实现通过完整 CI，Finder 文件夹拖放已由用户手动验收，新增 OBJ 依赖包尚待一次编辑器手动验收。EW5 运行时资源快照已覆盖当前存在的各类持有者；旧版 Inspector Undo/Redo 的路径归属仍是明确缺口，LogPanel 队列竞争时仍保守阻断。任何文件写操作必须等资格判断完整后再按交互先行与 TDD 重新规划；删除继续单独评估。
 
 **交互先行门槛：EW3–EW6 的每个新交互切片在生产实现前，先做多代理审阅、低成本原型和交互合同评审。** 至少包含成熟引擎官方模式、Aether 当前架构、失败/取消/撤销三种视角；把官方事实与 Aether 设计推断区分开，明确入口、即时反馈、提交、取消/失败、Undo/Redo、选择与焦点影响。确认交互后按 TDD 先 RED 再 GREEN。详细流程及当前基线见[交互设计与评审合同](interaction-design.md)。
 

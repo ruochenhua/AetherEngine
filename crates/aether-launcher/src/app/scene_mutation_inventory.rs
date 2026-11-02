@@ -42,6 +42,7 @@ impl SceneMutationInventory {
             inventory.log_panel.buffered_event_resources.len(),
             inventory.log_panel.queued_event_resources.len(),
         ));
+        ui.label("GPU material cache: not instantiated in the Launcher runtime");
         ui.separator();
         if inventory.can_plan_single_resource_rename() {
             ui.label("Inventory is complete and quiescent; a Move/Rename contract may be planned.");
@@ -176,7 +177,8 @@ pub(crate) fn capture(app: &super::App) -> SceneMutationInventory {
         }
         Some(_) => {}
     }
-    blockers.push("GPU material-cache inventory is unavailable".into());
+    // GpuMaterialCache has engine support but no Launcher-owned runtime instance.
+    // This is a known absence, not an unavailable inventory.
     if project_work.scan_in_flight {
         blockers.push("Project resource scan is still in flight".into());
     }

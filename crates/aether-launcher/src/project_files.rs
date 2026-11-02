@@ -7,6 +7,8 @@ use std::{
 };
 #[path = "project_files/import_batch.rs"]
 mod import_batch;
+#[path = "project_files/obj_dependencies.rs"]
+mod obj_dependencies;
 #[path = "project_files/publish.rs"]
 mod publish;
 #[path = "project_files/validate.rs"]
@@ -15,6 +17,13 @@ pub use import_batch::{import_paths, ImportBatchReport};
 
 const BYTE_LIMIT: u64 = 64 * 1024 * 1024;
 static NEXT_STAGE: AtomicU64 = AtomicU64::new(0);
+
+pub(crate) fn validate_obj_asset(
+    root: &Path,
+    relative_path: &Path,
+) -> Result<PathBuf, FileOperationError> {
+    obj_dependencies::validate_obj_asset(root, relative_path)
+}
 
 #[derive(Debug)]
 pub enum FileOperationError {
@@ -104,7 +113,7 @@ pub fn import_file(
         ));
     }
     validate::bytes(&bytes, &extension)?;
-    let (staging, mut file) = stage(&destination)?;
+    let (staging, mut file) = stage(&destination, &extension)?;
     (|| {
         file.write_all(&bytes)?;
         file.sync_all()?;
@@ -115,10 +124,11 @@ pub fn import_file(
                 "Staged bytes differ from source".into(),
             ));
         }
-        validate::bytes(&staged, &extension)?;
-        if extension == "glb" {
-            validate::engine_mesh(&staging.0)?;
-        }
+        validate_staged_asset(
+            root,
+            &staging.0,
+            &format!("{directory}/{}", stage_name(&staging.0)),
+        )?;
         // Revalidate after parsing: the UI may have changed the directory while loading.
         let checked = destination_path(root, directory, true)?;
         if checked != destination {
@@ -211,12 +221,13 @@ impl Drop for Staging {
         let _ = fs::remove_file(&self.0);
     }
 }
-fn stage(directory: &Path) -> Result<(Staging, fs::File), FileOperationError> {
+fn stage(directory: &Path, extension: &str) -> Result<(Staging, fs::File), FileOperationError> {
     loop {
         let path = directory.join(format!(
-            ".aether-import-{}-{}",
+            ".aether-import-{}-{}.{}",
             std::process::id(),
-            NEXT_STAGE.fetch_add(1, Ordering::Relaxed)
+            NEXT_STAGE.fetch_add(1, Ordering::Relaxed),
+            extension
         ));
         match fs::OpenOptions::new()
             .write(true)
@@ -228,6 +239,62 @@ fn stage(directory: &Path) -> Result<(Staging, fs::File), FileOperationError> {
             Err(e) => return Err(e.into()),
         }
     }
+}
+
+pub(super) fn supported_extension(extension: &str) -> bool {
+    matches!(extension, "png" | "jpg" | "jpeg" | "glb" | "obj" | "mtl")
+}
+
+pub(super) fn validate_staged_asset(
+    root: &Path,
+    path: &Path,
+    relative: &str,
+) -> Result<(), FileOperationError> {
+    let extension = Path::new(relative)
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let bytes = read_bounded(path)?;
+    validate::bytes(&bytes, &extension)?;
+    match extension.as_str() {
+        "glb" => validate::engine_mesh(path),
+        "obj" => {
+            obj_dependencies::validate_obj_asset(root, Path::new(relative))?;
+            std::panic::catch_unwind(|| aether_engine::asset::loaders::obj::load(path))
+                .map_err(|_| {
+                    FileOperationError::Validation("OBJ loader rejected malformed mesh data".into())
+                })?
+                .map(|_| ())
+                .map_err(|error| FileOperationError::Validation(error.to_string()))
+        }
+        _ => Ok(()),
+    }
+}
+
+pub(super) fn read_bounded(path: &Path) -> Result<Vec<u8>, FileOperationError> {
+    let metadata = fs::symlink_metadata(path)?;
+    if !metadata.file_type().is_file() || metadata.len() > BYTE_LIMIT {
+        return Err(FileOperationError::Validation(
+            "Asset must be a regular file within the 64 MiB byte budget".into(),
+        ));
+    }
+    let mut bytes = Vec::with_capacity(metadata.len() as usize);
+    fs::File::open(path)?
+        .take(BYTE_LIMIT + 1)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > BYTE_LIMIT {
+        return Err(FileOperationError::Validation(
+            "Asset exceeds 64 MiB byte budget".into(),
+        ));
+    }
+    Ok(bytes)
+}
+
+fn stage_name(path: &Path) -> String {
+    path.file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default()
 }
 #[cfg(test)]
 #[path = "project_files/tests.rs"]
