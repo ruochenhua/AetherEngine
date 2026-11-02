@@ -117,7 +117,7 @@ fn ew4_project_actions_show_the_captured_destination_directory() {
 }
 
 #[test]
-fn external_asset_drop_is_accepted_only_over_the_assets_resource_list() {
+fn external_asset_drop_uses_the_active_assets_destination_without_pointer_coordinates() {
     let mut app = app();
     let root = valid_project();
     app.workspace.set_project_root(root.clone());
@@ -126,14 +126,14 @@ fn external_asset_drop_is_accepted_only_over_the_assets_resource_list() {
     click(&mut app, text_rect(&output, "Assets").unwrap().center());
     frame(&mut app, vec![]);
 
-    let target = app
-        .workspace
-        .asset_drop_target_rect()
-        .expect("Project resource list should expose its drop target");
-    assert!(app.workspace.accepts_asset_drop_at(target.center()));
-    assert!(!app
-        .workspace
-        .accepts_asset_drop_at(egui::Pos2::new(1.0, 1.0)));
+    assert_eq!(
+        app.workspace.import_destination().as_deref(),
+        Some("assets")
+    );
+
+    app.workspace
+        .select_tab(super::workspace::WorkspaceTab::Log);
+    assert_eq!(app.workspace.import_destination(), None);
 
     std::fs::remove_dir_all(root).unwrap();
 }
@@ -264,12 +264,7 @@ fn ew4_external_drop_imports_without_a_confirmation_step() {
     let output = frame(&mut app, vec![]);
     click(&mut app, text_rect(&output, "Assets").unwrap().center());
     frame(&mut app, vec![]);
-    let target = app.workspace.asset_drop_target_rect().unwrap();
-    assert!(super::handler::queue_asset_drop(
-        &mut app,
-        source,
-        target.center()
-    ));
+    assert!(super::handler::queue_asset_drop(&mut app, source));
 
     scene::process_post_ui_ops(&mut app);
 
@@ -283,7 +278,7 @@ fn ew4_external_drop_imports_without_a_confirmation_step() {
 }
 
 #[test]
-fn ew4_external_folder_drop_imports_nested_assets_without_confirmation() {
+fn ew4_external_folder_drop_imports_without_native_pointer_coordinates() {
     let mut app = app();
     let root = valid_project();
     let source_root = std::env::temp_dir().join(format!(
@@ -311,12 +306,8 @@ fn ew4_external_folder_drop_imports_nested_assets_without_confirmation() {
     let output = frame(&mut app, vec![]);
     click(&mut app, text_rect(&output, "Assets").unwrap().center());
     frame(&mut app, vec![]);
-    let target = app.workspace.asset_drop_target_rect().unwrap();
-    assert!(super::handler::queue_asset_drop(
-        &mut app,
-        source_folder,
-        target.center()
-    ));
+    // Native file-drop events do not carry a pointer position.
+    assert!(super::handler::queue_asset_drop(&mut app, source_folder));
 
     scene::process_post_ui_ops(&mut app);
 

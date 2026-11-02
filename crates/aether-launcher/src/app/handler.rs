@@ -220,9 +220,10 @@ impl ApplicationHandler for App {
                 );
             }
             WindowEvent::DroppedFile(path) => {
-                if let Some(position) = self.last_cursor_position {
-                    queue_asset_drop(self, path, position);
-                }
+                // winit's native file-drop events contain paths but no pointer
+                // coordinates. Use the active Project tab as the drop target
+                // instead of consulting a potentially stale CursorMoved point.
+                queue_asset_drop(self, path);
             }
             WindowEvent::Resized(size) if size.width > 0 && size.height > 0 => {
                 let ctx = self.ctx.as_mut().unwrap();
@@ -339,11 +340,7 @@ impl ApplicationHandler for App {
     }
 }
 
-pub(super) fn queue_asset_drop(
-    app: &mut App,
-    path: std::path::PathBuf,
-    position: egui::Pos2,
-) -> bool {
+pub(super) fn queue_asset_drop(app: &mut App, path: std::path::PathBuf) -> bool {
     let workspace_visible = matches!(&app.state, LauncherState::Menu) || app.show_overlay;
     if !workspace_visible || app.fullscreen_3d || app.pending_asset_import.is_some() {
         return false;
@@ -351,9 +348,6 @@ pub(super) fn queue_asset_drop(
     let Some(destination) = app.workspace.import_destination() else {
         return false;
     };
-    if !app.workspace.accepts_asset_drop_at(position) {
-        return false;
-    }
     app.last_asset_import_directory = path.parent().map(std::path::Path::to_path_buf);
     app.pending_asset_import = Some(super::PendingAssetImport {
         destination,

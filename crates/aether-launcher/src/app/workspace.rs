@@ -119,16 +119,6 @@ impl Workspace {
         (current == "assets" || current.starts_with("assets/")).then(|| current.to_owned())
     }
 
-    pub(crate) fn asset_drop_target_rect(&self) -> Option<egui::Rect> {
-        self.import_destination()?;
-        self.project.asset_drop_target_rect()
-    }
-
-    pub(crate) fn accepts_asset_drop_at(&self, position: egui::Pos2) -> bool {
-        self.asset_drop_target_rect()
-            .is_some_and(|rect| rect.contains(position))
-    }
-
     pub(crate) fn render(
         &mut self,
         ui: &mut egui::Ui,

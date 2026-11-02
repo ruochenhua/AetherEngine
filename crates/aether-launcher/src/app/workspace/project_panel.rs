@@ -28,7 +28,6 @@ pub(super) struct ProjectPanel {
     creating_folder: bool,
     scan_result: Option<Receiver<(u64, Result<IndexSnapshot, crate::project_index::IndexError>)>>,
     preview: preview::ResourcePreview,
-    asset_list_rect: Option<egui::Rect>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -43,7 +42,6 @@ impl ProjectPanel {
         let mut panel = Self {
             references: references::ReferencePreview::new(root.clone()),
             preview: preview::ResourcePreview::new(root.clone()),
-            asset_list_rect: None,
             root,
             index: ProjectIndex::default(),
             search: String::new(),
@@ -79,10 +77,6 @@ impl ProjectPanel {
 
     pub(super) fn selected_resource(&self) -> Option<&str> {
         self.selected_resource.as_deref()
-    }
-
-    pub(super) fn asset_drop_target_rect(&self) -> Option<egui::Rect> {
-        self.asset_list_rect
     }
 
     pub(super) fn async_work_snapshot(&self) -> AsyncWorkSnapshot {
@@ -282,13 +276,13 @@ impl ProjectPanel {
                 } else {
                     available_width
                 };
-                let resource_area = ui.allocate_ui_with_layout(
+                ui.allocate_ui_with_layout(
                     egui::vec2(resource_width, resource_height),
                     egui::Layout::top_down(egui::Align::Min),
                     |ui| {
                         ui.horizontal(|ui| {
                             ui.heading("Resources");
-                            ui.small("Drop supported files or folders here to import");
+                            ui.small("Drop files or folders into the editor to import here");
                         });
                         let query = ProjectQuery::default().search(&self.search).sort(self.sort);
                         let resources = query.apply(&snapshot);
@@ -366,7 +360,6 @@ impl ProjectPanel {
                         }
                     },
                 );
-                self.asset_list_rect = Some(resource_area.response.rect);
                 if selected {
                     ui.separator();
                     ui.allocate_ui_with_layout(
